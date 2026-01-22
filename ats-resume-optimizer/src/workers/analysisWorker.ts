@@ -100,21 +100,33 @@ const executeOptimizationTask = async (taskId: string, payload: any) => {
 
         await taskService.updateProgress(taskId, 80, 'Finalizing optimization...');
 
+        await taskService.updateProgress(taskId, 80, 'Finalizing optimization...');
+
+        // CALIBRATION: Initial Optimization Score Increase
+        // Requirement: modest 1-2% increase for formatting/phrasing updates (no new skills).
+        const baseScore = currentAnalysis.atsScore || 0;
+        const calibratedScore = Math.min(100, baseScore + 2);
+
         // Auto-save the update (AS DRAFT)
         if (currentAnalysis.id) {
             await historyService.updateAnalysis(
                 currentAnalysis.id,
-                currentAnalysis, // base object (will be merged in service, but service expects base)
+                currentAnalysis, // base object
                 job,
                 resume,
                 optimizedResume,
                 changes,
-                true // isDraft
+                true, // isDraft
+                calibratedScore, // draftAtsScore
+                currentAnalysis.matchAnalysis // draftMatchAnalysis (unchanged for pure optimization)
             );
         } else {
             // New save if for some reason ID is missing (AS DRAFT)
+            // We need to inject the calibrated score into the analysis object for the initial save
+            const calibratedAnalysis = { ...currentAnalysis, atsScore: calibratedScore };
+
             await historyService.saveAnalysis(
-                currentAnalysis,
+                calibratedAnalysis,
                 job,
                 resume,
                 optimizedResume,

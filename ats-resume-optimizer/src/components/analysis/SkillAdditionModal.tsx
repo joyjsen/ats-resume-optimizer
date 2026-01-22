@@ -14,13 +14,15 @@ interface Props {
 export const SkillAdditionModal = ({ visible, skill, resume, onDismiss, onConfirm }: Props) => {
     const theme = useTheme();
     const [selectedSections, setSelectedSections] = useState<string[]>([]);
-    const [step, setStep] = useState<'confirm' | 'select'>('confirm');
+    const [step, setStep] = useState<'confirm' | 'warning' | 'select'>('confirm');
+    const [disclaimerAccepted, setDisclaimerAccepted] = useState(false);
 
     // Reset state when modal opens
     React.useEffect(() => {
         if (visible) {
             setStep('confirm');
             setSelectedSections([]);
+            setDisclaimerAccepted(false);
         }
     }, [visible]);
 
@@ -55,8 +57,55 @@ export const SkillAdditionModal = ({ visible, skill, resume, onDismiss, onConfir
                             <Button mode="outlined" onPress={onDismiss} style={{ flex: 1, marginRight: 8 }}>
                                 Cancel
                             </Button>
-                            <Button mode="contained" onPress={() => setStep('select')} style={{ flex: 1 }}>
+                            <Button mode="contained" onPress={() => setStep('warning')} style={{ flex: 1 }}>
                                 Yes, Continue
+                            </Button>
+                        </View>
+                    </View>
+                ) : step === 'warning' ? (
+                    <View>
+                        <Text variant="headlineSmall" style={[styles.title, { color: theme.colors.error }]}>
+                            ⚠️ Important: Responsibility
+                        </Text>
+                        <Text variant="bodyMedium" style={{ marginBottom: 12 }}>
+                            You are adding skills to your resume at your own discretion.
+                        </Text>
+                        <View style={{ backgroundColor: '#FFEBEE', padding: 12, borderRadius: 8, marginBottom: 16 }}>
+                            <Text variant="bodySmall" style={{ color: '#D32F2F' }}>
+                                We are not responsible for validating whether you possess these skills. It is the prospective employer's responsibility to validate the skills presented during the interview process.
+                            </Text>
+                            <Text variant="bodySmall" style={{ color: '#D32F2F', marginTop: 8, fontWeight: 'bold' }}>
+                                By proceeding, you acknowledge that you should only add skills you genuinely possess or are actively developing.
+                            </Text>
+                        </View>
+
+                        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 16 }}>
+                            <Checkbox.Android
+                                status={disclaimerAccepted ? 'checked' : 'unchecked'}
+                                onPress={() => setDisclaimerAccepted(!disclaimerAccepted)}
+                                color={theme.colors.error}
+                                uncheckedColor={theme.colors.onSurface}
+                            />
+                            <Text
+                                onPress={() => setDisclaimerAccepted(!disclaimerAccepted)}
+                                variant="bodyMedium"
+                                style={{ flex: 1, marginLeft: 8 }}
+                            >
+                                I confirm I possess or am developing this skill
+                            </Text>
+                        </View>
+
+                        <View style={styles.actions}>
+                            <Button mode="outlined" onPress={onDismiss} style={{ flex: 1, marginRight: 8 }}>
+                                Cancel
+                            </Button>
+                            <Button
+                                mode="contained"
+                                onPress={() => setStep('select')}
+                                style={{ flex: 1, backgroundColor: theme.colors.error }}
+                                disabled={!disclaimerAccepted}
+                            >
+                                Accept
                             </Button>
                         </View>
                     </View>
@@ -100,7 +149,7 @@ export const SkillAdditionModal = ({ visible, skill, resume, onDismiss, onConfir
                         </Text>
 
                         <View style={styles.actions}>
-                            <Button mode="text" onPress={() => setStep('confirm')} style={{ marginRight: 8 }}>
+                            <Button mode="text" onPress={() => setStep('warning')} style={{ marginRight: 8 }}>
                                 Back
                             </Button>
                             <Button

@@ -8,6 +8,14 @@ export default function ResumePreview() {
     const { currentAnalysis } = useResumeStore();
     const theme = useTheme();
 
+    if (!currentAnalysis) {
+        return (
+            <View style={styles.container}>
+                <Text>No analysis selected.</Text>
+            </View>
+        );
+    }
+
     const optimizedResume = currentAnalysis.draftOptimizedResumeData || currentAnalysis.optimizedResume;
 
     if (!optimizedResume) {
@@ -18,7 +26,18 @@ export default function ResumePreview() {
         );
     }
 
+    // Gating Logic
+    const { activeTasks } = require('../src/context/TaskQueueContext').useTaskQueue();
+    const isDraft = !!currentAnalysis.draftOptimizedResumeData;
+    const isUpdating = activeTasks.find((t: any) =>
+        t.payload?.currentAnalysis?.id === currentAnalysis.id &&
+        (t.type === 'optimize_resume' || t.type === 'add_skill')
+    );
+
+    const canDownload = !isDraft && !isUpdating;
+
     const handleDownload = async () => {
+        if (!canDownload) return;
         try {
             await DocxGenerator.generateAndShare(optimizedResume);
         } catch (error) {
@@ -36,6 +55,7 @@ export default function ResumePreview() {
     return (
         <View style={{ flex: 1 }}>
             <ScrollView style={styles.container} contentContainerStyle={{ paddingBottom: 100 }}>
+                {/* ... existing render ... */}
                 <Surface style={styles.paper} elevation={2}>
                     <View style={styles.header}>
                         <Title style={styles.name}>{optimizedResume.contactInfo.name}</Title>
@@ -54,7 +74,7 @@ export default function ResumePreview() {
                     </Section>
 
                     <Section title="EXPERIENCE">
-                        {optimizedResume.experience.map((exp, index) => (
+                        {optimizedResume.experience.map((exp: any, index: number) => (
                             <View key={index} style={{ marginBottom: 16 }}>
                                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
                                     <Text variant="titleSmall" style={{ fontWeight: 'bold' }}>{exp.title}</Text>
@@ -63,7 +83,7 @@ export default function ResumePreview() {
                                 <Text variant="bodyMedium" style={{ fontStyle: 'italic', marginBottom: 4 }}>
                                     {exp.company}
                                 </Text>
-                                {exp.bullets.map((bullet, bIndex) => (
+                                {exp.bullets.map((bullet: string, bIndex: number) => (
                                     <View key={bIndex} style={{ flexDirection: 'row', marginBottom: 4 }}>
                                         <Text style={{ marginRight: 6 }}>•</Text>
                                         <Text variant="bodyMedium" style={{ flex: 1, lineHeight: 20 }}>{bullet}</Text>
@@ -75,13 +95,13 @@ export default function ResumePreview() {
 
                     <Section title="SKILLS">
                         <Text variant="bodyMedium" style={{ lineHeight: 20 }}>
-                            {optimizedResume.skills.map(s => s.name).join(' • ')}
+                            {optimizedResume.skills.map((s: any) => s.name).join(' • ')}
                         </Text>
                     </Section>
 
                     {optimizedResume.education.length > 0 && (
                         <Section title="EDUCATION">
-                            {optimizedResume.education.map((edu, index) => (
+                            {optimizedResume.education.map((edu: any, index: number) => (
                                 <View key={index} style={{ marginBottom: 8 }}>
                                     <Text variant="titleSmall">{edu.institution}</Text>
                                     <Text variant="bodySmall">{edu.degree} {edu.endDate ? `(${edu.endDate})` : ''}</Text>
@@ -93,13 +113,19 @@ export default function ResumePreview() {
             </ScrollView>
 
             <View style={styles.fabContainer}>
+                {!canDownload && (
+                    <Text variant="bodySmall" style={{ color: '#666', textAlign: 'center', marginBottom: 8 }}>
+                        {isUpdating ? "Resume is currently updating..." : "Please validate and save changes to download."}
+                    </Text>
+                )}
                 <Button
                     mode="contained"
                     icon="file-word"
                     onPress={handleDownload}
-                    style={styles.fab}
+                    disabled={!canDownload}
+                    style={[styles.fab, !canDownload && { opacity: 0.6 }]}
                 >
-                    Download .DOCX
+                    {isUpdating ? "Updating Resume..." : "Download .DOCX"}
                 </Button>
             </View>
         </View >

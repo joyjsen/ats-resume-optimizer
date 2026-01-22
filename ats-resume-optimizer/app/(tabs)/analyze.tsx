@@ -30,6 +30,7 @@ export default function AnalyzeScreen() {
     // Resume Preview State
     const [resumeText, setResumeText] = useState('');
     const [extractingResume, setExtractingResume] = useState(false);
+    const [uploadKey, setUploadKey] = useState(0); // Key to force-reset Uploader
 
     // Fallback UI State
     const [fallbackVisible, setFallbackVisible] = useState(false);
@@ -37,11 +38,15 @@ export default function AnalyzeScreen() {
 
     const [inputMode, setInputMode] = useState<'url' | 'text'>('url');
 
-    // ... existing useEffect ... (omitted for brevity in search replacement, assuming it matches)
+    // ... existing useEffect ...
     React.useEffect(() => {
         const extractResumeText = async () => {
             if (cvUris.length === 0) {
-                setResumeText('');
+                // Only clear if we explicitly don't have files anymore (manual clear handled separately)
+                if (!resumeText) setResumeText(''); // Prevent clearing if user is just typing text without file?
+                // Actually logic: cvUris drives extraction. If empty, maybe user cleared it?
+                // If user uploaded file, cvUris changes -> triggers extraction.
+                // If user clears file via cleanup, cvUris becomes [], we want to clear text.
                 return;
             }
             setExtractingResume(true);
@@ -58,6 +63,26 @@ export default function AnalyzeScreen() {
     }, [cvUris]);
 
     // ... existing handlers ...
+
+    const handleCleanup = () => {
+        Alert.alert(
+            "Clear Resume Data?",
+            "This will remove the uploaded file and any text changes you've made. You will need to re-upload your resume.",
+            [
+                { text: "Cancel", style: "cancel" },
+                {
+                    text: "Delete & Reset",
+                    style: "destructive",
+                    onPress: () => {
+                        setCvUris([]);
+                        setResumeText('');
+                        setUploadKey(prev => prev + 1); // Force remount uploader
+                    }
+                }
+            ]
+        );
+    };
+
     const handleBrowserImport = (text: string, url: string) => {
         setJobText(text); // Auto-fill text
         setJobUrl(url);   // Save URL for reference
@@ -290,8 +315,9 @@ export default function AnalyzeScreen() {
                             icon="web"
                             onPress={() => setBrowserVisible(true)}
                             style={{ marginBottom: 16 }}
+                            disabled={!jobUrl}
                         >
-                            {jobUrl ? "Open Link in Browser (Import)" : "Browse Jobs (LinkedIn/Indeed)"}
+                            Open Job Link in Browser (Import)
                         </Button>
 
                         <JobURLInput
@@ -332,6 +358,7 @@ export default function AnalyzeScreen() {
                             2. Your Resume
                         </Text>
                         <CVUploader
+                            key={uploadKey}
                             onFileSelected={setCvUris}
                             isTextModeActive={resumeText.length > 0 && cvUris.length === 0}
                         />
@@ -345,7 +372,18 @@ export default function AnalyzeScreen() {
 
                         {resumeText.length > 0 && !extractingResume && (
                             <View style={styles.previewContainer}>
-                                <Text variant="labelMedium" style={{ marginBottom: 4 }}>Resume Content Preview:</Text>
+                                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                                    <Text variant="labelMedium">Resume Content Preview:</Text>
+                                    <Button
+                                        mode="text"
+                                        compact
+                                        textColor="red"
+                                        icon="delete"
+                                        onPress={handleCleanup}
+                                    >
+                                        Delete & Reset
+                                    </Button>
+                                </View>
                                 <TextInput
                                     mode="outlined"
                                     value={resumeText}

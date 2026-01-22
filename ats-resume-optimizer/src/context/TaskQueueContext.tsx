@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useEffect, useState, useRef } from 'react';
+import { Alert } from 'react-native';
 import { taskService } from '../services/firebase/taskService';
 import { AnalysisTask } from '../types/task.types';
 import { executeAnalysisTask } from '../workers/analysisWorker';
@@ -78,8 +79,13 @@ export const TaskQueueProvider: React.FC<{ children: React.ReactNode }> = ({ chi
                 .then(() => {
                     processingRef.current.delete(task.id);
                 })
-                .catch(() => {
+                .catch((error) => {
                     processingRef.current.delete(task.id);
+                    // Notify user immediately of failure if they are in the app
+                    Alert.alert(
+                        "Task Failed",
+                        `Optimization for ${(task.payload as any)?.job?.company || 'Job'} failed: ${error?.message || 'Unknown error'}`
+                    );
                 });
         }
     };

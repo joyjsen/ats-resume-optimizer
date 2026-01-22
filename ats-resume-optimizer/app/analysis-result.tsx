@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, ScrollView, StyleSheet } from 'react-native';
-import { Button, Text, Card, ProgressBar, useTheme } from 'react-native-paper';
+import { Button, Text, Card, ProgressBar, useTheme, Portal, Dialog, Paragraph } from 'react-native-paper';
 import { useRouter } from 'expo-router';
 import { useResumeStore } from '../src/store/resumeStore';
 import { useTaskQueue } from '../src/context/TaskQueueContext';
@@ -15,6 +15,7 @@ export default function AnalysisResultScreen() {
     const { currentAnalysis, setCurrentAnalysis } = useResumeStore();
     const [optimizing, setOptimizing] = React.useState(false);
     const [saving, setSaving] = React.useState(false);
+    const [revertDialogVisible, setRevertDialogVisible] = React.useState(false);
 
 
     if (!currentAnalysis) {
@@ -273,6 +274,23 @@ export default function AnalysisResultScreen() {
             return;
         }
 
+        // Gating: Require optimized resume before adding skills
+        if (!optimizedResume) {
+            const { Alert } = require('react-native');
+            Alert.alert(
+                "Optimize Resume First",
+                "Please optimize your existing resume first before attempting to add any missing skills.",
+                [
+                    { text: "Cancel", style: "cancel" },
+                    {
+                        text: "Optimize Now",
+                        onPress: () => handleOptimize()
+                    }
+                ]
+            );
+            return;
+        }
+
         // Only allow adding if it's missing or partial (though the UI component filters clickability)
         setSelectedSkillToAdd(skillMatch.skill);
         setSkillModalVisible(true);
@@ -457,8 +475,14 @@ export default function AnalysisResultScreen() {
                         </Card.Content>
                     </Card>
 
+                    {/* Comparison Baseline Logic:
+                        - If viewing a Draft (Unsaved): Compare against the Last Saved Version (optimizedResume) 
+                          so we only show the New Changes in this session.
+                        - If viewing a Saved Result: Compare against the Original Upload (resume) 
+                          so we show the total optimization impact.
+                    */}
                     <BeforeAfterComparison
-                        original={resume}
+                        original={isUnsaved ? (currentAnalysis.optimizedResume || resume) : resume}
                         optimized={optimizedResume}
                         changes={changes}
                     />
@@ -484,11 +508,14 @@ export default function AnalysisResultScreen() {
                             Preview Resume
                         </Button>
 
+
+
+                        {/* ... rest of UI ... */}
                         {isUnsaved && (
                             <>
                                 <Button
                                     mode="outlined"
-                                    onPress={handleDiscard}
+                                    onPress={() => setRevertDialogVisible(true)}
                                     loading={saving}
                                     disabled={saving || optimizing}
                                     style={[styles.button, { marginTop: 12, borderColor: '#D32F2F', marginBottom: 8 }]}
@@ -497,6 +524,7 @@ export default function AnalysisResultScreen() {
                                 >
                                     Reject Changes & Revert
                                 </Button>
+                                {/* ... Validate button ... */}
 
                                 <Button
                                     mode="contained"
@@ -521,6 +549,37 @@ export default function AnalysisResultScreen() {
                 onDismiss={() => setSkillModalVisible(false)}
                 onConfirm={handleConfirmAddSkill}
             />
+            <Portal>
+                <Dialog visible={revertDialogVisible} onDismiss={() => setRevertDialogVisible(false)} style={{ backgroundColor: '#FFF3E0' }}>
+                    <Dialog.Title style={{ color: '#D32F2F', fontWeight: 'bold' }}>
+                        ⚠️ Confirm Revert Changes
+                    </Dialog.Title>
+                    <Dialog.Content>
+                        <Paragraph style={{ marginBottom: 12 }}>
+                            All unsaved changes up until this point will be lost and you will need to re-optimize or add all the unsaved missing skills again .
+                        </Paragraph>
+                        <View style={{ backgroundColor: '#E3F2FD', padding: 12, borderRadius: 8, marginTop: 8 }}>
+                            <Text variant="bodySmall" style={{ color: '#0D47A1' }}>
+                                💡 <Text style={{ fontWeight: 'bold', color: '#0D47A1' }}>Tip:</Text> Please validate and save to dashboard if you are satisfied with the changes, before updating the resume with new skills.
+                            </Text>
+                        </View>
+                    </Dialog.Content>
+                    <Dialog.Actions>
+                        <Button onPress={() => setRevertDialogVisible(false)}>Cancel</Button>
+                        <Button
+                            onPress={() => {
+                                setRevertDialogVisible(false);
+                                handleDiscard();
+                            }}
+                            textColor="#D32F2F"
+                            labelStyle={{ fontWeight: 'bold' }}
+                        >
+                            Revert Changes
+                        </Button>
+                    </Dialog.Actions>
+                </Dialog>
+            </Portal>
+
         </ScrollView>
     );
 }

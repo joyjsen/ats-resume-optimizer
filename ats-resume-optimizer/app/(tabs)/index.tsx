@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { View, StyleSheet, FlatList, RefreshControl, Alert } from 'react-native';
 import { Text, Button, Card, Chip, FAB, useTheme, IconButton, ProgressBar } from 'react-native-paper';
 import { useRouter, useFocusEffect } from 'expo-router';
@@ -6,61 +6,147 @@ import { historyService } from '../../src/services/firebase/historyService';
 import { SavedAnalysis } from '../../src/types/history.types';
 import { useResumeStore } from '../../src/store/resumeStore';
 import { useTaskQueue } from '../../src/context/TaskQueueContext';
+import { DashboardFilters, SortOption, FilterState } from '../../src/components/dashboard/DashboardFilters';
 
 export default function Dashboard() {
     const router = useRouter();
     const theme = useTheme();
     const { setCurrentAnalysis } = useResumeStore();
-    const { activeTasks } = useTaskQueue(); // Get active tasks from context
+    const { activeTasks } = useTaskQueue();
     const { taskService } = require('../../src/services/firebase/taskService');
 
     const handleCancelTask = async (taskId: string) => {
-        try {
-            await taskService.failTask(taskId, "Cancelled by user");
-        } catch (error) {
-            console.error("Failed to cancel task", error);
-        }
+        Alert.alert(
+            "Cancel Analysis?",
+            "This ongoing analysis will be deleted and is not recoverable. Are you sure you want to proceed?",
+            [
+                { text: "No", style: "cancel" },
+                {
+                    text: "Yes, Delete",
+                    style: 'destructive',
+                    onPress: async () => {
+                        try {
+                            await taskService.failTask(taskId, "Cancelled by user");
+                        } catch (error) {
+                            console.error("Failed to cancel task", error);
+                            Alert.alert("Error", "Could not cancel task.");
+                        }
+                    }
+                }
+            ]
+        );
     };
 
     const [history, setHistory] = useState<SavedAnalysis[]>([]);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
 
-    const loadHistory = useCallback(async () => {
-        try {
-            const data = await historyService.getUserHistory();
+    // Filter & Sort State
+    const [sortOption, setSortOption] = useState<SortOption>('recent');
+    const [filters, setFilters] = useState<FilterState>({
+        companies: [],
+        positions: [],
+        dateRange: 'all',
+        scoreRanges: []
+    });
+
+    // Real-time Subscription (replace loadHistory)
+    useEffect(() => {
+        setLoading(true);
+        const unsubscribe = historyService.subscribeToUserHistory((data) => {
             setHistory(data);
-        } catch (error) {
-            console.error('Failed to load history', error);
-        } finally {
             setLoading(false);
             setRefreshing(false);
-        }
+        });
+
+        return () => unsubscribe();
     }, []);
 
-    useFocusEffect(
-        useCallback(() => {
-            loadHistory();
-        }, [loadHistory])
-    );
-
+    // Manual refresh still useful for network retry, but primarily reliant on subscription
     const handleRefresh = () => {
         setRefreshing(true);
-        loadHistory();
+        // Subscription will push update if connection restores, or we can force fetch
+        // For simplicity, just reset loading state after a timeout if relying on sub, 
+        // OR re-trigger subscription if implemented that way.
+        // Since subscription is persistent, we mainly just show a spinner briefly.
+        setTimeout(() => setRefreshing(false), 1000);
     };
 
+    // Filter Logic
+    const filteredHistory = useMemo(() => {
+        let result = [...history];
+
+        // 1. Filter by Company
+        if (filters.companies.length > 0) {
+            result = result.filter(item => filters.companies.includes(item.company));
+        }
+
+        // 2. Filter by Position
+        if (filters.positions.length > 0) {
+            result = result.filter(item => filters.positions.includes(item.jobTitle));
+        }
+
+        // 3. Filter by Date
+        const now = new Date();
+        if (filters.dateRange !== 'all') {
+            const daysToSubtract =
+                filters.dateRange === '7days' ? 7 :
+                    filters.dateRange === '30days' ? 30 : 90;
+            const cutoff = new Date();
+            cutoff.setDate(now.getDate() - daysToSubtract);
+
+            result = result.filter(item => {
+                const date = item.updatedAt || item.createdAt;
+                return date >= cutoff;
+            });
+        }
+
+        // 4. Filter by Score
+        if (filters.scoreRanges.length > 0) {
+            result = result.filter(item => {
+                const score = item.draftAtsScore ?? item.atsScore;
+                return filters.scoreRanges.some(range => {
+                    const [min, max] = range.split('-').map(Number);
+                    return score >= min && score <= max;
+                });
+            });
+        }
+
+        // 5. Sort
+        result.sort((a, b) => {
+            const dateA = (a.updatedAt || a.createdAt).getTime();
+            const dateB = (b.updatedAt || b.createdAt).getTime();
+            const scoreA = a.draftAtsScore ?? a.atsScore;
+            const scoreB = b.draftAtsScore ?? b.atsScore;
+
+            switch (sortOption) {
+                case 'recent': return dateB - dateA;
+                case 'oldest': return dateA - dateB;
+                case 'score_desc': return scoreB - scoreA;
+                case 'score_asc': return scoreA - scoreB;
+                case 'company_asc': return a.company.localeCompare(b.company);
+                case 'company_desc': return b.company.localeCompare(a.company);
+                case 'position_asc': return a.jobTitle.localeCompare(b.jobTitle);
+                case 'position_desc': return b.jobTitle.localeCompare(a.jobTitle);
+                default: return 0;
+            }
+        });
+
+        return result;
+    }, [history, filters, sortOption]);
+
+
     const handleOpenAnalysis = (item: SavedAnalysis) => {
-        // Rehydrate the store with the saved analysis
+        // ... (existing implementation)
         setCurrentAnalysis({
             ...item.analysisData,
-            id: item.id, // Important: Keep ID so future saves are updates
+            id: item.id,
             job: item.jobData,
-            resume: item.resumeData || {} as any, // Should be there for new saves
+            resume: item.resumeData || {} as any,
             optimizedResume: item.optimizedResumeData,
             changes: item.changesData
         });
 
-        // Navigate based on the result type
         if (item.action === 'optimize') {
             router.push('/analysis-result');
         } else {
@@ -68,17 +154,20 @@ export default function Dashboard() {
         }
     };
 
+    // ... (helper functions getScoreColor, formatDate, handleDelete remain the same)
     const getScoreColor = (score: number) => {
         if (score >= 85) return theme.colors.primary;
-        if (score >= 70) return '#F57C00'; // Orange
+        if (score >= 70) return '#F57C00';
         return theme.colors.error;
     };
 
     const formatDate = (date: Date) => {
-        return new Date(date).toLocaleDateString(undefined, {
+        return new Date(date).toLocaleString(undefined, {
             month: 'short',
             day: 'numeric',
-            year: 'numeric'
+            year: 'numeric',
+            hour: 'numeric',
+            minute: '2-digit',
         });
     };
 
@@ -115,6 +204,14 @@ export default function Dashboard() {
                 <Text variant="bodyLarge" style={styles.subtitle}>Your career optimization history</Text>
             </View>
 
+            {/* Dashboard Filters & Sort */}
+            <DashboardFilters
+                fullHistory={history}
+                currentSort={sortOption}
+                onSortChange={setSortOption}
+                onFilterChange={setFilters}
+            />
+
             {/* Active Tasks Section */}
             {activeTasks.length > 0 && (
                 <View style={{ marginBottom: 24 }}>
@@ -142,21 +239,22 @@ export default function Dashboard() {
                 </View>
             )}
 
-            <Text variant="titleMedium" style={styles.sectionTitle}>Recent Analyses</Text>
+            <Text variant="titleMedium" style={styles.sectionTitle}>
+                Recent Analyses ({filteredHistory.length})
+            </Text>
 
             <FlatList
-                data={history}
+                data={filteredHistory}
                 keyExtractor={(item) => item.id}
                 contentContainerStyle={styles.listContent}
                 refreshControl={
                     <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
                 }
                 ListEmptyComponent={
-                    // ... (unchanged)
                     !loading ? (
                         <View style={styles.emptyState}>
                             <IconButton icon="clipboard-text-search-outline" size={60} />
-                            <Text>No analyses found yet.</Text>
+                            <Text>No analyses found {history.length > 0 ? "matching filters" : "yet"}.</Text>
                             <Button
                                 mode="contained"
                                 onPress={() => router.push('/(tabs)/analyze')}
@@ -173,6 +271,13 @@ export default function Dashboard() {
                     const isDraft = !!item.draftOptimizedResumeData;
                     const isPending = !!activeTasks.find(t => t.payload.currentAnalysis?.id === item.id);
 
+                    const getRec = (s: number) => {
+                        if (s > 75) return { c: '#4CAF50', m: "Strongly encouraged", i: "check-circle" };
+                        if (s > 50) return { c: '#FF9800', m: "Encouraged (needs upgrade)", i: "alert" };
+                        return { c: '#F44336', m: "Brush up skills", i: "book-open-variant" };
+                    };
+                    const rec = getRec(score);
+
                     return (
                         <Card
                             style={styles.card}
@@ -184,11 +289,19 @@ export default function Dashboard() {
                                     <View style={{ flex: 1, marginRight: 8 }}>
                                         <Text variant="titleMedium" numberOfLines={1}>{item.jobTitle}</Text>
                                         <Text variant="bodyMedium" numberOfLines={1}>{item.company}</Text>
+
+                                        {/* Simplified Recommendation on Dashboard */}
+                                        <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 8 }}>
+                                            <IconButton icon={rec.i} size={16} iconColor={rec.c} style={{ margin: 0, padding: 0, width: 20, height: 20 }} />
+                                            <Text variant="labelSmall" style={{ color: rec.c, fontWeight: 'bold' }}>
+                                                {rec.m}
+                                            </Text>
+                                        </View>
                                     </View>
                                     <View style={{ alignItems: 'flex-end' }}>
                                         <Text
                                             variant="displaySmall"
-                                            style={{ fontSize: 24, color: getScoreColor(item.atsScore), fontWeight: 'bold' }} // Keep original color logic or use new score's color
+                                            style={{ fontSize: 24, color: rec.c, fontWeight: 'bold' }}
                                         >
                                             {score}
                                         </Text>
@@ -197,7 +310,7 @@ export default function Dashboard() {
                                 </View>
 
                                 <View style={styles.metaRow}>
-                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 }}>
+                                    <View style={{ flexDirection: 'column', alignItems: 'flex-start', gap: 4, flex: 1 }}>
                                         {isPending ? (
                                             <Chip icon="progress-clock" compact mode="flat" style={{ backgroundColor: '#E3F2FD' }}>
                                                 Updating...
@@ -227,7 +340,9 @@ export default function Dashboard() {
                                                 Pending Resume Update
                                             </Chip>
                                         )}
-                                        <Text variant="bodySmall" style={styles.date}>{formatDate(item.createdAt)}</Text>
+                                        <Text variant="bodySmall" style={styles.date}>
+                                            {formatDate(item.updatedAt || item.createdAt)}
+                                        </Text>
                                     </View>
                                     <IconButton
                                         icon="trash-can-outline"

@@ -10,6 +10,7 @@ export interface SavedAnalysis {
     atsScore: number;
     action: 'optimize' | 'upskill' | 'apply_junior' | 'not_suitable';
     createdAt: Date;
+    updatedAt?: Date;
 
     // Stored references or full objects (simplified for this MVP)
     analysisData: AnalysisResult;

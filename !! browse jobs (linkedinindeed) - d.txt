@@ -1,0 +1,76 @@
+!! "browse jobs (linkedin/indeed) - doesn't work - change to " Open Job Link in Browser (Import) " - keep it disabled until a valid Job URL has beed pasted in the "Job Posting URL" text area.
+
+Once pasted a valid job URL , click on "open link in browser (import)" . Beside the Job Browser on the job bar click on the "layer off" icon . 
+
+For LinkedIn : 
+
+Click on "Show more " to see the entire job description, once visible , click on "Import" - top right window
+
+The Job Description Text will be automatically imported in the text area.
+
+
+Option 2 : Upload Screenshot(s) of the job description and the system will be able to import the text from the screenshots ( Needs validation )
+
+
+Your Resume : 
+
+You can add either images, docx or txt files
+
+!! Validate the resume in the "Resume Content Preview" section ::: need to add a cleanup button in the "resume content preview" section
+
+
+
+click on "Analyze Resume"
+
+- you can see the status of the task below.
+- if you navigate away from this page to the dashboard page, the task status can be seen at the top, you can cancel the task on clicking the red X button beside the analysis.
+
+once analysis is completed, it will show up in the "recent analyses" section with status message "Pending Resume Update"
+
+The user can see their matched skills, partial matches ( transferable ) , missing critical skills , and an ATS score based on their resume compatibility. 
+
+!! update the text "below qualification threshold" to show up for profiles < 50% ATS score. 50-75% it will show "encouraged to apply" , above 75% show "threshold met, definitely apply" - check with GPT for correct wordings
+
+The user can click on the partial matches and missing critical skills to update them in their resume.
+
+
+"Rewrite & Optimize Resume" :
+
+!! Right after the initial analysis before performing "rewrite and optimize resume" , the user will not be able to add partial and critical skills into their resume. if they attempt to do so, the system will prompt - please optimize your existing resume first before attempting to add any missing skills" 
+
+
+The user can proceed with Rewrite and Optimize Resume .
+
+!! Once initial optimization has been done, the user must be able to see in the "What we optimized section" a boosted ATS score , ideally it should only increase by 1 %age point or 2 , and add a Tips section where we encourage the user to update their skills and experiences in the resume by clicking on the partial matches and missing skills, let us know if you are ready to update your skills in the resume, which section you want to add the missing skill, also warn the user that they are adding these skills at their own will and consent and we are not responsible to validate their resume skills and experiences.
+
+
+!! one skill added, while trying to add second skill, it does not go to the "new skill acquired" section, it only shows the previous one , ats score reduces.
+
+Once optimized/reoptimized, the user can review and edit changes, preview and save the optimized resume 
+
+!! under preview resume, download docx option will be only available once it is validated and saved to dashboard
+
+the user can also "Reject changes and revert"
+
+finally, if they are satisfied, they can validate and save to dashboard.
+
+!! reject changes and revert : on clicking this present the user with a warning that all the changes up until this point will be lost and the user has to reoptimize their resume again . tips : please validate and save to dashboard if you are satisfied with the changes , before updating the resume with new skills. :: inconsistent . sometimes doesn't work - find when 
+
+add a new skill -> see ATS score increase -> if satisfied, save it to dashboard, if not, revert and go back to the previous state
+
+while the skills are getting added, the status messages can be seen on this page and the dashboard as well.
+
+
+!! while adding a new skill, present user will warnings that they are adding skills at their own free will and we are not responsible for validating the skills at this point
+
+!! future updates will -> add skill to resume ? yes continue ->  put the skill name and the placeholder to input date acquired in the learning section -> if valid date is not found, let user know to update the skill acquired date from learning section -> then user selects sections where to add the skills -> see new results.
+
+!! applications -> add placeholder and tracker where user manually inputs milestones for the job.
+
+!! profiles -> put everything under profile, track user activities for admins, track token usage by user, analytics.
+
+
+
+
+
+

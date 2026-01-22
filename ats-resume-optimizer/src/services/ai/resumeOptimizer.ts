@@ -53,11 +53,15 @@ Aim for an ATS score of 85-95%.
                 };
             } catch (e) {
                 console.error("JSON Parse Error. Content snippet:", content.substring(content.length - 200));
-                throw e;
+                throw new Error("AI Assistant failed to structure the response correctly. Please try again.");
             }
-        } catch (error) {
+        } catch (error: any) {
             console.error('Error optimizing resume:', error);
-            throw error;
+            // Pass through specific errors, wrap unknown ones
+            if (error.message.includes("Resume too long") || error.message.includes("AI Assistant failed")) {
+                throw error;
+            }
+            throw new Error(`Optimization failed: ${error.message}`);
         }
     }
 

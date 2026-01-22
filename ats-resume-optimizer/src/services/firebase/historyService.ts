@@ -7,24 +7,7 @@ import {
     Timestamp
 } from 'firebase/firestore';
 import { db, auth } from './config';
-export interface SavedAnalysis {
-    id: string;
-    userId: string;
-    jobTitle: string;
-    company: string;
-    atsScore: number;
-    action: string;
-    createdAt: Date;
-    analysisData: AnalysisResult;
-    jobData: JobPosting;
-    resumeData?: ParsedResume;
-    optimizedResumeData?: ParsedResume;
-    changesData?: any[];
-    draftOptimizedResumeData?: ParsedResume;
-    draftChangesData?: any[];
-    jobHash?: string;
-    resumeHash?: string;
-}
+import { SavedAnalysis } from '../../types/history.types';
 import { AnalysisResult } from '../../types/analysis.types';
 import { JobPosting } from '../../types/job.types';
 import { ParsedResume } from '../../types/resume.types';
@@ -56,6 +39,7 @@ export class HistoryService {
                 atsScore: analysis.atsScore,
                 action: analysis.recommendation.action,
                 createdAt: Timestamp.now(),
+                updatedAt: Timestamp.now(), // Initial update time = created time
                 analysisData: JSON.stringify(analysis),
                 jobData: JSON.stringify(job),
                 resumeData: JSON.stringify(resume || {}),
@@ -257,7 +241,62 @@ export class HistoryService {
     }
 
     /**
-     * Get user's analysis history
+     * Subscribe to user's analysis history for real-time updates
+     */
+    subscribeToUserHistory(callback: (history: SavedAnalysis[]) => void): () => void {
+        try {
+            const { onSnapshot } = require('firebase/firestore');
+            const user = auth.currentUser;
+            const userId = user?.uid || 'anonymous_user';
+
+            const q = query(
+                collection(db, this.collectionName),
+                where('userId', '==', userId)
+            );
+
+            return onSnapshot(q, (snapshot: any) => {
+                const fetchedHistory = snapshot.docs.map((doc: any) => {
+                    const data = doc.data();
+                    return {
+                        id: doc.id,
+                        userId: data.userId,
+                        jobTitle: data.jobTitle,
+                        company: data.company,
+                        atsScore: data.atsScore,
+                        action: data.action,
+                        createdAt: data.createdAt.toDate(),
+                        updatedAt: data.updatedAt ? data.updatedAt.toDate() : data.createdAt.toDate(),
+                        analysisData: JSON.parse(data.analysisData),
+                        jobData: JSON.parse(data.jobData),
+                        resumeData: data.resumeData ? JSON.parse(data.resumeData) : undefined,
+                        optimizedResumeData: data.optimizedResumeData ? JSON.parse(data.optimizedResumeData) : undefined,
+                        changesData: data.changesData ? JSON.parse(data.changesData) : undefined,
+                        draftOptimizedResumeData: data.draftOptimizedResumeData ? JSON.parse(data.draftOptimizedResumeData) : undefined,
+                        draftChangesData: data.draftChangesData ? JSON.parse(data.draftChangesData) : undefined,
+                        draftAtsScore: data.draftAtsScore,
+                        draftMatchAnalysis: data.draftMatchAnalysis ? JSON.parse(data.draftMatchAnalysis) : undefined,
+                    } as SavedAnalysis;
+                });
+
+                // Client-side sort
+                const sorted = fetchedHistory.sort((a: SavedAnalysis, b: SavedAnalysis) => {
+                    const timeA = a.updatedAt ? a.updatedAt.getTime() : a.createdAt.getTime();
+                    const timeB = b.updatedAt ? b.updatedAt.getTime() : b.createdAt.getTime();
+                    return timeB - timeA;
+                });
+
+                callback(sorted);
+            }, (error: any) => {
+                console.error("Error in history subscription:", error);
+            });
+        } catch (error) {
+            console.error("Failed to setup subscription:", error);
+            return () => { }; // No-op unsubscribe
+        }
+    }
+
+    /**
+     * Get user's analysis history (One-time fetch)
      */
     async getUserHistory(): Promise<SavedAnalysis[]> {
         try {
@@ -282,6 +321,7 @@ export class HistoryService {
                     atsScore: data.atsScore,
                     action: data.action,
                     createdAt: data.createdAt.toDate(),
+                    updatedAt: data.updatedAt ? data.updatedAt.toDate() : data.createdAt.toDate(), // Fallback
                     analysisData: JSON.parse(data.analysisData),
                     jobData: JSON.parse(data.jobData),
                     // Parse optional extended data (handle backward compatibility)
@@ -295,8 +335,12 @@ export class HistoryService {
                 } as SavedAnalysis;
             });
 
-            // Client-side sort (Newest First)
-            return fetchedHistory.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+            // Client-side sort (Newest Updated First)
+            return fetchedHistory.sort((a, b) => {
+                const timeA = a.updatedAt ? a.updatedAt.getTime() : a.createdAt.getTime();
+                const timeB = b.updatedAt ? b.updatedAt.getTime() : b.createdAt.getTime();
+                return timeB - timeA;
+            });
         } catch (error) {
             console.error('Error fetching history:', error);
             return [];

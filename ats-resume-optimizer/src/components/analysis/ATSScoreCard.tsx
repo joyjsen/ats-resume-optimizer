@@ -1,7 +1,6 @@
 import React from 'react';
 import { View, StyleSheet } from 'react-native';
-import { Card, Text, ProgressBar, useTheme } from 'react-native-paper';
-// import { ScoreGauge } from '../common/ScoreGauge'; // Placeholder if needed
+import { Card, Text, ProgressBar, useTheme, Avatar } from 'react-native-paper';
 
 interface Props {
     score: number;
@@ -12,15 +11,35 @@ interface Props {
 export const ATSScoreCard = ({ score, originalScore, threshold = 75 }: Props) => {
     const theme = useTheme();
 
-    const getColor = (s: number) => {
-        if (s >= 85) return theme.colors.primary; // Greenish usually but using primary
-        if (s >= 75) return '#4CAF50';
-        if (s >= 50) return '#FFC107'; // Yellow/Amber
-        return theme.colors.error;
+    const getRecommendation = (s: number) => {
+        if (s > 75) {
+            return {
+                color: '#4CAF50', // Green
+                icon: 'check-circle',
+                message: "Strongly encouraged to apply",
+                description: "You have a strong match with the job requirements and should proceed with confidence.",
+                bg: '#E8F5E9'
+            };
+        }
+        if (s > 50) {
+            return {
+                color: '#FF9800', // Amber/Orange
+                icon: 'alert',
+                message: "Encouraged to apply, better chances with skill upgrades",
+                description: "You have a decent foundation but could improve your chances by adding missing skills.",
+                bg: '#FFF3E0'
+            };
+        }
+        return {
+            color: '#F44336', // Red
+            icon: 'book-open-variant',
+            message: "Brush up on skills before applying",
+            description: "Significant skill gaps exist; focus on skill development before applying.",
+            bg: '#FFEBEE'
+        };
     };
 
-    const color = getColor(score);
-    const isPassing = score >= threshold;
+    const rec = getRecommendation(score);
     const diff = originalScore !== undefined ? score - originalScore : 0;
 
     return (
@@ -34,7 +53,7 @@ export const ATSScoreCard = ({ score, originalScore, threshold = 75 }: Props) =>
                                 {originalScore}%
                             </Text>
                         )}
-                        <Text variant="displayMedium" style={{ color }}>{score}%</Text>
+                        <Text variant="displayMedium" style={{ color: rec.color, fontWeight: 'bold' }}>{score}%</Text>
                         {originalScore !== undefined && diff > 0 && (
                             <Text variant="titleMedium" style={{ color: '#4CAF50', marginLeft: 8 }}>
                                 (+{diff}) ⬆️
@@ -43,13 +62,19 @@ export const ATSScoreCard = ({ score, originalScore, threshold = 75 }: Props) =>
                     </View>
                 </View>
 
-                <ProgressBar progress={score / 100} color={color} style={styles.progress} />
+                <ProgressBar progress={score / 100} color={rec.color} style={styles.progress} />
 
-                <Text variant="bodyMedium" style={styles.status}>
-                    {isPassing
-                        ? '🚀 Qualification Threshold Met'
-                        : '⚠️ Below Qualification Threshold'}
-                </Text>
+                <View style={[styles.recommendationBox, { backgroundColor: rec.bg, borderColor: rec.color }]}>
+                    <Avatar.Icon size={32} icon={rec.icon} style={{ backgroundColor: rec.color }} color="white" />
+                    <View style={{ flex: 1 }}>
+                        <Text variant="titleSmall" style={{ color: rec.color, fontWeight: 'bold' }}>
+                            {rec.message}
+                        </Text>
+                        <Text variant="bodySmall" style={{ color: '#444', marginTop: 2 }}>
+                            {rec.description}
+                        </Text>
+                    </View>
+                </View>
             </Card.Content>
         </Card>
     );
@@ -71,8 +96,13 @@ const styles = StyleSheet.create({
         height: 10,
         borderRadius: 5,
     },
-    status: {
-        fontWeight: 'bold',
-        textAlign: 'center',
-    },
+    recommendationBox: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        padding: 12,
+        borderRadius: 8,
+        gap: 12,
+        borderLeftWidth: 4,
+        marginTop: 8
+    }
 });
