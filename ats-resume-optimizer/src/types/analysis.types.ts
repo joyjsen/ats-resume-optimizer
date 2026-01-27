@@ -14,6 +14,8 @@ export interface AnalysisResult {
     draftAtsScore?: number;
     draftMatchAnalysis?: MatchAnalysis;
     optimizedMatchAnalysis?: MatchAnalysis;
+    isLocked?: boolean;
+    applicationStatus?: string;
 }
 
 export interface MatchAnalysis {

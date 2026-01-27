@@ -319,6 +319,16 @@ export default function Dashboard() {
                                             <Chip icon="file-document-edit-outline" compact mode="flat" style={{ backgroundColor: '#FFF3E0' }}>
                                                 Draft Ready
                                             </Chip>
+                                        ) : item.applicationStatus && item.applicationStatus !== 'not_applied' ? (
+                                            <Chip
+                                                icon={item.isLocked ? "lock" : "briefcase-check"}
+                                                compact
+                                                mode="flat"
+                                                style={{ backgroundColor: '#E3F2FD' }}
+                                                textStyle={{ color: '#1565C0', fontWeight: 'bold' }}
+                                            >
+                                                {item.applicationStatus.replace('_', ' ').replace(/\b\w/g, c => c.toUpperCase())}
+                                            </Chip>
                                         ) : item.optimizedResumeData ? (
                                             <Chip
                                                 icon="check-all"

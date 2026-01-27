@@ -28,4 +28,9 @@ export interface SavedAnalysis {
     draftChangesData?: any[];
     draftAtsScore?: number;
     draftMatchAnalysis?: any;
+
+    // Application Tracking Integration
+    applicationId?: string; // Link to the created application
+    applicationStatus?: string; // Denormalized status for Dashboard badges
+    isLocked?: boolean; // If true, resume editing is disabled (e.g. submitted)
 }

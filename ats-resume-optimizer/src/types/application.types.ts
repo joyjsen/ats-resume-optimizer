@@ -1,50 +1,80 @@
+export type ApplicationStage =
+    | 'not_applied'
+    | 'submitted'
+    | 'phone_screen'
+    | 'technical'
+    | 'final_round'
+    | 'offer'
+    | 'rejected'
+    | 'withdrawn'
+    | 'other';
+
+export interface TimelineEvent {
+    stage: ApplicationStage;
+    date: Date;
+    note?: string;
+    customStageName?: string; // If stage is 'other'
+}
+
 export interface Application {
     id: string;
     userId: string;
-    resumeVersionId: string;
+    analysisId: string; // Link to original analysis
+
+    // Snapshot data for display (reduce reads)
     jobTitle: string;
     company: string;
-    jobUrl: string;
-    appliedDate: Date;
-    status: ApplicationStatus;
+    jobDescription: string;
+    atsScore: number;
+
+    // Status tracking
+    currentStage: ApplicationStage;
+    customStageName?: string;
+    lastStatusUpdate: Date;
     timeline: TimelineEvent[];
-    notes: string;
-    followUpDate?: Date;
-    salary?: {
-        min?: number;
-        max?: number;
-        currency: string;
+    isArchived: boolean;
+
+    // Resume Versioning
+    // If 'submitted', this tracks the specific version used
+    submittedResumeData?: any;
+    lastResumeUpdateAt?: Date; // To track if regeneration is needed
+
+    // AI Content
+    coverLetter?: {
+        content: string;
+        generatedAt: Date;
+        lastEditedAt: Date;
     };
-    location: string;
-    remote: boolean;
-    interviewDates?: Date[];
-    offerDetails?: {
-        salary: number;
-        bonus?: number;
-        equity?: string;
-        startDate?: Date;
+    prepGuide?: {
+        status: 'generating' | 'completed' | 'failed';
+        startedAt: Date;
+        progress: number;
+        currentStep?: string;
+        sections?: {
+            companyIntelligence?: string;
+            roleAnalysis?: string;
+            technicalPrep?: string;
+            behavioralFramework?: string;
+            storyMapping?: string;
+            questionsToAsk?: string;
+            interviewStrategy?: string;
+        };
+        downloadUrl?: string; // from storage
+        storagePath?: string;
+        generatedAt?: Date; // Completion time (for update logic)
     };
-    rejectionReason?: string;
+    prepGuideHistory?: {
+        id: string; // unique run ID
+        status: 'generating' | 'completed' | 'failed';
+        startedAt: Date;
+        generatedAt?: Date; // or failedAt
+    }[];
+    practiceQuestionsUrl?: string; // Placeholder
+
+    interviewNotes?: string;
+    finalResult?: string; // Notes on offer/rejection
+
     createdAt: Date;
     updatedAt: Date;
-}
-
-export type ApplicationStatus =
-    | 'saved'
-    | 'applied'
-    | 'screening'
-    | 'phone_screen'
-    | 'technical_interview'
-    | 'onsite_interview'
-    | 'final_round'
-    | 'offer_received'
-    | 'offer_accepted'
-    | 'offer_declined'
-    | 'rejected'
-    | 'withdrawn';
-
-export interface TimelineEvent {
-    date: Date;
-    event: ApplicationStatus;
-    notes?: string;
+    prepGuideGeneratedAt?: Date;
 }

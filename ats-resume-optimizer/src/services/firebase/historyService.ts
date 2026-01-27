@@ -144,10 +144,50 @@ export class HistoryService {
                 ...(data.draftAtsScore ? { atsScore: data.draftAtsScore } : {})
             });
             console.log('Analysis promoted to final for ID: ', docId);
+
+            // AUTO-POPULATE APPLICATIONS
+            try {
+                const { applicationService } = require('./applicationService');
+                // We need the full SavedAnalysis object to create the application
+                // Construct a temporary one from the snapshot data + updates
+                const analysisForApp = {
+                    id: docId,
+                    userId: data.userId,
+                    jobTitle: data.jobTitle,
+                    company: data.company,
+                    atsScore: data.draftAtsScore || data.atsScore, // Use new score
+                    jobData: JSON.parse(data.jobData),
+                    // ... other fields if needed by create func
+                } as SavedAnalysis;
+
+                const appId = await applicationService.createApplicationFromAnalysis(analysisForApp);
+
+                // Link back
+                if (appId) {
+                    await updateDoc(docRef, { applicationId: appId });
+                }
+            } catch (appError) {
+                console.error("Failed to auto-create application:", appError);
+                // Don't fail the promotion just because app tracking failed
+            }
+
             return true;
         } catch (error) {
             console.error('Error promoting draft:', error);
             return false;
+        }
+    }
+
+    /**
+     * Ensure Application is synced with Analysis (Self-Healing)
+     */
+    async ensureApplicationSync(analysis: SavedAnalysis): Promise<void> {
+        try {
+            const { applicationService } = require('./applicationService');
+            // This will create if missing, or UPDATE if exists (thanks to our recent fix)
+            await applicationService.createApplicationFromAnalysis(analysis);
+        } catch (error) {
+            console.error("Self-healing sync failed:", error);
         }
     }
 

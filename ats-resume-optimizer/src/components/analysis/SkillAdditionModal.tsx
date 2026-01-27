@@ -1,7 +1,15 @@
 import React, { useState } from 'react';
 import { View, StyleSheet, ScrollView } from 'react-native';
-import { Portal, Modal, Text, Button, Checkbox, Divider, useTheme } from 'react-native-paper';
+import { Portal, Modal, Text, Button, Checkbox, Divider, useTheme, IconButton } from 'react-native-paper';
+import { DatePickerModal, registerTranslation, en } from 'react-native-paper-dates';
+import { format } from 'date-fns';
+
+registerTranslation('en', en);
 import { ParsedResume } from '../../types/resume.types';
+import { learningService } from '../../services/firebase/learningService';
+import { auth } from '../../services/firebase/config';
+import { useRouter } from 'expo-router';
+import { LearningEntry } from '../../types/learning.types';
 
 interface Props {
     visible: boolean;
@@ -9,22 +17,51 @@ interface Props {
     resume: ParsedResume;
     onDismiss: () => void;
     onConfirm: (skill: string, sections: string[]) => void;
+    jobTitle?: string;
+    companyName?: string;
 }
 
-export const SkillAdditionModal = ({ visible, skill, resume, onDismiss, onConfirm }: Props) => {
+export const SkillAdditionModal = ({ visible, skill, resume, onDismiss, onConfirm, jobTitle: propsJobTitle, companyName: propsCompanyName }: Props) => {
     const theme = useTheme();
     const [selectedSections, setSelectedSections] = useState<string[]>([]);
-    const [step, setStep] = useState<'confirm' | 'warning' | 'select'>('confirm');
+    const [step, setStep] = useState<'confirm' | 'warning' | 'path_selection' | 'self_date' | 'already_saved' | 'training_in_progress' | 'select'>('confirm');
     const [disclaimerAccepted, setDisclaimerAccepted] = useState(false);
+    const [selectedDate, setSelectedDate] = useState(new Date());
+    const [showDatePicker, setShowDatePicker] = useState(false);
+    const [existingLearning, setExistingLearning] = useState<LearningEntry | null>(null);
+    const [loading, setLoading] = useState(false);
+    const [optInAI, setOptInAI] = useState(false);
+    const router = useRouter();
 
     // Reset state when modal opens
     React.useEffect(() => {
-        if (visible) {
+        if (visible && skill) {
             setStep('confirm');
             setSelectedSections([]);
             setDisclaimerAccepted(false);
+            setSelectedDate(new Date());
+            setShowDatePicker(false);
+            setExistingLearning(null);
+            setOptInAI(false);
+
+            // Check for existing learning in this context
+            const userId = auth.currentUser?.uid || 'anonymous_user';
+            const jTitle = propsJobTitle || (resume.experience && resume.experience.length > 0 ? resume.experience[0].title : 'Unknown Role');
+            const cName = propsCompanyName || (resume.experience && resume.experience.length > 0 ? resume.experience[0].company : 'Unknown Company');
+
+            setLoading(true);
+            learningService.findExistingEntry(userId, skill, jTitle, cName).then(existing => {
+                if (existing) {
+                    setExistingLearning(existing);
+                    if (existing.status === 'completed') {
+                        setStep('already_saved');
+                    } else {
+                        setStep('training_in_progress');
+                    }
+                }
+            }).finally(() => setLoading(false));
         }
-    }, [visible]);
+    }, [visible, skill, propsJobTitle, propsCompanyName]);
 
     if (!skill) return null;
 
@@ -40,10 +77,10 @@ export const SkillAdditionModal = ({ visible, skill, resume, onDismiss, onConfir
         onConfirm(skill, selectedSections);
     };
 
-    return (
-        <Portal>
-            <Modal visible={visible} onDismiss={onDismiss} contentContainerStyle={[styles.modal, { backgroundColor: theme.colors.elevation.level3 }]}>
-                {step === 'confirm' ? (
+    const renderContent = () => {
+        switch (step) {
+            case 'confirm':
+                return (
                     <View>
                         <Text variant="headlineSmall" style={styles.title}>Add Skill to Resume?</Text>
                         <Text variant="bodyMedium" style={{ marginBottom: 24 }}>
@@ -62,7 +99,9 @@ export const SkillAdditionModal = ({ visible, skill, resume, onDismiss, onConfir
                             </Button>
                         </View>
                     </View>
-                ) : step === 'warning' ? (
+                );
+            case 'warning':
+                return (
                     <View>
                         <Text variant="headlineSmall" style={[styles.title, { color: theme.colors.error }]}>
                             ⚠️ Important: Responsibility
@@ -101,7 +140,7 @@ export const SkillAdditionModal = ({ visible, skill, resume, onDismiss, onConfir
                             </Button>
                             <Button
                                 mode="contained"
-                                onPress={() => setStep('select')}
+                                onPress={() => setStep('path_selection')}
                                 style={{ flex: 1, backgroundColor: theme.colors.error }}
                                 disabled={!disclaimerAccepted}
                             >
@@ -109,7 +148,251 @@ export const SkillAdditionModal = ({ visible, skill, resume, onDismiss, onConfir
                             </Button>
                         </View>
                     </View>
-                ) : (
+                );
+            case 'already_saved':
+                return (
+                    <View>
+                        <Text variant="headlineSmall" style={styles.title}>Skill Already Recorded</Text>
+                        <View style={{ backgroundColor: '#E8F5E9', padding: 16, borderRadius: 8, marginBottom: 24, flexDirection: 'row', alignItems: 'center' }}>
+                            <IconButton icon="check-decagram" iconColor="#2E7D32" size={24} style={{ margin: 0, marginRight: 12 }} />
+                            <Text variant="bodyMedium" style={{ color: '#2E7D32', flex: 1 }}>
+                                <Text style={{ fontWeight: 'bold' }}>{skill}</Text> is already in your Learning Hub for this position.
+                            </Text>
+                        </View>
+
+                        <Text variant="bodyMedium" style={{ marginBottom: 24 }}>
+                            Since you've already recorded this skill, you can proceed directly to adding it to your resume.
+                        </Text>
+
+                        {existingLearning?.path === 'self' && (
+                            <View style={{ backgroundColor: '#F5F5F5', padding: 16, borderRadius: 8, marginBottom: 24 }}>
+                                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                                    <Checkbox.Android
+                                        status={optInAI ? 'checked' : 'unchecked'}
+                                        onPress={() => setOptInAI(!optInAI)}
+                                        color={theme.colors.primary}
+                                    />
+                                    <Text
+                                        variant="bodyMedium"
+                                        style={{ flex: 1, marginLeft: 8 }}
+                                        onPress={() => setOptInAI(!optInAI)}
+                                    >
+                                        Interested in learning in-depth on this topic via our AI-assisted learning?
+                                    </Text>
+                                </View>
+                            </View>
+                        )}
+
+                        <View style={styles.actions}>
+                            <Button mode="outlined" onPress={onDismiss} style={{ flex: 1, marginRight: 8 }}>
+                                Close
+                            </Button>
+                            <Button
+                                mode="contained"
+                                loading={loading}
+                                onPress={async () => {
+                                    if (optInAI && existingLearning) {
+                                        setLoading(true);
+                                        try {
+                                            await learningService.updateEntry(existingLearning.id, {
+                                                path: 'ai',
+                                                status: 'todo'
+                                            });
+                                            onDismiss();
+                                            router.push('/(tabs)/learning');
+                                        } catch (error) {
+                                            console.error("Failed to upgrade to AI learning:", error);
+                                            setStep('select');
+                                        } finally {
+                                            setLoading(false);
+                                        }
+                                    } else {
+                                        setStep('select');
+                                    }
+                                }}
+                                style={{ flex: 1 }}
+                            >
+                                {optInAI ? 'Upgrade & Learn' : 'Continue'}
+                            </Button>
+                        </View>
+                    </View>
+                );
+            case 'training_in_progress':
+                return (
+                    <View>
+                        <Text variant="headlineSmall" style={styles.title}>Training In Progress</Text>
+                        <View style={{ backgroundColor: '#E3F2FD', padding: 16, borderRadius: 8, marginBottom: 24, flexDirection: 'row', alignItems: 'center' }}>
+                            <IconButton icon="progress-clock" iconColor="#1976D2" size={24} style={{ margin: 0, marginRight: 12 }} />
+                            <Text variant="bodyMedium" style={{ color: '#1976D2', flex: 1 }}>
+                                <Text style={{ fontWeight: 'bold' }}>{skill}</Text> training is currently in progress.
+                            </Text>
+                        </View>
+                        <Text variant="bodyMedium" style={{ marginBottom: 24 }}>
+                            Would you like to continue your learning journey or skip directly to resume integration?
+                        </Text>
+                        <View style={styles.actions}>
+                            <Button mode="outlined" onPress={() => setStep('select')} style={{ flex: 1, marginRight: 8 }}>
+                                Skip Learning
+                            </Button>
+                            <Button
+                                mode="contained"
+                                onPress={() => {
+                                    onDismiss();
+                                    router.push('/(tabs)/learning');
+                                }}
+                                style={{ flex: 1 }}
+                            >
+                                Continue Learning
+                            </Button>
+                        </View>
+                    </View>
+                );
+            case 'path_selection':
+                return (
+                    <View>
+                        <Text variant="headlineSmall" style={styles.title}>Learning Path</Text>
+                        <Text variant="bodyMedium" style={{ marginBottom: 16 }}>
+                            How did you (or will you) acquire the skill <Text style={{ fontWeight: 'bold' }}>{skill}</Text>?
+                        </Text>
+
+                        {existingLearning && (
+                            <View style={{ backgroundColor: theme.colors.primaryContainer, padding: 12, borderRadius: 8, marginBottom: 16 }}>
+                                <Text variant="bodySmall" style={{ color: theme.colors.onPrimaryContainer }}>
+                                    ✅ You already achieved this skill on {existingLearning.completionDate?.toLocaleDateString()} via {existingLearning.path === 'ai' ? 'AI-Assisted' : 'Self'} Learning.
+                                </Text>
+                            </View>
+                        )}
+
+                        <Button
+                            mode="outlined"
+                            onPress={() => setStep('self_date')}
+                            style={{ marginBottom: 12 }}
+                            icon="account-edit-outline"
+                            disabled={!!existingLearning}
+                        >
+                            Self-Learning (I already have it)
+                        </Button>
+
+                        <Button
+                            mode="contained"
+                            loading={loading}
+                            onPress={async () => {
+                                const userId = auth.currentUser?.uid || 'anonymous_user';
+                                setLoading(true);
+                                try {
+                                    const firstExperience = resume.experience && resume.experience.length > 0 ? resume.experience[0] : null;
+                                    await learningService.addEntry({
+                                        userId,
+                                        skillName: skill!,
+                                        jobTitle: propsJobTitle || firstExperience?.title || 'Unknown Role',
+                                        companyName: propsCompanyName || firstExperience?.company || 'Unknown Company',
+                                        path: 'ai',
+                                        status: 'todo'
+                                    });
+                                    onDismiss();
+                                    router.push('/(tabs)/learning');
+                                } catch (error) {
+                                    console.error("Failed to add AI learning entry:", error);
+                                    const { Alert } = require('react-native');
+                                    Alert.alert("Notice", "We couldn't track this entry, but we'll take you to the Learning Hub.");
+                                    onDismiss();
+                                    router.push('/(tabs)/learning');
+                                } finally {
+                                    setLoading(false);
+                                }
+                            }}
+                            disabled={loading || !!existingLearning}
+                            style={{ marginBottom: 12 }}
+                            icon="robot-outline"
+                        >
+                            AI-Assisted Learning (Teach me)
+                        </Button>
+
+                        <Text variant="labelSmall" style={{ color: '#666', marginBottom: 16, textAlign: 'center' }}>
+                            You can directly add to resume if you prefer, but tracking helps your profile.
+                        </Text>
+
+                        <View style={styles.actions}>
+                            <Button mode="text" onPress={() => setStep('select')} style={{ flex: 1 }}>
+                                Skip to Resume Integration
+                            </Button>
+                        </View>
+                    </View>
+                );
+            case 'self_date':
+                return (
+                    <View>
+                        <Text variant="headlineSmall" style={styles.title}>Self-Learning</Text>
+                        <Text variant="bodyMedium" style={{ marginBottom: 16 }}>
+                            When did you achieve proficiency in <Text style={{ fontWeight: 'bold' }}>{skill}</Text>?
+                        </Text>
+
+                        <Button
+                            mode="outlined"
+                            onPress={() => setShowDatePicker(true)}
+                            icon="calendar"
+                            style={{ marginBottom: 24, paddingVertical: 8 }}
+                        >
+                            {selectedDate ? format(selectedDate, 'PPP') : 'Select Date'}
+                        </Button>
+
+                        <DatePickerModal
+                            locale="en"
+                            mode="single"
+                            visible={showDatePicker}
+                            onDismiss={() => setShowDatePicker(false)}
+                            date={selectedDate}
+                            onConfirm={(params) => {
+                                setShowDatePicker(false);
+                                if (params.date) setSelectedDate(params.date);
+                            }}
+                            validRange={{
+                                endDate: new Date()
+                            }}
+                        />
+
+                        <View style={styles.actions}>
+                            <Button mode="outlined" onPress={() => setStep('path_selection')} style={{ flex: 1, marginRight: 8 }}>
+                                Back
+                            </Button>
+                            <Button
+                                mode="contained"
+                                loading={loading}
+                                onPress={async () => {
+                                    const userId = auth.currentUser?.uid || 'anonymous_user';
+                                    setLoading(true);
+                                    try {
+                                        const firstExperience = resume.experience && resume.experience.length > 0 ? resume.experience[0] : null;
+
+                                        await learningService.addEntry({
+                                            userId,
+                                            skillName: skill!,
+                                            jobTitle: propsJobTitle || firstExperience?.title || 'Unknown Role',
+                                            companyName: propsCompanyName || firstExperience?.company || 'Unknown Company',
+                                            path: 'self',
+                                            status: 'completed',
+                                            completionDate: selectedDate
+                                        });
+                                        setStep('select');
+                                    } catch (error) {
+                                        console.error("Failed to record learning:", error);
+                                        const { Alert } = require('react-native');
+                                        Alert.alert("Notice", "We couldn't save this to your Learning Hub, but you can still add it to your resume.");
+                                        setStep('select');
+                                    } finally {
+                                        setLoading(false);
+                                    }
+                                }}
+                                disabled={loading}
+                                style={{ flex: 1 }}
+                            >
+                                Record & Continue
+                            </Button>
+                        </View>
+                    </View>
+                );
+            case 'select':
+                return (
                     <View style={{ maxHeight: 500 }}>
                         <Text variant="headlineSmall" style={styles.title}>Select Sections</Text>
                         <Text variant="bodyMedium" style={{ marginBottom: 16 }}>
@@ -117,7 +400,6 @@ export const SkillAdditionModal = ({ visible, skill, resume, onDismiss, onConfir
                         </Text>
 
                         <ScrollView style={{ maxHeight: 300 }}>
-                            {/* Summary */}
                             <Checkbox.Item
                                 label="Professional Summary"
                                 status={selectedSections.includes('summary') ? 'checked' : 'unchecked'}
@@ -125,7 +407,6 @@ export const SkillAdditionModal = ({ visible, skill, resume, onDismiss, onConfir
                             />
                             <Divider />
 
-                            {/* Experience Items */}
                             {resume.experience.map((exp) => (
                                 <Checkbox.Item
                                     key={exp.id}
@@ -136,7 +417,6 @@ export const SkillAdditionModal = ({ visible, skill, resume, onDismiss, onConfir
                             ))}
                             <Divider />
 
-                            {/* Skills Section */}
                             <Checkbox.Item
                                 label="Skills Section (List)"
                                 status={selectedSections.includes('skills_list') ? 'checked' : 'unchecked'}
@@ -149,7 +429,7 @@ export const SkillAdditionModal = ({ visible, skill, resume, onDismiss, onConfir
                         </Text>
 
                         <View style={styles.actions}>
-                            <Button mode="text" onPress={() => setStep('warning')} style={{ marginRight: 8 }}>
+                            <Button mode="text" onPress={() => setStep(existingLearning ? (existingLearning.status === 'completed' ? 'already_saved' : 'training_in_progress') : 'path_selection')} style={{ marginRight: 8 }}>
                                 Back
                             </Button>
                             <Button
@@ -162,7 +442,21 @@ export const SkillAdditionModal = ({ visible, skill, resume, onDismiss, onConfir
                             </Button>
                         </View>
                     </View>
-                )}
+                );
+        }
+    };
+
+    return (
+        <Portal>
+            <Modal
+                visible={visible}
+                onDismiss={onDismiss}
+                contentContainerStyle={[
+                    styles.modal,
+                    { backgroundColor: theme.colors.elevation.level3 }
+                ]}
+            >
+                {renderContent()}
             </Modal>
         </Portal>
     );

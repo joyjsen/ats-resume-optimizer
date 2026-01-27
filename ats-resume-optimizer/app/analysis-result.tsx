@@ -55,7 +55,7 @@ export default function AnalysisResultScreen() {
                     console.log("Hydration Result - Draft:", hasDraft, " Final:", hasFinal);
 
                     if (hasDraft || hasFinal) {
-                        setCurrentAnalysis({
+                        const hydratedAnalysis = {
                             ...freshData.analysisData,
                             id: freshData.id,
                             job: freshData.jobData,
@@ -67,9 +67,19 @@ export default function AnalysisResultScreen() {
                             draftChangesData: freshData.draftChangesData,
                             draftAtsScore: freshData.draftAtsScore,
                             draftMatchAnalysis: freshData.draftMatchAnalysis,
-                            atsScore: freshData.atsScore // FIX: Hydrate ONLY the saved score. Do not mix with draft.
-                        });
-                        // State sync will happen via the other useEffect
+                            atsScore: freshData.atsScore, // FIX: Hydrate ONLY the saved score.
+                            isLocked: freshData.isLocked,
+                            applicationStatus: freshData.applicationStatus,
+                            userId: freshData.userId, // Ensure userId is passed for sync
+                            company: freshData.company, // Ensure company is passed
+                            jobTitle: freshData.jobTitle // Ensure jobTitle is passed
+                        };
+
+                        setCurrentAnalysis(hydratedAnalysis);
+
+                        // Self-Heal: Ensure Application is synced (if it exists or should exist)
+                        // Trigger in background to avoid blocking UI
+                        historyService.ensureApplicationSync(hydratedAnalysis);
                     }
                 }
             });
@@ -414,6 +424,22 @@ export default function AnalysisResultScreen() {
                 </Card>
             )}
 
+            {currentAnalysis.isLocked && (
+                <Card style={{ marginBottom: 16, backgroundColor: '#E3F2FD', borderColor: '#2196F3', borderWidth: 1 }}>
+                    <Card.Content style={{ flexDirection: 'row', alignItems: 'center' }}>
+                        <Text style={{ fontSize: 24, marginRight: 12 }}>🔒</Text>
+                        <View style={{ flex: 1 }}>
+                            <Text variant="titleMedium" style={{ fontWeight: 'bold', color: '#0D47A1' }}>
+                                Application Submitted
+                            </Text>
+                            <Text variant="bodySmall" style={{ color: '#0D47A1' }}>
+                                This resume is locked because you have submitted your application. You cannot make further changes.
+                            </Text>
+                        </View>
+                    </Card.Content>
+                </Card>
+            )}
+
             <ATSScoreCard score={atsScore} originalScore={originalScore} />
 
             {/* Show "New" skills if we have a draft match analysis that differs from original */}
@@ -421,7 +447,14 @@ export default function AnalysisResultScreen() {
                 matchAnalysis={matchAnalysis}
                 originalMatchAnalysis={currentAnalysis.matchAnalysis}
                 changes={changes}
-                onSkillPress={handleSkillPress}
+                onSkillPress={(skill) => {
+                    if (currentAnalysis.isLocked) {
+                        const { Alert } = require('react-native');
+                        Alert.alert("Resume Locked", "You cannot add skills after submitting your application.");
+                        return;
+                    }
+                    handleSkillPress(skill);
+                }}
             />
 
             {!optimizedResume && (
@@ -437,8 +470,9 @@ export default function AnalysisResultScreen() {
                                 mode="contained"
                                 onPress={handleOptimize}
                                 style={{ marginTop: 16 }}
+                                disabled={currentAnalysis.isLocked}
                             >
-                                ✨ Rewrite & Optimize Resume
+                                {currentAnalysis.isLocked ? "Optimizer Locked" : "✨ Rewrite & Optimize Resume"}
                             </Button>
                         ) : (
                             <View style={{ marginTop: 16 }}>
@@ -548,6 +582,8 @@ export default function AnalysisResultScreen() {
                 resume={optimizedResume || resume} // Pass current visible resume for section selection context
                 onDismiss={() => setSkillModalVisible(false)}
                 onConfirm={handleConfirmAddSkill}
+                jobTitle={currentAnalysis.job.title}
+                companyName={currentAnalysis.job.company}
             />
             <Portal>
                 <Dialog visible={revertDialogVisible} onDismiss={() => setRevertDialogVisible(false)} style={{ backgroundColor: '#FFF3E0' }}>

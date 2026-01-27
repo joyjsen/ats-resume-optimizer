@@ -1,4 +1,4 @@
-export type TaskType = 'analyze_resume' | 'optimize_resume';
+export type TaskType = 'analyze_resume' | 'optimize_resume' | 'add_skill';
 
 export type TaskStatus = 'queued' | 'processing' | 'completed' | 'failed';
 

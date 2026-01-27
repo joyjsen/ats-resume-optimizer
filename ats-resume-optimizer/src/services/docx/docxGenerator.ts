@@ -1,6 +1,7 @@
 
 import { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType } from 'docx';
-import * as FileSystem from 'expo-file-system/legacy';
+import * as FS from 'expo-file-system/legacy';
+const FileSystem = FS as any;
 import * as Sharing from 'expo-sharing';
 import { ParsedResume } from '../../types/resume.types';
 import { Buffer } from 'buffer';
@@ -116,6 +117,45 @@ export class DocxGenerator {
         }
 
         const filename = (FileSystem.documentDirectory || FileSystem.cacheDirectory) + "optimized_resume.docx";
+
+        await FileSystem.writeAsStringAsync(filename, b64, {
+            encoding: 'base64',
+        });
+
+        if (await Sharing.isAvailableAsync()) {
+            await Sharing.shareAsync(filename);
+        } else {
+            console.warn("Sharing is not available on this platform");
+        }
+    }
+
+    static async generateCoverLetter(content: string) {
+        const paragraphs = content.split('\n').map(line => {
+            // Check if line looks like a header/salutation
+            // Simple heuristic: short lines usually header/footer
+            return new Paragraph({
+                children: [
+                    new TextRun({
+                        text: line.trim(),
+                        size: 24, // 12pt
+                        font: "Calibri"
+                    })
+                ],
+                spacing: { after: 120 } // slight spacing
+            });
+        });
+
+        const doc = new Document({
+            sections: [{
+                properties: {},
+                children: paragraphs
+            }]
+        });
+
+        const packer = Packer.toBase64String(doc);
+        const b64 = await packer;
+
+        const filename = (FileSystem.documentDirectory || FileSystem.cacheDirectory) + "cover_letter.docx";
 
         await FileSystem.writeAsStringAsync(filename, b64, {
             encoding: 'base64',
