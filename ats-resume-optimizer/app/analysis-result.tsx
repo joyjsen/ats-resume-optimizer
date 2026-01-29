@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, ScrollView, StyleSheet } from 'react-native';
 import { Button, Text, Card, ProgressBar, useTheme, Portal, Dialog, Paragraph } from 'react-native-paper';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams, useNavigation } from 'expo-router';
 import { useResumeStore } from '../src/store/resumeStore';
 import { useTaskQueue } from '../src/context/TaskQueueContext';
 import { ATSScoreCard } from '../src/components/analysis/ATSScoreCard';
@@ -9,252 +9,193 @@ import { SkillsComparison } from '../src/components/analysis/SkillsComparison';
 import { BeforeAfterComparison } from '../src/components/optimization/BeforeAfterComparison';
 import { SkillAdditionModal } from '../src/components/analysis/SkillAdditionModal';
 import { SkillMatch } from '../src/types/analysis.types';
+import { notificationService } from '../src/services/firebase/notificationService';
+
+import { useTokenCheck } from '../src/hooks/useTokenCheck';
 
 export default function AnalysisResultScreen() {
     const router = useRouter();
+    const navigation = useNavigation();
     const { currentAnalysis, setCurrentAnalysis } = useResumeStore();
+    const { activeTasks } = useTaskQueue();
+
+    // Local state
     const [optimizing, setOptimizing] = React.useState(false);
     const [saving, setSaving] = React.useState(false);
+    const [isUnsaved, setIsUnsaved] = React.useState(!!currentAnalysis?.draftOptimizedResumeData);
+    const [currentTaskId, setCurrentTaskId] = React.useState<string | null>(null);
     const [revertDialogVisible, setRevertDialogVisible] = React.useState(false);
+    const completionHandledRef = React.useRef<string | null>(null);
+    const analysisRef = React.useRef(currentAnalysis);
 
+    // Keep ref updated for the listener
+    React.useEffect(() => {
+        analysisRef.current = currentAnalysis;
+    }, [currentAnalysis]);
 
+    // Derived State and Safety Check
     if (!currentAnalysis) {
         return (
-            <View style={styles.container}>
-                <Text>No analysis data found. Please go back.</Text>
-                <Button onPress={() => router.back()}>Go Back</Button>
+            <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#fff' }}>
+                <Text style={{ marginBottom: 16 }}>No analysis data found.</Text>
+                <Button mode="contained" onPress={() => router.replace('/(tabs)/analyze')}>
+                    Go to Analyze
+                </Button>
             </View>
         );
     }
 
-    // Determine which resume/changes to show (Draft takes precedence)
-    const isDraft = !!currentAnalysis.draftOptimizedResumeData;
+    const { job, resume } = currentAnalysis;
+
+    // Determine what to show (Draft vs Final vs Original)
     const optimizedResume = currentAnalysis.draftOptimizedResumeData || currentAnalysis.optimizedResume;
     const changes = currentAnalysis.draftChangesData || currentAnalysis.changes;
+    const atsScore = currentAnalysis.draftAtsScore || currentAnalysis.atsScore;
+    const matchAnalysis = currentAnalysis.draftMatchAnalysis || currentAnalysis.optimizedMatchAnalysis || currentAnalysis.matchAnalysis;
 
-    // Store local unsaved state, initialized from draft presence
-    const [isUnsaved, setIsUnsaved] = React.useState(isDraft);
+    // Ideally we track original score separately, but fallback to current if not available
+    const originalScore = currentAnalysis.atsScore;
 
-    // Sync isUnsaved if currentAnalysis changes (e.g. re-fetch)
+    // Real-time subscription to analysis changes (Instant Sync)
     React.useEffect(() => {
-        setIsUnsaved(!!currentAnalysis.draftOptimizedResumeData);
-    }, [currentAnalysis]);
+        if (!currentAnalysis?.id) return;
 
-    // Force refresh from server on mount to ensure we have the latest "Draft" state
-    // (In case user navigated away and came back, effectively reloading the screen)
-    React.useEffect(() => {
-        if (currentAnalysis?.id) {
-            const { historyService } = require('../src/services/firebase/historyService');
-            console.log("Hydrating analysis data for ID:", currentAnalysis.id);
-            historyService.getAnalysisById(currentAnalysis.id).then((freshData: any) => {
-                if (freshData) {
-                    // Check for draft (pending validation) OR final data
-                    const hasDraft = !!freshData.draftOptimizedResumeData;
-                    const hasFinal = !!freshData.optimizedResumeData;
+        const { historyService } = require('../src/services/firebase/historyService');
+        console.log(`[AnalysisResult] Subscribing to analysis: ${currentAnalysis.id}`);
 
-                    console.log("Hydration Result - Draft:", hasDraft, " Final:", hasFinal);
+        const unsubscribe = historyService.subscribeToAnalysis(currentAnalysis.id, (updated: any) => {
+            if (updated) {
+                // Check if we have new optimization data that we didn't have before
+                const hasNewOptimization = updated.draftOptimizedResumeData && !analysisRef.current?.draftOptimizedResumeData;
+                const hasFinalizedOptimization = updated.optimizedResumeData && !analysisRef.current?.optimizedResume;
 
-                    if (hasDraft || hasFinal) {
-                        const hydratedAnalysis = {
-                            ...freshData.analysisData,
-                            id: freshData.id,
-                            job: freshData.jobData,
-                            resume: freshData.resumeData,
-                            optimizedResume: freshData.optimizedResumeData,
-                            changes: freshData.changesData,
-                            optimizedMatchAnalysis: freshData.optimizedMatchAnalysis,
-                            draftOptimizedResumeData: freshData.draftOptimizedResumeData,
-                            draftChangesData: freshData.draftChangesData,
-                            draftAtsScore: freshData.draftAtsScore,
-                            draftMatchAnalysis: freshData.draftMatchAnalysis,
-                            atsScore: freshData.atsScore, // FIX: Hydrate ONLY the saved score.
-                            isLocked: freshData.isLocked,
-                            applicationStatus: freshData.applicationStatus,
-                            userId: freshData.userId, // Ensure userId is passed for sync
-                            company: freshData.company, // Ensure company is passed
-                            jobTitle: freshData.jobTitle // Ensure jobTitle is passed
-                        };
+                if (hasNewOptimization || hasFinalizedOptimization) {
+                    console.log("[AnalysisResult] Received real-time update with optimization data!");
+                    setOptimizing(false);
+                    setCurrentTaskId(null);
+                }
 
-                        setCurrentAnalysis(hydratedAnalysis);
+                // FIX: Ensure optimizing state is cleared even if draft already existed (sequential additions)
+                const currentUpdatedAt = (analysisRef.current as any)?.updatedAt;
+                const updatedUpdatedAt = (updated as any)?.updatedAt;
 
-                        // Self-Heal: Ensure Application is synced (if it exists or should exist)
-                        // Trigger in background to avoid blocking UI
-                        historyService.ensureApplicationSync(hydratedAnalysis);
+                if (updatedUpdatedAt && currentUpdatedAt) {
+                    const currentMillis = typeof currentUpdatedAt.toMillis === 'function' ? currentUpdatedAt.toMillis() : new Date(currentUpdatedAt).getTime();
+                    const updatedMillis = typeof updatedUpdatedAt.toMillis === 'function' ? updatedUpdatedAt.toMillis() : new Date(updatedUpdatedAt).getTime();
+
+                    if (updatedMillis > currentMillis) {
+                        console.log("[AnalysisResult] Detect update via timestamp change. Clearing optimizing state.");
+                        setOptimizing(false);
+                        setCurrentTaskId(null);
                     }
                 }
-            });
-        }
+
+                // Always sync the latest state from DB to Store
+                setCurrentAnalysis({
+                    ...updated.analysisData,
+                    id: updated.id,
+                    job: updated.jobData,
+                    resume: updated.resumeData,
+                    optimizedResume: updated.optimizedResumeData,
+                    changes: updated.changesData,
+                    optimizedMatchAnalysis: updated.optimizedMatchAnalysis,
+                    draftOptimizedResumeData: updated.draftOptimizedResumeData,
+                    draftChangesData: updated.draftChangesData,
+                    draftAtsScore: updated.draftAtsScore,
+                    draftMatchAnalysis: updated.draftMatchAnalysis,
+                    atsScore: updated.atsScore
+                });
+                setIsUnsaved(!!updated.draftOptimizedResumeData);
+            }
+        });
+
+        return () => {
+            console.log("[AnalysisResult] Unsubscribing");
+            unsubscribe();
+        };
     }, [currentAnalysis?.id]);
 
-    // Use draft metrics if available, OR optimized (saved) metrics, OR original
-    // IMPORTANT: currentAnalysis.matchAnalysis (from analysisData) is ALWAYS the Original baseline.
-    // Use draft metrics if available, OR optimized (saved) metrics, OR original
-    // IMPORTANT: currentAnalysis.matchAnalysis (from analysisData) is ALWAYS the Original baseline.
-    const calculateScore = (analysis: any) => {
-        if (!analysis) return 0;
-        const weights = { matched: 0.5, partial: 0.2, density: 0.2, exp: 0.2, fmt: 0.1 };
-
-        const matches = analysis.matchedSkills || [];
-        const partials = analysis.partialMatches || [];
-        const missing = analysis.missingSkills || [];
-
-        // Count critical/high
-        const impMatched = matches.filter((s: any) => s.importance === 'critical' || s.importance === 'high').length;
-        const impPartial = partials.filter((s: any) => s.importance === 'critical' || s.importance === 'high').length;
-        const impMissing = missing.filter((s: any) => s.importance === 'critical' || s.importance === 'high').length;
-
-        const total = impMatched + impPartial + impMissing;
-        // Matched=1.0, Partial=0.5
-        const skillScore = total > 0 ? ((impMatched * 1.0 + impPartial * 0.5) / total) * 100 : 0;
-
-        const score = (skillScore * 0.5) +
-            ((analysis.keywordDensity || 0) * 0.2) +
-            ((analysis.experienceMatch?.match || 0) * 0.2);
-
-        return Math.round(Math.min(100, Math.max(0, score)));
-    };
-
-    // Original Score (Baseline) Logic:
-    // 1. If we are DRAFTING (unsaved changes), the baseline is the LAST SAVED PROMOTED SCORE (currentAnalysis.atsScore).
-    //    We want to show the user the impact of their *current* edit session (e.g., 65 -> 70), not the ancient history.
-    // 2. If we are VIEWING SAVED (no draft), the baseline is the ANCIENT ORIGINAL ANALYSIS (matchAnalysis).
-    //    We want to show the user their total journey (e.g., 60 -> 65).
-    const originalScore = React.useMemo(() => {
-        // Check if we are in a draft state
-        const isDraft = !!currentAnalysis.draftAtsScore;
-
-        if (isDraft) {
-            // Baseline = Last Saved
-            return currentAnalysis.atsScore || 0;
-        }
-
-        // User Request: Hide comparison if not drafting (Clean view)
-        return undefined;
-    }, [currentAnalysis.matchAnalysis, currentAnalysis.draftAtsScore, currentAnalysis.atsScore]);
-
-    const matchAnalysis = currentAnalysis.draftMatchAnalysis
-        ?? currentAnalysis.optimizedMatchAnalysis
-        ?? currentAnalysis.matchAnalysis;
-    const atsScore = currentAnalysis.draftAtsScore ?? currentAnalysis.atsScore; // Restore atsScore
-
-    const { resume, job } = currentAnalysis;
-
-    console.log("AnalysisResultScreen Debug:", {
-        hasDraftScore: !!currentAnalysis.draftAtsScore,
-        hasDraftMatch: !!currentAnalysis.draftMatchAnalysis,
-        originalMatchedCount: currentAnalysis.matchAnalysis.matchedSkills.length,
-        currentMatchedCount: matchAnalysis.matchedSkills.length,
-        isSameObject: matchAnalysis === currentAnalysis.matchAnalysis
-    });
-
-    const { activeTasks } = useTaskQueue();
-    const [currentTaskId, setCurrentTaskId] = React.useState<string | null>(null);
-
-    // Monitor active task
+    // Cleanup active task if we see it finish via context (Just for spinner state management)
     React.useEffect(() => {
-        // 1. Initial Check: If no currentTaskId, look for one in the queue
         if (!currentTaskId) {
-            const existing = activeTasks.find(t =>
-                (t.type === 'optimize_resume' || t.type === 'add_skill') &&
-                t.payload.currentAnalysis?.id === currentAnalysis.id &&
-                t.status !== 'failed' && t.status !== 'completed'
-            );
-            if (existing) {
-                setCurrentTaskId(existing.id);
-                setOptimizing(true);
+            // If optimizing is still true but task is gone, clear it
+            if (optimizing && activeTasks.length === 0) {
+                setOptimizing(false);
             }
             return;
         }
-
         const task = activeTasks.find(t => t.id === currentTaskId);
-        const { historyService } = require('../src/services/firebase/historyService');
-
-        // 2. Task exists and is running
-        if (task) {
-            setOptimizing(true);
-
-            if (task.status === 'completed') {
-                // Task explicitly marked completed
-                handleTaskCompletion(historyService);
-            } else if (task.status === 'failed') {
-                setOptimizing(false);
-                setCurrentTaskId(null);
-                const { Alert } = require('react-native');
-                Alert.alert("Optimization Failed", task.error || "Unknown error");
-            }
+        if (!task) {
+            // Task disappeared (finished successfully or cancelled elsewhere)
+            console.log("[AnalysisResult] Task disappeared from activeTasks. Clearing optimizing state.");
+            setOptimizing(false);
+            setCurrentTaskId(null);
+        } else if (task.status === 'failed') {
+            setOptimizing(false);
+            setCurrentTaskId(null);
+            const { Alert } = require('react-native');
+            Alert.alert("Optimization Failed", "The process encountered an error. Please try again.");
+        } else if (task.status === 'completed') {
+            // Redundant second check just in case subscription is slow
+            setOptimizing(false);
+            setCurrentTaskId(null);
         }
-        // 3. Task disappeared but we were optimizing? It might have finished and been cleared.
-        else if (optimizing) {
-            // Check if the analysis was updated in the background
-            handleTaskCompletion(historyService);
-        }
+    }, [activeTasks, currentTaskId, optimizing]);
 
-    }, [activeTasks, currentTaskId, currentAnalysis.id, optimizing]);
-
-    const handleTaskCompletion = (historyService: any) => {
-        console.log("Checking for completion... Analysis ID:", currentAnalysis.id);
-
-        // Fetch just the single record
-        historyService.getAnalysisById(currentAnalysis.id).then((updated: any) => {
-            console.log("Found updated record:", updated ? "Yes" : "No");
-            if (updated) {
-                console.log("Draft Data Present:", !!updated.draftOptimizedResumeData);
-                console.log("Final Data Present:", !!updated.optimizedResumeData);
-
-                // Check for draft (pending validation) OR final data
-                const hasDraft = !!updated.draftOptimizedResumeData;
-                const hasFinal = !!updated.optimizedResumeData;
-
-                if (hasDraft || hasFinal) {
-                    setCurrentAnalysis({
-                        ...updated.analysisData,
-                        id: updated.id,
-                        job: updated.jobData,
-                        resume: updated.resumeData,
-                        // Prefer draft if exists (so user sees the new result to validate), otherwise final
-                        optimizedResume: updated.optimizedResumeData, // Keep final here for consistency
-                        changes: updated.changesData,
-                        optimizedMatchAnalysis: updated.optimizedMatchAnalysis,
-                        draftOptimizedResumeData: updated.draftOptimizedResumeData, // Keep draft data separate
-                        draftChangesData: updated.draftChangesData,
-                        draftAtsScore: updated.draftAtsScore,
-                        draftMatchAnalysis: updated.draftMatchAnalysis,
-                        atsScore: updated.atsScore // FIX: Use the top-level Saved Score, not the stale one from analysisData
-                    });
-
-                    // If we have a draft, it is UNSAVED/UNVALIDATED.
-                    setIsUnsaved(hasDraft);
-                    setOptimizing(false);
-                    setCurrentTaskId(null);
-                    return; // Success
-                }
-            }
-
-            // Safety check: If task is gone and we didn't update above (maybe save failed?), stop spinning
-            if (!activeTasks.find(t => t.id === currentTaskId)) {
-                console.warn("Task disappeared but no result found. resetting state.");
-                setOptimizing(false);
-                setCurrentTaskId(null);
-                // Alert the user if we expected a result
-                // Alert.alert("Notice", "Optimization finished but no changes were detected. Please try again.");
-            }
+    // CRITICAL FIX: Ensure navigation gestures remain enabled after updates
+    React.useEffect(() => {
+        // Force enable back button and gestures after any state change
+        navigation.setOptions({
+            gestureEnabled: true,
+            headerBackVisible: true,
         });
-    };
 
+        // Cleanup function to ensure we don't leave any navigation blockers
+        return () => {
+            navigation.setOptions({
+                gestureEnabled: true,
+            });
+        };
+    }, [navigation, currentAnalysis?.id, optimizing, isUnsaved]); // Re-run when key states change
+
+    const { checkTokens } = useTokenCheck();
 
     const handleOptimize = async () => {
+        if (!checkTokens(15)) return;
         setOptimizing(true);
+
         try {
             const { taskService } = require('../src/services/firebase/taskService');
+            const { activityService } = require('../src/services/firebase/activityService');
 
+            // 1. DEDUCT TOKENS FIRST - This ensures the user is charged before any AI work begins
+            try {
+                await activityService.logActivity({
+                    type: 'resume_optimized',
+                    description: `Initial Optimization for ${job.title} at ${job.company}`,
+                    resourceId: currentAnalysis.id,
+                });
+                console.log("[AnalysisResult] Tokens deducted successfully BEFORE task creation");
+            } catch (deductError: any) {
+                console.error("[AnalysisResult] Token deduction failed:", deductError);
+                setOptimizing(false);
+                const { Alert } = require('react-native');
+                Alert.alert("Token Error", deductError.message || "Failed to deduct tokens. Please try again.");
+                return;
+            }
+
+            // 2. CREATE TASK ONLY AFTER SUCCESSFUL DEDUCTION
             // Check if already running for this analysis
             const existing = activeTasks.find(t =>
                 t.type === 'optimize_resume' &&
                 t.payload.currentAnalysis?.id === currentAnalysis.id &&
-                t.status !== 'failed'
+                t.status !== 'failed' &&
+                t.status !== 'completed' &&
+                t.status !== 'cancelled'
             );
 
             if (existing) {
+                console.log("[handleOptimize] Found existing task:", existing.id);
                 setCurrentTaskId(existing.id);
                 return;
             }
@@ -265,6 +206,7 @@ export default function AnalysisResultScreen() {
                 currentAnalysis
             });
 
+            console.log("[handleOptimize] Created new task:", taskId);
             setCurrentTaskId(taskId);
 
         } catch (error) {
@@ -307,12 +249,32 @@ export default function AnalysisResultScreen() {
     };
 
     const handleConfirmAddSkill = async (skill: string, sections: string[]) => {
+        if (!checkTokens(15, () => setSkillModalVisible(false))) return;
+
         setSkillModalVisible(false);
         setOptimizing(true); // Re-use optimizing state for spinner
 
         try {
             const { taskService } = require('../src/services/firebase/taskService');
+            const { activityService } = require('../src/services/firebase/activityService');
 
+            // 1. DEDUCT TOKENS FIRST
+            try {
+                await activityService.logActivity({
+                    type: 'skill_incorporation',
+                    description: `Incorporated skill "${skill}" into resume for ${job?.title || "job"}`,
+                    resourceId: currentAnalysis.id,
+                });
+                console.log("[AnalysisResult] Skill addition tokens deducted successfully BEFORE task creation");
+            } catch (deductError: any) {
+                console.error("[AnalysisResult] Skill addition token deduction failed:", deductError);
+                setOptimizing(false);
+                const { Alert } = require('react-native');
+                Alert.alert("Token Error", deductError.message || "Failed to deduct tokens. Please try again.");
+                return;
+            }
+
+            // 2. CREATE TASK AFTER DEDUCTION
             // Pass the CURRENTLY displayed resume (could be already partially optimized/draft)
             // If optimizedResume exists (draft or final), use that. Otherwise use original 'resume'.
             const baseResume = currentAnalysis.draftOptimizedResumeData || currentAnalysis.optimizedResume || currentAnalysis.resume;
@@ -324,11 +286,14 @@ export default function AnalysisResultScreen() {
                 currentAnalysis: currentAnalysis // Pass full object so worker knows IDs and existing changes
             });
 
+            console.log("[handleConfirmAddSkill] Created new task:", taskId);
             setCurrentTaskId(taskId);
 
-        } catch (error) {
+        } catch (error: any) {
             console.error(error);
             setOptimizing(false);
+            const { Alert } = require('react-native');
+            Alert.alert("Task Error", error.message || "Failed to start skill addition process.");
         }
     };
 
@@ -338,10 +303,46 @@ export default function AnalysisResultScreen() {
             const { historyService } = require('../src/services/firebase/historyService');
 
             if (currentAnalysis.id) {
+                // Determine if this is the FIRST optimization (Baseline check)
+                const isInitialOptimization = !currentAnalysis.optimizedResume;
+
                 // Promote the draft to final
                 const success = await historyService.promoteDraftToFinal(currentAnalysis.id);
                 if (success) {
                     setIsUnsaved(false);
+
+                    // LOG ACTIVITY - Use skipTokenDeduction because tokens were already deducted at the start of generation
+                    const { activityService } = require('../src/services/firebase/activityService');
+                    await activityService.logActivity({
+                        type: isInitialOptimization ? 'resume_optimized' : 'resume_reoptimization',
+                        description: isInitialOptimization
+                            ? `Initial optimization for ${currentAnalysis.job.title}`
+                            : `Refined & re-optimized resume for ${currentAnalysis.job.title}`,
+                        resourceId: currentAnalysis.id,
+                        resourceName: currentAnalysis.job.title,
+                        skipTokenDeduction: true
+                    }).catch((e: any) => console.error("Validation activity log failed:", e));
+
+                    // Trigger Push Notification via Ghost Task
+                    try {
+                        const { taskService } = require('../src/services/firebase/taskService');
+                        const taskId = await taskService.createTask('resume_validation', {
+                            analysisId: currentAnalysis.id,
+                            jobTitle: currentAnalysis.job.title
+                        });
+                        await taskService.completeTask(taskId, currentAnalysis.id);
+                    } catch (pushError) {
+                        console.warn("Failed to trigger validation push notification:", pushError);
+                    }
+
+                    // Send local push notification for validation completion - REMOVED (Duplicate)
+                    /*
+                    await notificationService.notifyValidationComplete(
+                        currentAnalysis.job.title,
+                        currentAnalysis.id
+                    ).catch((e: any) => console.warn("Validation notification failed:", e));
+                    */
+
                     // Update local store immediately to reflect "Saved" state
                     // This prevents the button from reappearing if we stay on screen
                     setCurrentAnalysis({
@@ -403,179 +404,215 @@ export default function AnalysisResultScreen() {
         }
     };
 
+    const theme = useTheme();
+
     return (
-        <ScrollView style={styles.container}>
-            <Text variant="headlineMedium" style={styles.title}>
-                {optimizedResume ? "✅ Analysis & Optimization" : "📊 Analysis Result"}
-            </Text>
+        <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
+            <ScrollView style={styles.container}>
+                <Text variant="headlineMedium" style={[styles.title, { color: theme.colors.onBackground }]}>
+                    {optimizedResume ? "✅ Analysis & Optimization" : "📊 Analysis Result"}
+                </Text>
 
-            {optimizing && currentTaskId && (
-                <Card style={{ marginBottom: 16, borderColor: '#2196F3', borderWidth: 1 }}>
-                    <Card.Content>
-                        <Text variant="titleSmall" style={{ fontWeight: 'bold', color: '#1976D2', marginBottom: 4 }}>
-                            {activeTasks.find(t => t.id === currentTaskId)?.stage || 'Processing...'}
-                        </Text>
-                        <ProgressBar
-                            progress={(activeTasks.find(t => t.id === currentTaskId)?.progress || 0) / 100}
-                            color="#2196F3"
-                            style={{ height: 8, borderRadius: 4 }}
-                        />
-                    </Card.Content>
-                </Card>
-            )}
-
-            {currentAnalysis.isLocked && (
-                <Card style={{ marginBottom: 16, backgroundColor: '#E3F2FD', borderColor: '#2196F3', borderWidth: 1 }}>
-                    <Card.Content style={{ flexDirection: 'row', alignItems: 'center' }}>
-                        <Text style={{ fontSize: 24, marginRight: 12 }}>🔒</Text>
-                        <View style={{ flex: 1 }}>
-                            <Text variant="titleMedium" style={{ fontWeight: 'bold', color: '#0D47A1' }}>
-                                Application Submitted
-                            </Text>
-                            <Text variant="bodySmall" style={{ color: '#0D47A1' }}>
-                                This resume is locked because you have submitted your application. You cannot make further changes.
-                            </Text>
-                        </View>
-                    </Card.Content>
-                </Card>
-            )}
-
-            <ATSScoreCard score={atsScore} originalScore={originalScore} />
-
-            {/* Show "New" skills if we have a draft match analysis that differs from original */}
-            <SkillsComparison
-                matchAnalysis={matchAnalysis}
-                originalMatchAnalysis={currentAnalysis.matchAnalysis}
-                changes={changes}
-                onSkillPress={(skill) => {
-                    if (currentAnalysis.isLocked) {
-                        const { Alert } = require('react-native');
-                        Alert.alert("Resume Locked", "You cannot add skills after submitting your application.");
-                        return;
-                    }
-                    handleSkillPress(skill);
-                }}
-            />
-
-            {!optimizedResume && (
-                <Card style={styles.card}>
-                    <Card.Content>
-                        <Text variant="titleMedium" style={{ marginBottom: 8 }}>Recommendation</Text>
-                        <Text variant="bodyMedium">
-                            {currentAnalysis.recommendation.reasoning}
-                        </Text>
-
-                        {!optimizing ? (
-                            <Button
-                                mode="contained"
-                                onPress={handleOptimize}
-                                style={{ marginTop: 16 }}
-                                disabled={currentAnalysis.isLocked}
-                            >
-                                {currentAnalysis.isLocked ? "Optimizer Locked" : "✨ Rewrite & Optimize Resume"}
-                            </Button>
-                        ) : (
-                            <View style={{ marginTop: 16 }}>
-                                <Text variant="bodySmall" style={{ marginBottom: 8, textAlign: 'center' }}>
-                                    {activeTasks.find(t => t.id === currentTaskId)?.stage || 'Optimizing...'}
-                                </Text>
-                                <ProgressBar
-                                    progress={(activeTasks.find(t => t.id === currentTaskId)?.progress || 0) / 100}
-                                    style={{ height: 8, borderRadius: 4 }}
-                                />
-                            </View>
-                        )}
-                    </Card.Content>
-                </Card>
-            )}
-
-            {optimizedResume && changes && (
-                <>
-                    <Card style={styles.card}>
+                {optimizing && currentTaskId && (
+                    <Card style={{ marginBottom: 16, borderColor: theme.colors.primary, borderWidth: 1 }}>
                         <Card.Content>
-                            <Text variant="titleMedium" style={{ marginBottom: 12 }}>What We Optimized</Text>
-                            <Text variant="bodyMedium" style={{ marginBottom: 16 }}>
-                                We've enhanced your resume with {changes.length} improvements to boost your ATS score to {atsScore}%.
+                            <Text variant="titleSmall" style={{ fontWeight: 'bold', color: theme.colors.primary, marginBottom: 4 }}>
+                                {activeTasks.find(t => t.id === currentTaskId)?.stage || 'Processing...'}
                             </Text>
-
-                            {changes.map((change, index) => (
-                                <View key={index} style={{ marginBottom: 12, paddingLeft: 8, borderLeftWidth: 2, borderLeftColor: '#4CAF50' }}>
-                                    <Text variant="labelLarge" style={{ color: '#2E7D32' }}>
-                                        {change.type.replace('_', ' ').toUpperCase()}
-                                    </Text>
-                                    <Text variant="bodySmall">{change.reason}</Text>
-                                </View>
-                            ))}
+                            <ProgressBar
+                                progress={(activeTasks.find(t => t.id === currentTaskId)?.progress || 0) / 100}
+                                color="#2196F3"
+                                style={{ height: 8, borderRadius: 4 }}
+                            />
                         </Card.Content>
                     </Card>
+                )}
 
-                    {/* Comparison Baseline Logic:
-                        - If viewing a Draft (Unsaved): Compare against the Last Saved Version (optimizedResume) 
-                          so we only show the New Changes in this session.
-                        - If viewing a Saved Result: Compare against the Original Upload (resume) 
-                          so we show the total optimization impact.
-                    */}
-                    <BeforeAfterComparison
-                        original={isUnsaved ? (currentAnalysis.optimizedResume || resume) : resume}
-                        optimized={optimizedResume}
-                        changes={changes}
-                    />
-                </>
-            )}
+                {currentAnalysis.isLocked && (
+                    <Card style={{ marginBottom: 16, backgroundColor: theme.colors.elevation.level2, borderColor: theme.colors.primary, borderWidth: 1 }}>
+                        <Card.Content style={{ flexDirection: 'row', alignItems: 'center' }}>
+                            <Text style={{ fontSize: 24, marginRight: 12 }}>🔒</Text>
+                            <View style={{ flex: 1 }}>
+                                <Text variant="titleMedium" style={{ fontWeight: 'bold', color: theme.colors.primary }}>
+                                    Application Submitted
+                                </Text>
+                                <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
+                                    This resume is locked because you have submitted your application. You cannot make further changes.
+                                </Text>
+                            </View>
+                        </Card.Content>
+                    </Card>
+                )}
 
-            <View style={styles.actions}>
-                {optimizedResume && (
-                    <>
-                        <Button
-                            mode="outlined"
-                            onPress={() => router.push('/optimization-editor')}
-                            style={styles.button}
-                        >
-                            Review & Edit Changes
-                        </Button>
+                <ATSScoreCard score={atsScore} originalScore={originalScore} />
 
-                        <Button
-                            mode="outlined"
-                            onPress={() => router.push('/resume-preview')}
-                            style={styles.button}
-                        >
-                            Preview Resume
-                        </Button>
+                {/* Show "New" skills if we have a draft match analysis that differs from original */}
+                <SkillsComparison
+                    matchAnalysis={matchAnalysis}
+                    originalMatchAnalysis={currentAnalysis.matchAnalysis}
+                    changes={changes}
+                    onSkillPress={(skill) => {
+                        if (currentAnalysis.isLocked) {
+                            const { Alert } = require('react-native');
+                            Alert.alert("Resume Locked", "You cannot add skills after submitting your application.");
+                            return;
+                        }
+                        // Block skill addition if there's unsaved optimization
+                        const hasUnsavedOptimization = currentAnalysis.draftOptimizedResumeData && !currentAnalysis.optimizedResume;
+                        if (hasUnsavedOptimization) {
+                            const { Alert } = require('react-native');
+                            Alert.alert(
+                                "Unsaved Optimization",
+                                "Please validate and save your optimized resume before adding skills. This ensures the baseline ATS score is properly set for accurate skill addition calculations."
+                            );
+                            return;
+                        }
+                        handleSkillPress(skill);
+                    }}
+                />
 
+                {!optimizedResume && (
+                    <Card style={styles.card}>
+                        <Card.Content>
+                            <Text variant="titleMedium" style={{ marginBottom: 8 }}>Recommendation</Text>
+                            <Text variant="bodyMedium">
+                                {currentAnalysis.recommendation.reasoning}
+                            </Text>
 
-
-                        {/* ... rest of UI ... */}
-                        {isUnsaved && (
-                            <>
-                                <Button
-                                    mode="outlined"
-                                    onPress={() => setRevertDialogVisible(true)}
-                                    loading={saving}
-                                    disabled={saving || optimizing}
-                                    style={[styles.button, { marginTop: 12, borderColor: '#D32F2F', marginBottom: 8 }]}
-                                    textColor="#D32F2F"
-                                    icon="undo"
-                                >
-                                    Reject Changes & Revert
-                                </Button>
-                                {/* ... Validate button ... */}
-
+                            {!optimizing ? (
                                 <Button
                                     mode="contained"
-                                    onPress={handleSave}
-                                    loading={saving}
-                                    disabled={saving || optimizing}
-                                    style={[styles.button, { backgroundColor: '#4CAF50' }]}
-                                    icon="check"
+                                    onPress={handleOptimize}
+                                    style={{ marginTop: 16 }}
+                                    disabled={currentAnalysis.isLocked}
                                 >
-                                    Validate & Save to Dashboard
+                                    {currentAnalysis.isLocked ? "Optimizer Locked" : "✨ Rewrite & Optimize Resume"}
                                 </Button>
-                            </>
+                            ) : (
+                                <View style={{ marginTop: 16 }}>
+                                    <Text variant="bodySmall" style={{ marginBottom: 8, textAlign: 'center', color: theme.colors.primary }}>
+                                        {activeTasks.find(t => t.id === currentTaskId)?.stage || 'Optimizing...'}
+                                    </Text>
+                                    <ProgressBar
+                                        progress={(activeTasks.find(t => t.id === currentTaskId)?.progress || 0) / 100}
+                                        style={{ height: 8, borderRadius: 4 }}
+                                    />
+                                </View>
+                            )}
+                        </Card.Content>
+                    </Card>
+                )}
+
+                {optimizedResume && changes && (
+                    <>
+                        {changes && changes.length > 0 && (
+                            <Card style={styles.card}>
+                                <Card.Content>
+                                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                                        <Text variant="titleMedium">What We Optimized</Text>
+                                        <Text variant="bodySmall" style={{ color: '#666' }}>
+                                            {(currentAnalysis as any).updatedAt
+                                                ? new Date((currentAnalysis as any).updatedAt).toLocaleString('en-US', {
+                                                    month: 'short',
+                                                    day: 'numeric',
+                                                    hour: 'numeric',
+                                                    minute: '2-digit',
+                                                    hour12: true
+                                                })
+                                                : ''}
+                                        </Text>
+                                    </View>
+                                    <Text variant="bodyMedium" style={{ marginBottom: 16 }}>
+                                        We've enhanced your resume with {changes.length} improvement{changes.length !== 1 ? 's' : ''} to boost your ATS score to {atsScore}%.
+                                    </Text>
+
+                                    {changes.map((change, index) => (
+                                        <View key={index} style={{ marginBottom: 12, paddingLeft: 8, borderLeftWidth: 2, borderLeftColor: '#4CAF50' }}>
+                                            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                <Text variant="labelLarge" style={{ color: '#2E7D32' }}>
+                                                    {change.type ? change.type.replace(/_/g, ' ').toUpperCase() : 'CHANGE'}
+                                                </Text>
+                                                {change.section && (
+                                                    <Text variant="labelSmall" style={{ color: '#666', backgroundColor: '#f0f0f0', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
+                                                        {change.section}
+                                                    </Text>
+                                                )}
+                                            </View>
+                                            <Text variant="bodySmall">{change.reason}</Text>
+                                        </View>
+                                    ))}
+                                </Card.Content>
+                            </Card>
                         )}
+
+                        {/* Comparison Baseline Logic:
+                        - Compare against the previously SAVED resume version.
+                        - If there's a saved optimizedResume, use that as baseline (shows only new changes).
+                        - Otherwise fall back to original resume (shows all changes since start).
+                        This ensures the preview shows ONLY what changed in the current operation.
+                    */}
+                        <BeforeAfterComparison
+                            original={currentAnalysis.optimizedResume || currentAnalysis.resume || resume}
+                            optimized={optimizedResume}
+                            changes={changes}
+                        />
                     </>
                 )}
-            </View>
 
+                <View style={styles.actions}>
+                    {optimizedResume && (
+                        <>
+                            <Button
+                                mode="outlined"
+                                onPress={() => router.push('/optimization-editor')}
+                                style={styles.button}
+                            >
+                                Review & Edit Changes
+                            </Button>
+
+                            <Button
+                                mode="outlined"
+                                onPress={() => router.push('/resume-preview')}
+                                style={styles.button}
+                            >
+                                Preview Resume
+                            </Button>
+
+
+
+                            {/* ... rest of UI ... */}
+                            {isUnsaved && (
+                                <>
+                                    <Button
+                                        mode="outlined"
+                                        onPress={() => setRevertDialogVisible(true)}
+                                        loading={saving}
+                                        disabled={saving || optimizing}
+                                        style={[styles.button, { marginTop: 12, borderColor: '#D32F2F', marginBottom: 8 }]}
+                                        textColor="#D32F2F"
+                                        icon="undo"
+                                    >
+                                        Reject Changes & Revert
+                                    </Button>
+                                    {/* ... Validate button ... */}
+
+                                    <Button
+                                        mode="contained"
+                                        onPress={handleSave}
+                                        loading={saving}
+                                        disabled={saving || optimizing}
+                                        style={[styles.button, { backgroundColor: '#4CAF50' }]}
+                                        icon="check"
+                                    >
+                                        Validate & Save to Dashboard
+                                    </Button>
+                                </>
+                            )}
+                        </>
+                    )}
+                </View>
+
+            </ScrollView>
             <SkillAdditionModal
                 visible={skillModalVisible}
                 skill={selectedSkillToAdd}
@@ -586,17 +623,19 @@ export default function AnalysisResultScreen() {
                 companyName={currentAnalysis.job.company}
             />
             <Portal>
-                <Dialog visible={revertDialogVisible} onDismiss={() => setRevertDialogVisible(false)} style={{ backgroundColor: '#FFF3E0' }}>
-                    <Dialog.Title style={{ color: '#D32F2F', fontWeight: 'bold' }}>
+                <Dialog visible={revertDialogVisible} onDismiss={() => setRevertDialogVisible(false)} style={{ backgroundColor: theme.colors.elevation.level3 }}>
+                    <Dialog.Title style={{ color: theme.colors.error, fontWeight: 'bold' }}>
                         ⚠️ Confirm Revert Changes
                     </Dialog.Title>
                     <Dialog.Content>
                         <Paragraph style={{ marginBottom: 12 }}>
                             All unsaved changes up until this point will be lost and you will need to re-optimize or add all the unsaved missing skills again .
+
+                            ⚠️ Tokens have already been deducted for this analysis and they will NOT be refunded if you reject the changes. You will need to use new tokens to re-do this activity.
                         </Paragraph>
-                        <View style={{ backgroundColor: '#E3F2FD', padding: 12, borderRadius: 8, marginTop: 8 }}>
-                            <Text variant="bodySmall" style={{ color: '#0D47A1' }}>
-                                💡 <Text style={{ fontWeight: 'bold', color: '#0D47A1' }}>Tip:</Text> Please validate and save to dashboard if you are satisfied with the changes, before updating the resume with new skills.
+                        <View style={{ backgroundColor: theme.colors.elevation.level1, padding: 12, borderRadius: 8, marginTop: 8 }}>
+                            <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
+                                💡 <Text style={{ fontWeight: 'bold', color: theme.colors.onSurfaceVariant }}>Tip:</Text> Please validate and save to dashboard if you are satisfied with the changes, before updating the resume with new skills.
                             </Text>
                         </View>
                     </Dialog.Content>
@@ -615,8 +654,7 @@ export default function AnalysisResultScreen() {
                     </Dialog.Actions>
                 </Dialog>
             </Portal>
-
-        </ScrollView>
+        </View>
     );
 }
 

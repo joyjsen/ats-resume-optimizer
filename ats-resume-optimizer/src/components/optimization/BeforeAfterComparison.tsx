@@ -21,45 +21,72 @@ export const BeforeAfterComparison = ({ original, optimized, changes }: Props) =
     };
 
     // Helper to calculate added skills dynamically
-    // Priority: Check 'changes' log for explicit additions. If empty, fall back to Diff.
     const addedSkillsList = React.useMemo(() => {
-        // Strategy 1: Explicit Log (Most Accurate as per user request)
-        const explicitSkills = changes
-            .filter(c => c.type === 'skill_addition' && c.skill)
-            .map(c => c.skill || '');
+        const addedSet = new Set<string>();
 
-        if (explicitSkills.length > 0) {
-            // De-duplicate
-            return Array.from(new Set(explicitSkills));
+        // Strategy 1: Explicit Log (What triggered the recent change)
+        changes
+            .filter(c => c.type === 'skill_addition' && c.skill)
+            .forEach(c => addedSet.add(c.skill || ''));
+
+        // Strategy 2: Diff (Historical / Full Comparison)
+        // Now that we pass 'original' as the absolute baseline, this catches ALL skills added since start.
+        if (optimized.skills && original.skills) {
+            optimized.skills.forEach(s => {
+                const existsInOriginal = original.skills.some(os => normalize(os.name) === normalize(s.name));
+                if (!existsInOriginal) {
+                    addedSet.add(s.name);
+                }
+            });
         }
 
-        // Strategy 2: Diff (Fallback for full optimizations)
-        if (!optimized.skills || !original.skills) return [];
-        return optimized.skills
-            .filter(s => !original.skills.some(os => normalize(os.name) === normalize(s.name)))
-            .map(s => s.name);
+        return Array.from(addedSet);
     }, [original.skills, optimized.skills, changes]);
 
     // Dynamically determine available sections based on changes AND actual data diffs
     const availableSections = React.useMemo(() => {
         const sections = new Set<string>();
 
-        // 1. Check change logs (Explicit intent)
+        // 1. Check change logs (Explicit intent from AI)
         changes.forEach(c => {
             if (c.section) sections.add(c.section.toLowerCase());
             // Map specific types to sections if section name is missing/generic
-            if (c.type.includes('skill')) sections.add('skills');
-            if (c.type.includes('summary')) sections.add('summary');
-            if (c.type.includes('experience') || c.type.includes('bullet')) sections.add('experience');
+            const type = c.type || '';
+            if (type.includes('skill')) sections.add('skills');
+            if (type.includes('summary')) sections.add('summary');
+            if (type.includes('experience') || type.includes('bullet')) sections.add('experience');
         });
 
-        // 2. Check Data Diffs (Implicit reality)
+        // 2. Check Data Diffs (Implicit reality) - Only add sections with ACTUAL changes
         if (addedSkillsList.length > 0) sections.add('skills');
 
-        // Ensure core sections exist if data is present
-        if (optimized.summary) sections.add('summary');
-        if (optimized.experience?.length > 0) sections.add('experience');
-        if (optimized.skills?.length > 0) sections.add('skills');
+        // Check if summary was actually modified
+        if (optimized.summary && original.summary && normalize(optimized.summary) !== normalize(original.summary)) {
+            sections.add('summary');
+        }
+
+        // Check if experience has actual modified bullets
+        if (optimized.experience && original.experience) {
+            const hasExperienceChanges = optimized.experience.some((optRole) => {
+                let orgRole = original.experience?.find(e => e.id && e.id === optRole.id);
+                if (!orgRole) {
+                    orgRole = original.experience?.find(e =>
+                        normalize(e.company) === normalize(optRole.company) &&
+                        normalize(e.title) === normalize(optRole.title)
+                    );
+                }
+                if (!orgRole) return false;
+
+                const modifiedBullets = optRole.bullets?.filter(bullet => {
+                    const nBullet = normalize(bullet);
+                    return !orgRole?.bullets?.some(orgBullet => normalize(orgBullet) === nBullet);
+                }) || [];
+
+                return modifiedBullets.length > 0;
+            });
+
+            if (hasExperienceChanges) sections.add('experience');
+        }
 
         // Sort: Summary -> Experience -> Skills -> Others
         const order = ['summary', 'experience', 'skills'];
@@ -71,7 +98,7 @@ export const BeforeAfterComparison = ({ original, optimized, changes }: Props) =
             if (idxB !== -1) return 1;
             return a.localeCompare(b);
         });
-    }, [changes, optimized, addedSkillsList]);
+    }, [changes, optimized, addedSkillsList, original, normalize]);
 
     const [section, setSection] = useState(availableSections[0] || 'summary');
 
@@ -133,7 +160,7 @@ export const BeforeAfterComparison = ({ original, optimized, changes }: Props) =
         );
     };
 
-    const renderExperienceComparison = () => {
+    const experienceComparison = React.useMemo(() => {
         if (!optimized.experience || optimized.experience.length === 0) {
             return <Text>No experience data found.</Text>;
         }
@@ -141,81 +168,94 @@ export const BeforeAfterComparison = ({ original, optimized, changes }: Props) =
         return (
             <View>
                 {optimized.experience.map((optRole, index) => {
+                    // Logic moved inside map, but the whole map result is memoized now.
+                    // However, we need to handle expanded roles state which changes.
+                    // Splitting into a child component would be cleaner, but for now we memoize the CALCULATION of changes.
+                    // Alternatively, we memoize the list of roles and their 'hasChanges' status/modifiedBullets.
+                    return null;
+                })}
+            </View>
+        );
+    }, [optimized.experience, original.experience, expandedRoles, theme.colors]); // expandedRoles dependency breaks memoization of the heavy lift.
+
+    // Better Approach: Calculate the diffs ONCE when data changes.
+    const experienceDiffs = React.useMemo(() => {
+        if (!optimized.experience) return [];
+
+        return optimized.experience.map((optRole, index) => {
+            let orgRole = original.experience.find(e => e.id && e.id === optRole.id);
+
+            if (!orgRole) {
+                orgRole = original.experience.find(e =>
+                    normalize(e.company) === normalize(optRole.company) &&
+                    normalize(e.title) === normalize(optRole.title)
+                );
+            }
+
+            if (!orgRole && original.experience.length === optimized.experience.length) {
+                orgRole = original.experience[index];
+            }
+
+            const modifiedBullets = optRole.bullets.filter(bullet => {
+                if (!orgRole || !orgRole.bullets) return true;
+                const nBullet = normalize(bullet);
+                return !orgRole.bullets.some(orgBullet => normalize(orgBullet) === nBullet);
+            });
+
+            return {
+                optRole,
+                hasChanges: modifiedBullets.length > 0,
+                modifiedBullets
+            };
+        });
+    }, [optimized.experience, original.experience]);
+
+    const renderExperienceComparison = () => {
+        if (!optimized.experience || optimized.experience.length === 0) {
+            return <Text>No experience data found.</Text>;
+        }
+
+        return (
+            <View>
+                {experienceDiffs.map((diff, index) => {
+                    const { optRole, hasChanges, modifiedBullets } = diff;
                     const isExpanded = expandedRoles.has(index);
 
-                    // Find matching original role (Improved Matcher)
-                    // 1. Try ID
-                    // 2. Try Exact Title/Company
-                    // 3. Try Normalized Title/Company
-                    // 4. Try looser Company containment (if "Google Inc" vs "Google")
-                    let orgRole = original.experience.find(e => e.id && e.id === optRole.id);
-
-                    if (!orgRole) {
-                        orgRole = original.experience.find(e =>
-                            normalize(e.company) === normalize(optRole.company) &&
-                            normalize(e.title) === normalize(optRole.title)
-                        );
-                    }
-
-                    // Fallback: If company is same and titles are close? 
-                    // Or if not found, rely on index IF and ONLY IF the arrays are same length (risky but better than nothing)
-                    if (!orgRole && original.experience.length === optimized.experience.length) {
-                        orgRole = original.experience[index];
-                    }
-
-                    // Find modified/new bullets by Fuzzy Diffing
-                    const modifiedBullets = optRole.bullets.filter(bullet => {
-                        // If we couldn't find the original role, we shouldn't mark everything as new out of caution,
-                        // UNLESS we are sure it's a new role. But "Optimization" rarely adds roles.
-                        // If no orgRole found, let's assume it IS a new role for now, but this might be the source of "everything updated" bug.
-                        // FIX: If we can't find orgRole, it's safer to show NO changes than ALL changes for an existing role.
-                        // But if the User ADDED a role, we want to show it.
-                        // Compromise: normalized matching is robust enough. If failed, it's virtually new.
-
-                        if (!orgRole || !orgRole.bullets) return true;
-
-                        // Check for approximate match
-                        const nBullet = normalize(bullet);
-                        return !orgRole.bullets.some(orgBullet => normalize(orgBullet) === nBullet);
-                    });
-
-                    const hasChanges = modifiedBullets.length > 0;
-
                     return (
-                        <View key={index} style={{ marginBottom: 12, borderWidth: 1, borderColor: '#eee', borderRadius: 8, overflow: 'hidden' }}>
+                        <View key={index} style={{ marginBottom: 12, borderWidth: 1, borderColor: theme.colors.outline, borderRadius: 8, overflow: 'hidden' }}>
                             <TouchableOpacity
                                 onPress={() => toggleRole(index)}
-                                style={{ padding: 12, backgroundColor: '#FAFAFA', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}
+                                style={{ padding: 12, backgroundColor: theme.colors.elevation.level1, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}
                             >
                                 <View style={{ flex: 1 }}>
                                     <Text variant="titleMedium" style={{ fontWeight: 'bold', color: theme.colors.primary }}>
                                         {optRole.title}
                                     </Text>
-                                    <Text variant="bodySmall" style={{ color: '#666' }}>
+                                    <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
                                         {optRole.company}
                                     </Text>
                                 </View>
                                 {hasChanges && (
-                                    <View style={{ backgroundColor: '#E8F5E9', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 12, marginRight: 8 }}>
-                                        <Text style={{ color: '#2E7D32', fontSize: 10, fontWeight: 'bold' }}>UPDATED</Text>
+                                    <View style={{ backgroundColor: theme.dark ? '#1B5E20' : '#E8F5E9', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 12, marginRight: 8 }}>
+                                        <Text style={{ color: theme.dark ? '#A5D6A7' : '#2E7D32', fontSize: 10, fontWeight: 'bold' }}>UPDATED</Text>
                                     </View>
                                 )}
-                                <Text style={{ fontSize: 18, color: '#999' }}>{isExpanded ? '−' : '+'}</Text>
+                                <Text style={{ fontSize: 18, color: theme.colors.onSurface }}>{isExpanded ? '−' : '+'}</Text>
                             </TouchableOpacity>
 
                             {isExpanded && (
                                 <View style={{ padding: 12, paddingTop: 4 }}>
                                     {modifiedBullets.length > 0 ? (
                                         modifiedBullets.map((bullet, bIndex) => (
-                                            <View key={bIndex} style={[styles.bulletRow, styles.highlight]}>
-                                                <Text style={{ lineHeight: 20 }}>
-                                                    <Text style={{ fontWeight: 'bold', color: '#2E7D32' }}>• </Text>
+                                            <View key={bIndex} style={[styles.bulletRow, { backgroundColor: theme.dark ? '#333' : '#f0f0f0', borderRadius: 4 }]}>
+                                                <Text style={{ lineHeight: 20, color: theme.colors.onSurface }}>
+                                                    <Text style={{ fontWeight: 'bold', color: theme.dark ? '#81C784' : '#2E7D32' }}>• </Text>
                                                     {bullet}
                                                 </Text>
                                             </View>
                                         ))
                                     ) : (
-                                        <Text style={{ fontStyle: 'italic', color: '#666', paddingVertical: 8 }}>
+                                        <Text style={{ fontStyle: 'italic', color: theme.colors.onSurfaceDisabled, paddingVertical: 8 }}>
                                             No significant content changes detected in this role.
                                         </Text>
                                     )}

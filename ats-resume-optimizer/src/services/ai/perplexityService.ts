@@ -159,6 +159,40 @@ Use RECENT, credible sources from 2024-2026. Include specific dates when mention
             throw new Error(error.response?.data?.error?.message || "Failed to generate company research.");
         }
     }
+    /**
+     * Generic Chat Completion for fallback or general use
+     */
+    async chatCompletion(systemPrompt: string, userPrompt: string, taskName: string): Promise<string> {
+        try {
+            const response = await axios.post(
+                API_URL,
+                {
+                    model: 'sonar-pro',
+                    messages: [
+                        { role: 'system', content: systemPrompt },
+                        { role: 'user', content: userPrompt }
+                    ],
+                    temperature: 0.5,
+                    max_tokens: 5000,
+                },
+                {
+                    headers: {
+                        'Authorization': `Bearer ${PERPLEXITY_API_KEY}`,
+                        'Content-Type': 'application/json'
+                    }
+                }
+            );
+
+            const content = response.data.choices[0]?.message?.content;
+            if (!content) throw new Error("No content returned from AI");
+
+            return content.trim();
+
+        } catch (error: any) {
+            console.error(`Perplexity API Error (${taskName}):`, error.response?.data || error.message);
+            throw error;
+        }
+    }
 }
 
 export const perplexityService = new PerplexityService();

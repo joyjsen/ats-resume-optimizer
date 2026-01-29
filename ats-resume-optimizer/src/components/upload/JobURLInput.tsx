@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, StyleSheet } from 'react-native';
-import { TextInput, Text, SegmentedButtons } from 'react-native-paper';
+import { TextInput, Text, SegmentedButtons, Button } from 'react-native-paper';
 
 interface Props {
     urlValue: string;
@@ -9,9 +9,11 @@ interface Props {
     onModeChange: (mode: 'url' | 'text') => void;
     onUrlChange: (text: string) => void;
     onTextChange: (text: string) => void;
+    onExtract?: () => void;
+    isExtracting?: boolean;
 }
 
-export const JobURLInput = ({ urlValue, textValue, mode, onModeChange, onUrlChange, onTextChange }: Props) => {
+export const JobURLInput = ({ urlValue, textValue, mode, onModeChange, onUrlChange, onTextChange, onExtract, isExtracting }: Props) => {
     return (
         <View style={styles.container}>
             <SegmentedButtons
@@ -25,24 +27,36 @@ export const JobURLInput = ({ urlValue, textValue, mode, onModeChange, onUrlChan
             />
 
             {mode === 'url' ? (
-                <TextInput
-                    mode="outlined"
-                    label="Job Posting URL"
-                    placeholder="https://linkedin.com/jobs/..."
-                    value={urlValue}
-                    onChangeText={onUrlChange}
-                    autoCapitalize="none"
-                    keyboardType="url"
-                    right={
-                        urlValue ? (
-                            <TextInput.Icon
-                                icon="close-circle-outline"
-                                onPress={() => onUrlChange('')}
-                                forceTextInputFocus={false}
-                            />
-                        ) : null
-                    }
-                />
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    <TextInput
+                        mode="outlined"
+                        label="Job Posting URL"
+                        placeholder="https://linkedin.com/jobs/..."
+                        value={urlValue}
+                        onChangeText={onUrlChange}
+                        autoCapitalize="none"
+                        keyboardType="url"
+                        style={{ flex: 1 }}
+                        right={
+                            urlValue ? (
+                                <TextInput.Icon
+                                    icon="close-circle-outline"
+                                    onPress={() => onUrlChange('')}
+                                    forceTextInputFocus={false}
+                                />
+                            ) : null
+                        }
+                    />
+                    <Button
+                        mode="contained"
+                        onPress={onExtract}
+                        disabled={!urlValue || isExtracting}
+                        loading={isExtracting}
+                        style={{ marginTop: 6 }}
+                    >
+                        Go
+                    </Button>
+                </View>
             ) : (
                 <TextInput
                     mode="outlined"

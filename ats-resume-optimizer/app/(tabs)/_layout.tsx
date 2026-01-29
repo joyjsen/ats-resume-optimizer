@@ -1,5 +1,7 @@
 import { Tabs } from 'expo-router';
 import { useTheme, Icon } from 'react-native-paper';
+import { UserHeader } from '../../src/components/layout/UserHeader';
+import { AppLogo } from '../../src/components/layout/AppLogo';
 
 export default function TabsLayout() {
     const theme = useTheme();
@@ -8,8 +10,18 @@ export default function TabsLayout() {
         <Tabs
             screenOptions={{
                 headerShown: true,
+                headerLeft: () => <AppLogo />,
+                headerRight: () => <UserHeader />,
+                headerStyle: {
+                    backgroundColor: theme.colors.elevation.level2,
+                },
+                headerTintColor: theme.colors.onSurface,
                 tabBarActiveTintColor: theme.colors.primary,
                 tabBarInactiveTintColor: theme.colors.onSurfaceVariant,
+                tabBarStyle: {
+                    backgroundColor: theme.colors.elevation.level2,
+                    borderTopColor: theme.colors.outlineVariant,
+                },
             }}
         >
             <Tabs.Screen

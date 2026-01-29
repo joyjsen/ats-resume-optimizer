@@ -29,8 +29,13 @@ export interface SavedAnalysis {
     draftAtsScore?: number;
     draftMatchAnalysis?: any;
 
+    // Baseline Data for Dynamic Skill Score Calculation
+    baselineAtsScore?: number;  // ATS score after initial optimization (baseline for skill additions)
+    baselineTotalSkills?: number;  // Total skills (partial + missing) at baseline
+
     // Application Tracking Integration
     applicationId?: string; // Link to the created application
     applicationStatus?: string; // Denormalized status for Dashboard badges
     isLocked?: boolean; // If true, resume editing is disabled (e.g. submitted)
+    analysisStatus?: string; // e.g. 'optimized', 'pending_resume_update', 'draft_ready'
 }

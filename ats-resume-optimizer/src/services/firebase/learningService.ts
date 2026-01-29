@@ -1,30 +1,35 @@
 import {
     collection,
+    doc,
     addDoc,
+    updateDoc,
+    getDocs,
     query,
     where,
-    getDocs,
-    doc,
-    updateDoc,
+    orderBy,
     onSnapshot,
-    Timestamp,
-    orderBy
+    serverTimestamp,
+    Timestamp
 } from 'firebase/firestore';
-import { db, auth } from './config';
+import { httpsCallable } from 'firebase/functions';
+import { db, auth, functions } from './config';
 import { LearningEntry, LearningPath, LearningStatus } from '../../types/learning.types';
-import { openai, safeOpenAICall } from '../../config/ai';
 
 export class LearningService {
     private collectionName = 'user_learning';
 
+    private get learningCollection() {
+        return collection(db, this.collectionName);
+    }
+
     async addEntry(entry: Omit<LearningEntry, 'id' | 'createdAt' | 'updatedAt'>): Promise<string> {
         try {
-            const docRef = await addDoc(collection(db, this.collectionName), {
+            const docRef = await addDoc(this.learningCollection, {
                 ...entry,
                 archived: false,
                 completionDate: entry.completionDate ? Timestamp.fromDate(entry.completionDate) : null,
-                createdAt: Timestamp.now(),
-                updatedAt: Timestamp.now()
+                createdAt: serverTimestamp(),
+                updatedAt: serverTimestamp()
             });
             return docRef.id;
         } catch (error) {
@@ -46,7 +51,7 @@ export class LearningService {
             const entryRef = doc(db, this.collectionName, id);
             const fsUpdates: any = {
                 ...updates,
-                updatedAt: Timestamp.now()
+                updatedAt: serverTimestamp()
             };
             if (updates.completionDate) {
                 fsUpdates.completionDate = Timestamp.fromDate(updates.completionDate);
@@ -62,53 +67,26 @@ export class LearningService {
         return this.updateEntry(id, { currentSlide });
     }
 
-    async generateTrainingContent(id: string, skill: string, position: string, company: string): Promise<{ title: string; points: { title: string; description: string }[] }[]> {
-        const prompt = `You are an expert technical trainer. Create a comprehensive training slideshow for a candidate learning a specific skill for a specific job at a specific company.
-
-SKILL: ${skill}
-POSITION: ${position}
-COMPANY: ${company}
-
-Requirements:
-- Generate 10-15 slides.
-- Content must be curated specifically for the skill in the context of this job and company.
-- Format the output as a JSON object with a "slides" array.
-- Each slide object must have:
-  - "title": A short header for the slide.
-  - "points": An array of objects, where each object has:
-    - "title": A concise name of the sub-point/concept.
-    - "description": A rudimentary level explanation of this point (1-3 sentences).
-- Avoid overly generic text. Provide practical, job-relevant explanations.
-
-Respond ONLY with the JSON object.`;
+    async generateTrainingContent(id: string, skill: string, position: string, company: string, userId: string): Promise<{ title: string; points: { title: string; description: string }[] }[]> {
+        console.log(`[LearningService] Requesting training content from Cloud Function for ${skill}`);
 
         try {
-            const response = await safeOpenAICall(() => openai.chat.completions.create({
-                model: 'gpt-4o-mini',
-                messages: [
-                    { role: 'system', content: 'You are an expert technical trainer.' },
-                    { role: 'user', content: prompt }
-                ],
-                max_tokens: 4000,
-                temperature: 0.7,
-                response_format: { type: 'json_object' }
-            }), 'Training Generation');
-
-            const content = response.choices[0]?.message?.content;
-            if (!content) throw new Error('No content from AI');
-
-            const parsed = JSON.parse(content);
-            const slides = (parsed.slides || []) as { title: string; points: { title: string; description: string }[] }[];
-
-            await this.updateEntry(id, {
-                slides,
-                totalSlides: slides.length,
-                currentSlide: 0
+            const generateFn = httpsCallable(functions, 'generateTrainingSlideshow');
+            const result = await generateFn({
+                entryId: id,
+                skill,
+                position,
+                company
             });
 
-            return slides;
+            const data = result.data as any;
+            if (!data.success || !data.slides) {
+                throw new Error('Failed to generate training content from server');
+            }
+
+            return data.slides;
         } catch (error) {
-            console.error('Error generating training content:', error);
+            console.error('Error calling generateTrainingSlideshow:', error);
             throw error;
         }
     }
@@ -116,15 +94,16 @@ Respond ONLY with the JSON object.`;
     async getEntryBySkill(userId: string, skillName: string): Promise<LearningEntry | null> {
         try {
             const q = query(
-                collection(db, this.collectionName),
+                this.learningCollection,
                 where('userId', '==', userId),
                 where('skillName', '==', skillName)
             );
             const snapshot = await getDocs(q);
+
             if (snapshot.empty) return null;
 
-            const doc = snapshot.docs[0];
-            return this.mapDocToEntry(doc);
+            const docSnap = snapshot.docs[0];
+            return this.mapDocToEntry(docSnap);
         } catch (error) {
             console.error('Error fetching learning entry:', error);
             return null;
@@ -134,7 +113,7 @@ Respond ONLY with the JSON object.`;
     async findExistingEntry(userId: string, skillName: string, jobTitle: string, companyName: string): Promise<LearningEntry | null> {
         try {
             const q = query(
-                collection(db, this.collectionName),
+                this.learningCollection,
                 where('userId', '==', userId),
                 where('skillName', '==', skillName),
                 where('jobTitle', '==', jobTitle),
@@ -142,6 +121,7 @@ Respond ONLY with the JSON object.`;
                 where('archived', '==', false)
             );
             const snapshot = await getDocs(q);
+
             if (snapshot.empty) return null;
 
             return this.mapDocToEntry(snapshot.docs[0]);
@@ -153,25 +133,25 @@ Respond ONLY with the JSON object.`;
 
     subscribeToEntries(userId: string, callback: (entries: LearningEntry[]) => void): () => void {
         const q = query(
-            collection(db, this.collectionName),
+            this.learningCollection,
             where('userId', '==', userId),
             orderBy('createdAt', 'desc')
         );
 
         return onSnapshot(q, (snapshot) => {
-            const entries = snapshot.docs.map(doc => this.mapDocToEntry(doc));
+            const entries = snapshot.docs.map(docSnap => this.mapDocToEntry(docSnap));
             callback(entries);
         });
     }
 
-    private mapDocToEntry(doc: any): LearningEntry {
-        const data = doc.data();
+    private mapDocToEntry(docSnap: any): LearningEntry {
+        const data = docSnap.data();
         return {
-            id: doc.id,
+            id: docSnap.id,
             ...data,
-            completionDate: data.completionDate?.toDate(),
-            createdAt: data.createdAt.toDate(),
-            updatedAt: data.updatedAt.toDate()
+            completionDate: (data.completionDate as any)?.toDate?.() || null,
+            createdAt: (data.createdAt as any)?.toDate ? (data.createdAt as any).toDate() : new Date(),
+            updatedAt: (data.updatedAt as any)?.toDate ? (data.updatedAt as any).toDate() : new Date()
         } as LearningEntry;
     }
 }

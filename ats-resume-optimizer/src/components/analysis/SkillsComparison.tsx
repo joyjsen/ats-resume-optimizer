@@ -22,10 +22,18 @@ export const SkillsComparison = ({ matchAnalysis, originalMatchAnalysis, changes
 
     const manuallyAddedSkills = React.useMemo(() => {
         if (!changes) return [];
-        return changes
+        const skillsFromChanges = changes
             .filter(c => c.type === 'add_skill' || c.type === 'missing_keyword' || c.type === 'skill_addition')
             .map(c => c.skill || c.keyword)
             .filter(Boolean);
+        // Deduplicate skills (case-insensitive)
+        const seen = new Set<string>();
+        return skillsFromChanges.filter((skill: string) => {
+            const lower = skill.toLowerCase();
+            if (seen.has(lower)) return false;
+            seen.add(lower);
+            return true;
+        });
     }, [changes]);
 
     const useStableMode = manuallyAddedSkills.length > 0 && !!originalMatchAnalysis;
@@ -86,9 +94,9 @@ export const SkillsComparison = ({ matchAnalysis, originalMatchAnalysis, changes
     }, [useStableMode, originalMatchAnalysis, matchAnalysis, manuallyAddedSkills]);
 
 
-    const renderSkillChip = (match: SkillMatch, color: string, interactive: boolean = false, isNew: boolean = false) => (
+    const renderSkillChip = (match: SkillMatch, color: string, interactive: boolean = false, isNew: boolean = false, index: number = 0) => (
         <Chip
-            key={match.skill}
+            key={`${match.skill}-${index}`}
             style={[styles.chip, { backgroundColor: color, borderColor: isNew ? '#4CAF50' : 'transparent', borderWidth: isNew ? 2 : 0 }]} // Solid background
             textStyle={{ color: 'white', fontWeight: 'bold' }} // White text for contrast
             icon={isNew ? 'star' : (match.userHas ? 'check' : match.transferableFrom ? 'swap-horizontal' : 'alert-circle-outline')}
@@ -108,7 +116,7 @@ export const SkillsComparison = ({ matchAnalysis, originalMatchAnalysis, changes
                     <View style={styles.section}>
                         <Text variant="bodyMedium" style={{ color: '#2E7D32', fontWeight: 'bold' }}>✨ New Skills Acquired</Text>
                         <View style={styles.chipRow}>
-                            {newSkills.map((s: SkillMatch) => renderSkillChip(s, '#2E7D32', false, true))}
+                            {newSkills.map((s: SkillMatch, idx: number) => renderSkillChip(s, '#2E7D32', false, true, idx))}
                         </View>
                     </View>
                 )}
@@ -116,7 +124,7 @@ export const SkillsComparison = ({ matchAnalysis, originalMatchAnalysis, changes
                 <View style={styles.section}>
                     <Text variant="bodyMedium" style={{ color: theme.colors.primary }}>Matched Skills</Text>
                     <View style={styles.chipRow}>
-                        {displayedMatched.map(s => renderSkillChip(s, theme.colors.primary, false))}
+                        {displayedMatched.map((s, idx) => renderSkillChip(s, theme.colors.primary, false, false, idx))}
                         {displayedMatched.length === 0 && newSkills.length === 0 && <Text variant="bodySmall">None</Text>}
                     </View>
                 </View>
@@ -125,7 +133,7 @@ export const SkillsComparison = ({ matchAnalysis, originalMatchAnalysis, changes
                     <Text variant="bodyMedium" style={{ color: '#FF9800' }}>Partial Matches (Transferable)</Text>
                     <Text variant="labelSmall" style={{ color: '#666', marginBottom: 4 }}>Tap to add to resume</Text>
                     <View style={styles.chipRow}>
-                        {displayedPartial.map(s => renderSkillChip(s, '#FF9800', true))}
+                        {displayedPartial.map((s, idx) => renderSkillChip(s, '#FF9800', true, false, idx))}
                         {displayedPartial.length === 0 && <Text variant="bodySmall">None</Text>}
                     </View>
                 </View>
@@ -136,7 +144,7 @@ export const SkillsComparison = ({ matchAnalysis, originalMatchAnalysis, changes
                     <View style={styles.chipRow}>
                         {displayedMissing
                             .filter(s => s.importance === 'critical' || s.importance === 'high')
-                            .map(s => renderSkillChip(s, theme.colors.error, true))}
+                            .map((s, idx) => renderSkillChip(s, theme.colors.error, true, false, idx))}
                         {displayedMissing
                             .filter(s => s.importance === 'critical' || s.importance === 'high').length === 0 && <Text variant="bodySmall">None</Text>}
                     </View>

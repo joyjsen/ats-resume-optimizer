@@ -27,14 +27,24 @@ export default function ResumePreview() {
     }
 
     // Gating Logic
+    // Gating Logic
     const { activeTasks } = require('../src/context/TaskQueueContext').useTaskQueue();
-    const isDraft = !!currentAnalysis.draftOptimizedResumeData;
-    const isUpdating = activeTasks.find((t: any) =>
+    // Check if we are strictly in a "Loading/Processing" state for THIS analysis
+    const isUpdating = activeTasks.some((t: any) =>
         t.payload?.currentAnalysis?.id === currentAnalysis.id &&
-        (t.type === 'optimize_resume' || t.type === 'add_skill')
+        (t.type === 'optimize_resume' || t.type === 'add_skill') &&
+        (t.status === 'pending' || t.status === 'processing') // Only block if actually processing
     );
 
-    const canDownload = !isDraft && !isUpdating;
+    // If we have ANY optimized data (Draft or Final), we should be able to preview and download it.
+    // The "isUpdating" just acts as a UI indicator.
+    // However, the user explicitly requested to DISABLE download unless it is in the "Optimized" (Final) state.
+    // Drafts (pending validation) should NOT be downloadable.
+
+    const isDraft = !!currentAnalysis.draftOptimizedResumeData;
+
+    // Allow download ONLY if we have data, it is NOT a draft, and not updating
+    const canDownload = !!optimizedResume && !isDraft && !isUpdating;
 
     const handleDownload = async () => {
         if (!canDownload) return;
@@ -53,13 +63,14 @@ export default function ResumePreview() {
     };
 
     return (
-        <View style={{ flex: 1 }}>
-            <ScrollView style={styles.container} contentContainerStyle={{ paddingBottom: 100 }}>
+        <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
+            <ScrollView style={[styles.container, { backgroundColor: theme.colors.background }]} contentContainerStyle={{ paddingBottom: 100 }}>
                 {/* ... existing render ... */}
-                <Surface style={styles.paper} elevation={2}>
+                {/* Resume Paper - Adaptive Background for functionality, but keeps paper look if desired */}
+                <Surface style={[styles.paper, { backgroundColor: theme.colors.surface }]} elevation={2}>
                     <View style={styles.header}>
-                        <Title style={styles.name}>{optimizedResume.contactInfo.name}</Title>
-                        <Text variant="bodySmall" style={styles.contact}>
+                        <Title style={[styles.name, { color: theme.colors.onSurface }]}>{optimizedResume.contactInfo.name}</Title>
+                        <Text variant="bodySmall" style={[styles.contact, { color: theme.colors.onSurfaceVariant }]}>
                             {optimizedResume.contactInfo.email} | {optimizedResume.contactInfo.phone}
                         </Text>
                         {optimizedResume.contactInfo.linkedin && (
@@ -112,9 +123,9 @@ export default function ResumePreview() {
                 </Surface>
             </ScrollView>
 
-            <View style={styles.fabContainer}>
+            <View style={[styles.fabContainer, { backgroundColor: theme.colors.elevation.level2, borderTopColor: theme.colors.outline }]}>
                 {!canDownload && (
-                    <Text variant="bodySmall" style={{ color: '#666', textAlign: 'center', marginBottom: 8 }}>
+                    <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant, textAlign: 'center', marginBottom: 8 }}>
                         {isUpdating ? "Resume is currently updating..." : "Please validate and save changes to download."}
                     </Text>
                 )}
@@ -134,7 +145,7 @@ export default function ResumePreview() {
 
 const Section = ({ title, children }: { title: string, children: React.ReactNode }) => (
     <View style={styles.section}>
-        <Text variant="titleSmall" style={styles.sectionTitle}>{title}</Text>
+        <Text variant="titleSmall" style={[styles.sectionTitle, { color: useTheme().colors.onSurface }]}>{title}</Text>
         <Divider style={{ marginBottom: 8 }} />
         {children}
     </View>
@@ -143,11 +154,11 @@ const Section = ({ title, children }: { title: string, children: React.ReactNode
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: '#f5f5f5',
+        // backgroundColor: '#f5f5f5',
         padding: 16,
     },
     paper: {
-        backgroundColor: 'white',
+        backgroundColor: 'white', // Default for printing/document feel
         padding: 24,
         borderRadius: 4,
     },
@@ -161,7 +172,7 @@ const styles = StyleSheet.create({
         textTransform: 'uppercase',
     },
     contact: {
-        color: '#666',
+        // color: '#666', -- Handled by theme in component
     },
     divider: {
         marginBottom: 24,
@@ -172,7 +183,7 @@ const styles = StyleSheet.create({
     sectionTitle: {
         fontWeight: 'bold',
         letterSpacing: 1,
-        color: '#333',
+        // color: '#333', -- Handled by theme in component
         marginBottom: 4,
     },
     fabContainer: {
@@ -181,9 +192,9 @@ const styles = StyleSheet.create({
         left: 0,
         right: 0,
         padding: 16,
-        backgroundColor: 'rgba(255,255,255,0.9)',
+        // backgroundColor: 'rgba(255,255,255,0.9)',
         borderTopWidth: 1,
-        borderTopColor: '#e0e0e0',
+        // borderTopColor: '#e0e0e0',
     },
     fab: {
         width: '100%',

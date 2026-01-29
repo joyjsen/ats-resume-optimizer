@@ -41,9 +41,12 @@ export interface Application {
 
     // AI Content
     coverLetter?: {
+        status?: 'generating' | 'completed' | 'failed';
         content: string;
         generatedAt: Date;
-        lastEditedAt: Date;
+        lastEditedAt?: Date;
+        startedAt?: Date;
+        completedAt?: Date;
     };
     prepGuide?: {
         status: 'generating' | 'completed' | 'failed';
@@ -77,4 +80,8 @@ export interface Application {
     createdAt: Date;
     updatedAt: Date;
     prepGuideGeneratedAt?: Date;
+
+    // Read-only mode for pending/draft analyses
+    isReadOnly?: boolean;
+    analysisStatus?: 'pending_resume_update' | 'draft_ready' | 'optimized' | 'pending_skill_update';
 }

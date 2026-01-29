@@ -59,20 +59,20 @@ export const TrainingSlideshow = ({ visible, slides, initialSlide, onDismiss, on
 
                 <ProgressBar progress={progress} color={theme.colors.primary} style={styles.progressBar} />
 
-                <Text variant="labelSmall" style={styles.pagination}>
+                <Text variant="labelSmall" style={[styles.pagination, { color: theme.colors.onSurfaceVariant }]}>
                     Slide {currentIndex + 1} of {slides.length}
                 </Text>
 
                 <ScrollView style={styles.content}>
-                    <Text variant="headlineSmall" style={styles.slideTitle}>{currentSlide.title}</Text>
+                    <Text variant="headlineSmall" style={[styles.slideTitle, { color: theme.colors.onSurface }]}>{currentSlide.title}</Text>
 
                     {currentSlide.points.map((item, idx) => (
                         <View key={idx} style={styles.pointContainer}>
                             <View style={styles.bulletRow}>
-                                <Text style={styles.bullet}>•</Text>
-                                <Text variant="titleSmall" style={styles.pointTitle}>{item.title}</Text>
+                                <Text style={[styles.bullet, { color: theme.colors.primary }]}>•</Text>
+                                <Text variant="titleSmall" style={[styles.pointTitle, { color: theme.colors.onSurface }]}>{item.title}</Text>
                             </View>
-                            <Text variant="bodyMedium" style={styles.descriptionText}>
+                            <Text variant="bodyMedium" style={[styles.descriptionText, { color: theme.colors.onSurfaceVariant }]}>
                                 {item.description}
                             </Text>
                         </View>
@@ -133,13 +133,13 @@ const styles = StyleSheet.create({
     },
     pagination: {
         textAlign: 'center',
-        color: '#666',
+        // color: '#666', -- Handled by theme inline
         marginBottom: 16,
     },
     slideTitle: {
         fontWeight: 'bold',
         marginBottom: 24,
-        color: '#000',
+        // color: '#000', -- Handled by theme inline
     },
     content: {
         flex: 1,
@@ -157,17 +157,17 @@ const styles = StyleSheet.create({
     bullet: {
         fontSize: 20,
         marginRight: 8,
-        color: '#6200ee',
+        // color: '#6200ee', -- Handled by theme inline
         lineHeight: 24,
     },
     pointTitle: {
         fontWeight: 'bold',
-        color: '#333',
+        // color: '#333', -- Handled by theme inline
         flex: 1,
     },
     descriptionText: {
         marginLeft: 20,
-        color: '#666',
+        // color: '#666', -- Handled by theme inline
         lineHeight: 20,
     },
     footer: {

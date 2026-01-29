@@ -3,19 +3,51 @@ import { View, StyleSheet, FlatList, TouchableOpacity, Alert } from 'react-nativ
 import { Text, Card, Chip, useTheme, ActivityIndicator, Button, IconButton } from 'react-native-paper';
 import { learningService } from '../../src/services/firebase/learningService';
 import { auth } from '../../src/services/firebase/config';
-import { LearningEntry } from '../../src/types/learning.types';
+import { LearningEntry, LearningPath } from '../../src/types/learning.types';
 import { TrainingSlideshow } from '../../src/components/learning/TrainingSlideshow';
+import { LearningFilters, LearningFilterState, LearningSortOption } from '../../src/components/learning/LearningFilters';
+import { taskService } from '../../src/services/firebase/taskService';
+import { activityService } from '../../src/services/firebase/activityService';
+import { notificationService } from '../../src/services/firebase/notificationService';
+import { useNavigation } from 'expo-router'; // Add useNavigation
+import { UserHeader } from '../../src/components/layout/UserHeader'; // Add UserHeader import
+import { useTokenCheck } from '../../src/hooks/useTokenCheck';
 
 export default function LearningScreen() {
     const theme = useTheme();
+    const { user } = { user: auth.currentUser }; // Simple replacement for useAuth
+    const { checkTokens } = useTokenCheck();
+    const navigation = useNavigation();
     const [entries, setEntries] = useState<LearningEntry[]>([]);
     const [loading, setLoading] = useState(true);
     const [viewMode, setViewMode] = useState<'active' | 'completed' | 'archived'>('active');
+    const [refreshTrigger, setRefreshTrigger] = useState(0); // For external refresh button
+
+    // Filter & Sort State
+    const [sortOption, setSortOption] = useState<LearningSortOption>('recent');
+    const [filters, setFilters] = useState<LearningFilterState>({
+        paths: [],
+        companies: [],
+        dateRange: 'all'
+    });
 
     // Training Slideshow State
     const [selectedEntry, setSelectedEntry] = useState<LearningEntry | null>(null);
     const [showSlideshow, setShowSlideshow] = useState(false);
     const [isGenerating, setIsGenerating] = useState<string | null>(null); // Entry ID
+
+    const handleRefresh = React.useCallback(() => {
+        setLoading(true);
+        setRefreshTrigger(prev => prev + 1);
+    }, []);
+
+    React.useLayoutEffect(() => {
+        navigation.setOptions({
+            headerRight: () => (
+                <UserHeader />
+            ),
+        });
+    }, [navigation]);
 
     useEffect(() => {
         const userId = auth.currentUser?.uid || 'anonymous_user';
@@ -32,15 +64,53 @@ export default function LearningScreen() {
         });
 
         return () => unsubscribe();
-    }, [selectedEntry?.id]);
+    }, [selectedEntry?.id, refreshTrigger]); // Added refreshTrigger dependency
 
-    const filteredEntries = entries.filter(item => {
-        if (viewMode === 'archived') return item.archived;
-        if (item.archived) return false;
-        if (viewMode === 'active') return item.status !== 'completed';
-        if (viewMode === 'completed') return item.status === 'completed';
-        return false;
-    });
+    const filteredEntries = React.useMemo(() => {
+        let result = entries.filter(item => {
+            const matchesViewMode = item.archived ? viewMode === 'archived' :
+                viewMode === 'active' ? item.status !== 'completed' :
+                    viewMode === 'completed' ? item.status === 'completed' : false;
+
+            if (!matchesViewMode) return false;
+
+            // Apply Advanced Filters
+            if (filters.paths.length > 0 && !filters.paths.includes(item.path)) return false;
+            if (filters.companies.length > 0 && !filters.companies.includes(item.companyName)) return false;
+
+            if (filters.dateRange !== 'all') {
+                const now = new Date();
+                const days = filters.dateRange === '7days' ? 7 : 30;
+                const cutoff = new Date(now.setDate(now.getDate() - days));
+                if (new Date(item.createdAt) < cutoff) return false;
+            }
+
+            return true;
+        });
+
+        // Apply Sorting
+        result.sort((a, b) => {
+            switch (sortOption) {
+                case 'recent':
+                    return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+                case 'skill_asc':
+                    return a.skillName.localeCompare(b.skillName);
+                case 'skill_desc':
+                    return b.skillName.localeCompare(a.skillName);
+                case 'progress_desc': {
+                    const progressA = (a.currentSlide || 0) / (a.totalSlides || 1);
+                    const progressB = (b.currentSlide || 0) / (b.totalSlides || 1);
+                    return progressB - progressA;
+                }
+                case 'company_asc':
+                    return a.companyName.localeCompare(b.companyName);
+                default:
+                    return 0;
+            }
+        });
+
+        return result;
+    }, [entries, viewMode, filters, sortOption]);
 
     const handleArchive = async (id: string) => {
         try {
@@ -64,6 +134,7 @@ export default function LearningScreen() {
     };
 
     const handleStartTraining = async (item: LearningEntry) => {
+        if (!checkTokens(30)) return; // Cost: 30 tokens
         if (item.slides && item.slides.length > 0) {
             setSelectedEntry(item);
             setShowSlideshow(true);
@@ -76,7 +147,8 @@ export default function LearningScreen() {
                 item.id,
                 item.skillName,
                 item.jobTitle,
-                item.companyName
+                item.companyName,
+                item.userId
             );
 
             // Re-fetch or rely on subscription to update entries
@@ -103,10 +175,49 @@ export default function LearningScreen() {
 
     const handleCompleteTraining = async (id: string) => {
         try {
+            const entry = entries.find(e => e.id === id);
+
             await learningService.updateEntry(id, {
                 status: 'completed',
                 completionDate: new Date()
             });
+
+            // Trigger Email Notification via ghost task
+            try {
+                if (entry) {
+                    const taskId = await taskService.createTask('course_completion', {
+                        applicationId: entry.id, // Re-using applicationId field for entryId
+                        skillName: entry.skillName,
+                        company: entry.companyName,
+                        jobTitle: entry.jobTitle
+                    });
+                    await taskService.completeTask(taskId, entry.id);
+                }
+            } catch (notificationError) {
+                console.warn("Failed to trigger course completion notification task:", notificationError);
+            }
+
+            // Log activity for course completion
+            try {
+                if (entry) {
+                    await activityService.logActivity({
+                        type: 'learning_completion',
+                        description: `Completed learning module: ${entry.skillName} `,
+                        resourceId: entry.id,
+                        resourceName: entry.skillName,
+                        platform: 'ios'
+                    });
+                }
+            } catch (activityError) {
+                console.warn("Failed to log learning completion activity:", activityError);
+            }
+
+            // Send local push notification for learning completion
+            if (entry) {
+                await notificationService.notifyLearningComplete(entry.skillName)
+                    .catch((e: any) => console.error("Learning notification failed:", e));
+            }
+
             setShowSlideshow(false);
             setSelectedEntry(null);
             setViewMode('completed');
@@ -137,8 +248,8 @@ export default function LearningScreen() {
                         <View style={{ alignItems: 'flex-end' }}>
                             <Chip
                                 mode="flat"
-                                style={{ backgroundColor: item.status === 'completed' ? '#E8F5E9' : '#FFF3E0', marginBottom: 4 }}
-                                textStyle={{ color: item.status === 'completed' ? '#2E7D32' : '#E65100', fontSize: 10 }}
+                                style={{ backgroundColor: item.status === 'completed' ? theme.colors.primaryContainer : theme.colors.surfaceVariant, marginBottom: 4 }}
+                                textStyle={{ color: item.status === 'completed' ? theme.colors.onPrimaryContainer : theme.colors.onSurfaceVariant, fontSize: 10 }}
                             >
                                 {item.status === 'completed' ? 'ACHIEVED' : 'LEARNING'}
                             </Chip>
@@ -227,38 +338,45 @@ export default function LearningScreen() {
     }
 
     return (
-        <View style={styles.container}>
-            <View style={styles.summaryHeader}>
+        <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
+            <View style={[styles.summaryHeader, { backgroundColor: theme.colors.background, borderBottomColor: theme.colors.outlineVariant }]}>
                 <Text variant="headlineMedium" style={styles.title}>Learning Hub</Text>
                 <Text variant="bodySmall">Track your skill acquisition and professional growth.</Text>
 
                 <View style={styles.tabContainer}>
                     <TouchableOpacity
-                        style={[styles.tab, viewMode === 'active' && styles.activeTab]}
+                        style={[styles.tab, viewMode === 'active' && { borderBottomColor: theme.colors.primary }]}
                         onPress={() => setViewMode('active')}
                     >
-                        <Text style={[styles.tabText, viewMode === 'active' && styles.activeTabText]}>
+                        <Text style={[styles.tabText, { color: viewMode === 'active' ? theme.colors.primary : theme.colors.onSurfaceVariant }]}>
                             Active ({entries.filter(e => !e.archived && e.status !== 'completed').length})
                         </Text>
                     </TouchableOpacity>
                     <TouchableOpacity
-                        style={[styles.tab, viewMode === 'completed' && styles.activeTab]}
+                        style={[styles.tab, viewMode === 'completed' && { borderBottomColor: theme.colors.primary }]}
                         onPress={() => setViewMode('completed')}
                     >
-                        <Text style={[styles.tabText, viewMode === 'completed' && styles.activeTabText]}>
+                        <Text style={[styles.tabText, { color: viewMode === 'completed' ? theme.colors.primary : theme.colors.onSurfaceVariant }]}>
                             Completed ({entries.filter(e => !e.archived && e.status === 'completed').length})
                         </Text>
                     </TouchableOpacity>
                     <TouchableOpacity
-                        style={[styles.tab, viewMode === 'archived' && styles.activeTab]}
+                        style={[styles.tab, viewMode === 'archived' && { borderBottomColor: theme.colors.primary }]}
                         onPress={() => setViewMode('archived')}
                     >
-                        <Text style={[styles.tabText, viewMode === 'archived' && styles.activeTabText]}>
+                        <Text style={[styles.tabText, { color: viewMode === 'archived' ? theme.colors.primary : theme.colors.onSurfaceVariant }]}>
                             Archived ({entries.filter(e => e.archived).length})
                         </Text>
                     </TouchableOpacity>
                 </View>
             </View>
+
+            <LearningFilters
+                entries={entries}
+                onFilterChange={setFilters}
+                currentSort={sortOption}
+                onSortChange={setSortOption}
+            />
 
             <FlatList
                 data={filteredEntries}
@@ -301,14 +419,14 @@ export default function LearningScreen() {
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: '#f5f5f5',
+        // backgroundColor: '#f5f5f5', // Handled inline
     },
     summaryHeader: {
         padding: 24,
         paddingBottom: 12,
-        backgroundColor: '#fff',
+        // backgroundColor: '#fff', // Handled inline
         borderBottomWidth: 1,
-        borderBottomColor: '#e0e0e0',
+        borderBottomColor: '#e0e0e030', // More subtle
     },
     title: {
         fontWeight: 'bold',
@@ -326,21 +444,21 @@ const styles = StyleSheet.create({
         borderBottomColor: 'transparent',
     },
     activeTab: {
-        borderBottomColor: '#6200ee', // theme primary color
+        // borderBottomColor: '#6200ee', // Handled inline
     },
     tabText: {
-        color: '#757575',
+        // color: '#757575', // Handled inline
         fontWeight: '500',
     },
     activeTabText: {
-        color: '#6200ee',
+        // color: '#6200ee', // Handled inline
     },
     list: {
         padding: 16,
     },
     card: {
         marginBottom: 12,
-        backgroundColor: '#fff',
+        // backgroundColor: '#fff', // Handled inline
     },
     header: {
         flexDirection: 'row',
@@ -354,7 +472,7 @@ const styles = StyleSheet.create({
         marginTop: 8,
         paddingTop: 8,
         borderTopWidth: 1,
-        borderTopColor: '#f0f0f0',
+        borderTopColor: '#f0f0f030', // More subtle
     },
     centered: {
         flex: 1,

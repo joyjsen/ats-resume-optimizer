@@ -111,7 +111,7 @@ Requirements: ${JSON.stringify(job.requirements, null, 2)}
 Provide the analysis JSON.
     `.trim();
 
-    const response = await safeOpenAICall(() => openai.chat.completions.create({
+    const options = {
       model: 'gpt-4o-mini',
       messages: [
         { role: 'system', content: systemInstruction },
@@ -119,7 +119,13 @@ Provide the analysis JSON.
       ],
       response_format: { type: 'json_object' },
       max_tokens: 2000,
-    }), 'Gap Analysis');
+    };
+
+    const response = await safeOpenAICall(
+      () => openai.chat.completions.create(options as any),
+      'Gap Analysis',
+      options
+    );
 
     const content = response.choices[0].message.content;
     if (!content) {
@@ -204,6 +210,7 @@ Provide the analysis JSON.
 
   /**
    * Generate detailed recommendation
+   * OPTIMIZED: Runs upskill path and alternative jobs in parallel when needed
    */
   private async generateRecommendation(
     aiAnalysis: { matchAnalysis: MatchAnalysis; gaps: GapAnalysis },
@@ -213,6 +220,7 @@ Provide the analysis JSON.
     job: JobPosting
   ): Promise<Recommendation> {
     if (readyToApply) {
+      // Fast path - no additional API calls needed
       return {
         action: 'optimize',
         confidence: atsScore,
@@ -222,11 +230,11 @@ Provide the analysis JSON.
       };
     }
 
-    // User needs to upskill - generate learning path
-    const upskillPath = await this.generateUpskillPath(aiAnalysis.gaps, resume, job);
-
-    // Find alternative jobs they might be qualified for
-    const alternativeJobs = await this.findAlternativeJobs(resume, job);
+    // User needs to upskill - generate learning path and alternatives IN PARALLEL
+    const [upskillPath, alternativeJobs] = await Promise.all([
+      this.generateUpskillPath(aiAnalysis.gaps, resume, job),
+      this.findAlternativeJobs(resume, job)
+    ]);
 
     const totalGapScore = aiAnalysis.gaps.totalGapScore;
     let action: 'upskill' | 'apply_junior' | 'not_suitable';
@@ -318,12 +326,18 @@ IMPORTANT:
 Return ONLY valid JSON.
     `.trim();
 
-    const response = await safeOpenAICall(() => openai.chat.completions.create({
+    const options = {
       model: 'gpt-4o-mini',
       messages: [{ role: 'user', content: prompt }],
       response_format: { type: 'json_object' },
       max_tokens: 2500,
-    }), 'Upskilling Path');
+    };
+
+    const response = await safeOpenAICall(
+      () => openai.chat.completions.create(options as any),
+      'Upskilling Path',
+      options
+    );
 
     const content = response.choices[0].message.content;
     if (!content) throw new Error('No content from OpenAI');
@@ -366,12 +380,18 @@ Focus on:
 Return ONLY valid JSON object with "alternatives" key.
     `.trim();
 
-    const response = await safeOpenAICall(() => openai.chat.completions.create({
+    const options = {
       model: 'gpt-4o-mini',
       messages: [{ role: 'user', content: prompt }],
       response_format: { type: 'json_object' },
       max_tokens: 500,
-    }), 'Alternative Jobs');
+    };
+
+    const response = await safeOpenAICall(
+      () => openai.chat.completions.create(options as any),
+      'Alternative Jobs',
+      options
+    );
 
     const content = response.choices[0].message.content;
     if (!content) return [];

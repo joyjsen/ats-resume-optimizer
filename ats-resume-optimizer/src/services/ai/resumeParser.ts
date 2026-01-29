@@ -40,22 +40,24 @@ export class ResumeParserService {
 
   /**
    * Extract content from multiple files (Images, Text, PDF, DOCX)
+   * OPTIMIZED: Batches multiple images into a single OCR call
    */
   async extractContentFromFiles(fileUris: string[]): Promise<string> {
     try {
-      const contents = await Promise.all(fileUris.map(async (uri) => {
-        // Case 1: Image - Perform OCR immediately for preview
-        if (uri.match(/\.(jpg|jpeg|png)$/i) || uri.startsWith('data:image')) {
-          try {
-            const base64 = await FileSystem.readAsStringAsync(uri, { encoding: 'base64' });
-            // We perform a quick OCR call here so the UI can show the text
-            return await this.performOCR(base64);
-          } catch (e) {
-            console.error("OCR Error", e);
-            return "[Error extracting text from image]";
-          }
-        }
+      // Separate images from other file types for batch processing
+      const imageUris: string[] = [];
+      const otherUris: string[] = [];
 
+      for (const uri of fileUris) {
+        if (uri.match(/\.(jpg|jpeg|png)$/i) || uri.startsWith('data:image')) {
+          imageUris.push(uri);
+        } else {
+          otherUris.push(uri);
+        }
+      }
+
+      // Process non-image files
+      const otherContents = await Promise.all(otherUris.map(async (uri) => {
         // Case 2: Text/Markdown/JSON
         if (uri.match(/\.(txt|md|json)$/i)) {
           return await FileSystem.readAsStringAsync(uri);
@@ -65,8 +67,6 @@ export class ResumeParserService {
         if (uri.match(/\.docx$/i) || uri.match(/\.doc$/i)) {
           try {
             const base64 = await FileSystem.readAsStringAsync(uri, { encoding: 'base64' });
-            // Mammoth requires a buffer.
-            // Since we are in Expo/RN, we need to ensure Buffer availability (polyfilled).
             const buffer = Buffer.from(base64, 'base64');
             const result = await mammoth.extractRawText({ arrayBuffer: buffer });
             return result.value || "";
@@ -84,7 +84,28 @@ export class ResumeParserService {
         return `[WARNING: Unsupported file type ${uri.split('/').pop()}]`;
       }));
 
-      return contents.join('\n\n');
+      // Process images - batch into single OCR call if multiple
+      let imageContent = "";
+      if (imageUris.length > 0) {
+        try {
+          const base64Images = await Promise.all(
+            imageUris.map(uri => FileSystem.readAsStringAsync(uri, { encoding: 'base64' }))
+          );
+          // Use batched OCR for multiple images (single API call)
+          imageContent = await this.performBatchedOCR(base64Images);
+        } catch (e) {
+          console.error("OCR Error", e);
+          imageContent = "[Error extracting text from images]";
+        }
+      }
+
+      // Combine all content
+      const allContents = [...otherContents];
+      if (imageContent) {
+        allContents.push(imageContent);
+      }
+
+      return allContents.join('\n\n');
     } catch (error) {
       console.error("File reading error:", error);
       throw error;
@@ -180,11 +201,17 @@ Guidelines:
       throw new Error("No valid content found. Please upload a Screenshot (Image), Text file (.txt), PDF, or DOCX.");
     }
 
-    const response = await safeOpenAICall(() => openai.chat.completions.create({
+    const options = {
       model: 'gpt-4o-mini',
       messages: messages,
       response_format: { type: 'json_object' },
-    }), 'Resume Parse');
+    };
+
+    const response = await safeOpenAICall(
+      () => openai.chat.completions.create(options as any),
+      'Resume Parse',
+      options
+    );
 
     const contentResponse = response.choices[0].message.content;
     if (!contentResponse) throw new Error("No response from AI");
@@ -201,17 +228,26 @@ Guidelines:
   }
 
   /**
-   * Helper to extract text from image info
+   * Batched OCR - processes multiple images in a single API call
+   * This is significantly faster than individual OCR calls
    */
-  private async performOCR(base64Image: string): Promise<string> {
+  private async performBatchedOCR(base64Images: string[]): Promise<string> {
     try {
-      // Explicitly type the message content for OpenAI
+      const imageContent = base64Images.map(base64 => ({
+        type: 'image_url',
+        image_url: { url: `data:image/jpeg;base64,${base64}` }
+      }));
+
+      const prompt = base64Images.length > 1
+        ? `Extract ALL text from these ${base64Images.length} resume images verbatim. If the content spans multiple pages/images, combine them in logical order. Do not summarize. Return only the extracted text.`
+        : "Extract the text from this resume image verbatim. Do not summarize. Return only the text.";
+
       const messages: any[] = [
         {
           role: 'user',
           content: [
-            { type: 'text', text: "Extract the text from this resume image verbatim. Do not summarize. Return only the text." },
-            { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${base64Image}` } }
+            { type: 'text', text: prompt },
+            ...imageContent as any
           ]
         }
       ];
@@ -219,25 +255,30 @@ Guidelines:
       const response = await safeOpenAICall(() => openai.chat.completions.create({
         model: 'gpt-4o-mini',
         messages: messages,
-        max_tokens: 2000,
-      }), 'Resume OCR');
+        max_tokens: 4000, // Higher limit for multiple pages
+      }), 'Resume OCR (Batched)');
 
       let text = response.choices[0].message.content || "";
 
       // Text Cleaning: Remove AI refusal/apology messages
-      // Pattern matches: Start of string or whitespace, followed by (I'm|I am|Sorry), until the next punctuation (.!?)
       const refusalPattern = /(?:^|\s)(?:I'?m\s+sorry|I\s+am\s+sorry|Sorry)[^.!?]*[.!?]/gi;
-
       text = text.replace(refusalPattern, '');
 
-      // Clean up excessive whitespace (multiple spaces/newlines to single)
+      // Clean up excessive whitespace
       text = text.replace(/\s+/g, ' ').trim();
 
       return text;
     } catch (e) {
-      console.error("OCR Failed", e);
-      throw new Error("Failed to extract text from image");
+      console.error("Batched OCR Failed", e);
+      throw new Error("Failed to extract text from images");
     }
+  }
+
+  /**
+   * Helper to extract text from single image (kept for backwards compatibility)
+   */
+  private async performOCR(base64Image: string): Promise<string> {
+    return this.performBatchedOCR([base64Image]);
   }
 
   private generateId(): string {

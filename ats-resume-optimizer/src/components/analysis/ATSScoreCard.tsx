@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, StyleSheet } from 'react-native';
 import { Card, Text, ProgressBar, useTheme, Avatar } from 'react-native-paper';
+import { getATSScoreRecommendation } from '../../utils/scoreColors';
 
 interface Props {
     score: number;
@@ -11,35 +12,7 @@ interface Props {
 export const ATSScoreCard = ({ score, originalScore, threshold = 75 }: Props) => {
     const theme = useTheme();
 
-    const getRecommendation = (s: number) => {
-        if (s > 75) {
-            return {
-                color: '#4CAF50', // Green
-                icon: 'check-circle',
-                message: "Strongly encouraged to apply",
-                description: "You have a strong match with the job requirements and should proceed with confidence.",
-                bg: '#E8F5E9'
-            };
-        }
-        if (s > 50) {
-            return {
-                color: '#FF9800', // Amber/Orange
-                icon: 'alert',
-                message: "Encouraged to apply, better chances with skill upgrades",
-                description: "You have a decent foundation but could improve your chances by adding missing skills.",
-                bg: '#FFF3E0'
-            };
-        }
-        return {
-            color: '#F44336', // Red
-            icon: 'book-open-variant',
-            message: "Brush up on skills before applying",
-            description: "Significant skill gaps exist; focus on skill development before applying.",
-            bg: '#FFEBEE'
-        };
-    };
-
-    const rec = getRecommendation(score);
+    const rec = getATSScoreRecommendation(score);
     const diff = originalScore !== undefined ? score - originalScore : 0;
 
     return (

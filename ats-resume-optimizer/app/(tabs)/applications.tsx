@@ -1,29 +1,49 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { View, StyleSheet, FlatList, RefreshControl, Alert, ScrollView, Keyboard } from 'react-native';
-import { Text, Button, Searchbar, SegmentedButtons, FAB, useTheme, ActivityIndicator, Portal, Dialog, TextInput, ProgressBar, Card, Chip, Divider } from 'react-native-paper';
-import { useRouter } from 'expo-router';
+import { Text, Button, Searchbar, SegmentedButtons, FAB, useTheme, ActivityIndicator, Portal, Dialog, TextInput, ProgressBar, Card, Chip, Divider, IconButton } from 'react-native-paper';
+import { useRouter, useNavigation } from 'expo-router';
 import { applicationService } from '../../src/services/firebase/applicationService';
 import { Application, ApplicationStage } from '../../src/types/application.types';
 import { ApplicationCard } from '../../src/components/applications/ApplicationCard';
+import { ApplicationFilters, ApplicationFilterState, ApplicationSortOption } from '../../src/components/applications/ApplicationFilters';
 import { historyService } from '../../src/services/firebase/historyService';
 import { DocxGenerator } from '../../src/services/docx/docxGenerator';
 import { ParsedResume } from '../../src/types/resume.types';
+import { SavedAnalysis } from '../../src/types/history.types';
 import { useResumeStore } from '../../src/store/resumeStore';
 import { perplexityService } from '../../src/services/ai/perplexityService';
+import { activityService } from '../../src/services/firebase/activityService';
 import { prepAssistantService } from '../../src/services/ai/prepAssistant';
 import { prepGuidePdfGenerator } from '../../src/services/pdf/pdfGenerator';
+import { taskService } from '../../src/services/firebase/taskService';
+import { notificationService } from '../../src/services/firebase/notificationService';
+import { backgroundTaskService, BackgroundTask } from '../../src/services/firebase/backgroundTaskService';
+import { UserHeader } from '../../src/components/layout/UserHeader'; // Import UserHeader
+import { useTokenCheck } from '../../src/hooks/useTokenCheck';
 
 export default function ApplicationsScreen() {
     const router = useRouter();
+    const navigation = useNavigation();
     const theme = useTheme();
     const { setCurrentAnalysis } = useResumeStore();
+    const { checkTokens } = useTokenCheck();
     const [applications, setApplications] = useState<Application[]>([]);
+    const [pendingAnalyses, setPendingAnalyses] = useState<SavedAnalysis[]>([]);
     const [loading, setLoading] = useState(true);
     const [searchQuery, setSearchQuery] = useState('');
     const [viewingCoverLetterApp, setViewingCoverLetterApp] = useState<Application | null>(null);
     const [isEditingCoverLetter, setIsEditingCoverLetter] = useState(false);
     const [editedCoverLetterContent, setEditedCoverLetterContent] = useState('');
     const [viewMode, setViewMode] = useState('active'); // active | archived
+
+    // Filter & Sort State
+    const [sortOption, setSortOption] = useState<ApplicationSortOption>('recent');
+    const [filters, setFilters] = useState<ApplicationFilterState>({
+        stages: [],
+        companies: [],
+        scoreRanges: [],
+        dateRange: 'all'
+    });
 
     // Prep Guide State
     const [prepConfirmationVisible, setPrepConfirmationVisible] = useState(false);
@@ -37,36 +57,232 @@ export default function ApplicationsScreen() {
     // Derived State for Viewing App
     const viewingPrepApp = viewingPrepAppId ? applications.find(a => a.id === viewingPrepAppId) : null;
 
+    // Convert pending/draft analyses to read-only applications
+    const convertAnalysisToReadOnlyApp = (analysis: SavedAnalysis): Application => {
+        const hasDraft = !!analysis.draftOptimizedResumeData;
+        const analysisStatus = hasDraft ? 'draft_ready' : 'pending_resume_update';
+
+        return {
+            id: `analysis_${analysis.id}`, // Prefix to distinguish from real apps
+            userId: analysis.userId,
+            analysisId: analysis.id,
+            jobTitle: analysis.jobTitle || 'Untitled Position',
+            company: analysis.company || 'Unknown Company',
+            jobDescription: analysis.jobData?.description || '',
+            atsScore: analysis.draftAtsScore || analysis.atsScore || 0,
+            currentStage: 'not_applied',
+            lastStatusUpdate: analysis.updatedAt || analysis.createdAt,
+            timeline: [{
+                stage: 'not_applied' as ApplicationStage,
+                date: analysis.createdAt,
+                note: 'Analysis created'
+            }],
+            isArchived: false,
+            createdAt: analysis.createdAt,
+            updatedAt: analysis.updatedAt || analysis.createdAt,
+            isReadOnly: true,
+            analysisStatus: analysisStatus
+        };
+    };
+
+    // Merge applications with read-only pending analyses
+    const mergedApplications = React.useMemo(() => {
+        // Create a map of analyses by ID for quick lookup
+        const analysesById = new Map(pendingAnalyses.map(a => [a.id, a]));
+
+        // Get IDs of analyses that already have applications
+        const analysisIdsWithApps = new Set(applications.map(app => app.analysisId));
+
+        // Process existing applications - check if they have pending skill updates
+        const processedApps = applications.map(app => {
+            const linkedAnalysis = analysesById.get(app.analysisId);
+
+            // Check if the linked analysis has pending draft changes (skill updates)
+            if (linkedAnalysis && linkedAnalysis.draftOptimizedResumeData && linkedAnalysis.optimizedResumeData) {
+                // Analysis was optimized but now has new draft changes (skill addition)
+                return {
+                    ...app,
+                    isReadOnly: true,
+                    analysisStatus: 'pending_skill_update' as const,
+                    // Update score to show the draft score
+                    atsScore: linkedAnalysis.draftAtsScore || app.atsScore
+                };
+            }
+            return app;
+        });
+
+        // Convert pending analyses (those without optimizedResumeData) to read-only apps
+        const readOnlyApps = pendingAnalyses
+            .filter(analysis => {
+                // Only include if:
+                // 1. No existing application for this analysis
+                // 2. No optimizedResumeData (not yet fully optimized)
+                return !analysisIdsWithApps.has(analysis.id) && !analysis.optimizedResumeData;
+            })
+            .map(convertAnalysisToReadOnlyApp);
+
+        // Merge processed apps with read-only apps
+        return [...processedApps, ...readOnlyApps];
+    }, [applications, pendingAnalyses]);
+
+    const [refreshTrigger, setRefreshTrigger] = useState(0);
+
+    const handleRefresh = React.useCallback(() => {
+        setLoading(true);
+        setRefreshTrigger(prev => prev + 1);
+
+        // Sync Logic: Check for zombie applications (missing parent analysis)
+        (async () => {
+            try {
+                // 1. Fetch fresh data
+                const allAnalyses = await historyService.getUserHistory();
+                const allApps = await applicationService.getApplications();
+
+                const analysisIds = new Set(allAnalyses.map(a => a.id));
+                let removedCount = 0;
+
+                // 2. Identify zombies
+                // Only check real apps (not read-only pending ones we synthesized)
+                const zombieApps = allApps.filter(app => !app.isReadOnly && !analysisIds.has(app.analysisId));
+
+                // 3. Cleanup
+                for (const zombie of zombieApps) {
+                    console.log(`Removing zombie application: ${zombie.id} (Analysis ${zombie.analysisId} missing)`);
+                    await applicationService.deleteApplication(zombie.id);
+                    removedCount++;
+                }
+
+                if (removedCount > 0) {
+                    Alert.alert("Sync Complete", `Cleaned up ${removedCount} application(s) with missing data.`);
+                    setRefreshTrigger(prev => prev + 1); // Trigger re-render after cleanup
+                }
+            } catch (err) {
+                console.error("Sync failed:", err);
+            } finally {
+                setLoading(false);
+            }
+        })();
+    }, []);
+
+    React.useLayoutEffect(() => {
+        navigation.setOptions({
+            headerRight: () => (
+                <UserHeader />
+            ),
+        });
+    }, [navigation]);
+
     useEffect(() => {
-        const unsubscribe = applicationService.subscribeToApplications((apps) => {
+        setLoading(true);
+        // Subscribe to applications
+        const unsubApps = applicationService.subscribeToApplications((apps) => {
             setApplications(apps);
             setLoading(false);
         });
-        return () => unsubscribe();
-    }, []);
 
-    const filteredApplications = applications.filter(app => {
-        const matchesSearch =
-            app.jobTitle.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            app.company.toLowerCase().includes(searchQuery.toLowerCase());
+        // Subscribe to analyses (to get pending/draft ones)
+        const unsubAnalyses = historyService.subscribeToUserHistory((analyses) => {
+            setPendingAnalyses(analyses);
+        });
 
-        const isArchived = app.isArchived;
-        if (viewMode === 'active') return !isArchived && matchesSearch;
-        return isArchived && matchesSearch;
-    });
+        return () => {
+            unsubApps();
+            unsubAnalyses();
+        };
+    }, [refreshTrigger]);
+
+    const filteredApplications = React.useMemo(() => {
+        let result = mergedApplications.filter(app => {
+            const matchesSearch =
+                app.jobTitle.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                app.company.toLowerCase().includes(searchQuery.toLowerCase());
+
+            const matchesViewMode = viewMode === 'archived' ? app.isArchived : !app.isArchived;
+            if (!matchesSearch || !matchesViewMode) return false;
+
+            // Apply Advanced Filters
+            if (filters.stages.length > 0 && !filters.stages.includes(app.currentStage)) return false;
+            if (filters.companies.length > 0 && !filters.companies.includes(app.company)) return false;
+
+            if (filters.scoreRanges.length > 0) {
+                const matchesScore = filters.scoreRanges.some(range => {
+                    const [min, max] = range.split('-').map(Number);
+                    return app.atsScore >= min && app.atsScore <= max;
+                });
+                if (!matchesScore) return false;
+            }
+
+            if (filters.dateRange !== 'all') {
+                const now = new Date();
+                const days = filters.dateRange === '7days' ? 7 : filters.dateRange === '30days' ? 30 : 90;
+                const cutoff = new Date(now.setDate(now.getDate() - days));
+                if (new Date(app.lastStatusUpdate) < cutoff) return false;
+            }
+
+            return true;
+        });
+
+        // Apply Sorting
+        result.sort((a, b) => {
+            switch (sortOption) {
+                case 'recent':
+                    return new Date(b.lastStatusUpdate).getTime() - new Date(a.lastStatusUpdate).getTime();
+                case 'score_desc':
+                    return b.atsScore - a.atsScore;
+                case 'score_asc':
+                    return a.atsScore - b.atsScore;
+                case 'company_asc':
+                    return a.company.localeCompare(b.company);
+                case 'company_desc':
+                    return b.company.localeCompare(a.company);
+                case 'stage_priority': {
+                    const priority: Record<string, number> = {
+                        'offer': 0,
+                        'final_round': 1,
+                        'technical': 2,
+                        'phone_screen': 3,
+                        'submitted': 4,
+                        'not_applied': 5,
+                        'other': 6,
+                        'withdrawn': 7,
+                        'rejected': 8
+                    };
+                    return (priority[a.currentStage] ?? 9) - (priority[b.currentStage] ?? 9);
+                }
+                default:
+                    return 0;
+            }
+        });
+
+        return result;
+    }, [mergedApplications, searchQuery, viewMode, filters, sortOption]);
 
     const handleStatusUpdate = async (id: string, stage: ApplicationStage, note?: string, customName?: string) => {
         const success = await applicationService.updateStatus(id, stage, note, customName);
         if (success) {
-            // Check if we need to lock dashboard (this logic is typically handled by the useEffect in Dashboard, 
-            // but we might want to proactively update the Analysis document here if needed.
-            // For now, the dashboard can read the Application status if we link them, OR we can rely on 
-            // the user seeing the changes in this tab. The spec said "Dashboard Updates...".
-            // Since we linked in historyService, we can query it or let the robust syncing happen later.
-            // Simple Alert for now to confirm action.
+            // Success
         } else {
             Alert.alert("Error", "Failed to update status.");
         }
+    };
+
+    const handleRestore = async (id: string) => {
+        Alert.alert(
+            "Restore Application",
+            "Are you sure you want to restore this application to the active list?",
+            [
+                { text: "Cancel", style: "cancel" },
+                {
+                    text: "Restore",
+                    onPress: async () => {
+                        const success = await applicationService.setArchived(id, false);
+                        if (!success) {
+                            Alert.alert("Error", "Failed to restore application.");
+                        }
+                    }
+                }
+            ]
+        );
     };
 
     const handleGenerateCoverLetter = async (id: string) => {
@@ -74,7 +290,8 @@ export default function ApplicationsScreen() {
             const app = applications.find(a => a.id === id);
             if (!app) return;
 
-            if (app.coverLetter) {
+            // If cover letter exists and is completed with content, view it
+            if (app.coverLetter?.status === 'completed' && app.coverLetter?.content) {
                 setViewingCoverLetterApp(app);
                 return;
             }
@@ -142,41 +359,80 @@ export default function ApplicationsScreen() {
         }
     };
 
-    const generateLetter = async (app: Application) => {
+    const generateLetter = async (application: Application, onDismissModal?: () => void) => {
+        if (!checkTokens(15, onDismissModal)) return;
         setLoading(true);
         try {
-            // Get necessary data
+            // Get necessary data for the background task
             let resumeData: ParsedResume | null = null;
-            let jobDescription = app.jobDescription;
+            let jobDescription = application.jobDescription;
 
-            if (app.submittedResumeData) {
-                resumeData = app.submittedResumeData;
+            if (application.submittedResumeData) {
+                resumeData = application.submittedResumeData;
             } else {
-                const analysis = await historyService.getAnalysisById(app.analysisId);
+                const analysis = await historyService.getAnalysisById(application.analysisId);
                 if (analysis) {
                     resumeData = analysis.optimizedResumeData || analysis.resumeData || null;
-                    if (!jobDescription) jobDescription = analysis.jobData.description; // Fallback if app missing JD
+                    if (!jobDescription) jobDescription = analysis.jobData.description;
                 }
             }
 
             if (!resumeData) {
                 Alert.alert("Error", "No resume data available to generate a cover letter.");
+                setLoading(false);
                 return;
             }
 
-            const letter = await perplexityService.generateCoverLetter(
-                resumeData,
-                app.jobTitle,
-                app.company,
-                jobDescription
+            // Use fire-and-forget pattern: create a background task
+            // The Cloud Function processes it automatically and updates Firestore
+            // We listen via Firestore for completion - works even when app is backgrounded
+            console.log("[CoverLetter] Creating background task for server-side generation...");
+
+            await backgroundTaskService.createTask(
+                'cover_letter',
+                {
+                    applicationId: application.id,
+                    resume: resumeData,
+                    jobTitle: application.jobTitle,
+                    company: application.company,
+                    jobDescription: jobDescription
+                },
+                // onComplete - called when Firestore updates with completion
+                async (bgTask: BackgroundTask) => {
+                    console.log("[CoverLetter] Background task completed");
+
+                    // Log activity (tokens already deducted by Cloud Function)
+                    await activityService.logActivity({
+                        type: 'cover_letter_generation',
+                        description: `Cover Letter for ${application.company}`,
+                        resourceId: application.id,
+                        resourceName: application.company,
+                        aiProvider: 'perplexity-sonar-pro',
+                        platform: 'ios',
+                        skipTokenDeduction: true
+                    });
+
+                    // Note: Push notification is now handled by Cloud Function only
+                    // to prevent duplicates. No client-side notification calls needed.
+
+                    Alert.alert("Success", "Cover Letter generated successfully!");
+                },
+                // onError
+                (bgTask: BackgroundTask) => {
+                    console.error("[CoverLetter] Background task failed:", bgTask.error);
+                    Alert.alert("Error", bgTask.error || "Failed to generate cover letter.");
+                }
             );
 
-            await applicationService.saveCoverLetter(app.id, letter);
-            Alert.alert("Success", "Cover Letter generated successfully!");
+            // Show immediate feedback - the task is now processing in the background
+            Alert.alert(
+                "Generating...",
+                "Your cover letter is being generated. You'll be notified when it's ready. You can close the app."
+            );
 
         } catch (error) {
             console.error("Cover Letter generation failed:", error);
-            Alert.alert("Error", "Failed to generate cover letter. Please try again.");
+            Alert.alert("Error", "Failed to start cover letter generation. Please try again.");
         } finally {
             setLoading(false);
         }
@@ -200,54 +456,114 @@ export default function ApplicationsScreen() {
         }
     };
 
-    // Async Background Generation
-    const runBackgroundGeneration = async (appId: string, signal?: AbortSignal) => {
+    // Async Background Generation - uses fire-and-forget pattern with Firestore triggers
+    // The Cloud Function is triggered automatically when we create a background_tasks document
+    // This works even when the app is backgrounded because Firestore listeners persist
+    const runBackgroundGeneration = async (appId: string, signal?: AbortSignal, onDismissModal?: () => void) => {
+        if (!checkTokens(40, onDismissModal)) return; // Cost: 40 tokens (was 15)
         try {
-            const app = applications.find(a => a.id === appId);
-            if (!app) return;
+            const application = applications.find(a => a.id === appId);
+            if (!application) return;
 
-            // 1. Generate Content (prepAssistantService now handles its own "generating" status update)
-            const analysis = await historyService.getAnalysisById(app.analysisId);
+            // Get analysis data needed for prep guide
+            const analysis = await historyService.getAnalysisById(application.analysisId);
             if (!analysis) throw new Error("Analysis data not found");
             if (signal?.aborted) return;
 
-            const resumeToUse = app.submittedResumeData || analysis.optimizedResumeData || analysis.resumeData;
+            const resumeToUse = application.submittedResumeData || analysis.optimizedResumeData || analysis.resumeData;
 
-            const sections = await prepAssistantService.generatePrepGuide({
-                applicationId: app.id,
-                companyName: app.company,
-                jobTitle: app.jobTitle,
-                jobDescription: app.jobDescription || analysis.jobData.description,
-                optimizedResume: JSON.stringify(resumeToUse),
-                atsScore: app.atsScore,
-                matchedSkills: analysis.analysisData.matchAnalysis?.matchedSkills.map((s: any) => s.skill) || [],
-                partialMatches: analysis.analysisData.matchAnalysis?.partialMatches.map((s: any) => s.skill) || [],
-                missingSkills: analysis.analysisData.matchAnalysis?.missingSkills.map((s: any) => s.skill) || [],
-                newSkillsAcquired: [],
-                userId: app.userId
-            }, signal);
+            // 1. DEDUCT TOKENS FIRST - This ensures the user is charged BEFORE any AI work begins
+            // and the logs update immediately in the UI.
+            try {
+                await activityService.logActivity({
+                    type: 'interview_prep_generation',
+                    description: `Prep Guide for ${application.company} - ${application.jobTitle}`,
+                    resourceId: application.id,
+                    resourceName: application.company,
+                    aiProvider: 'perplexity-sonar-pro',
+                    platform: 'ios'
+                });
+                console.log("[PrepGuide] Tokens deducted successfully BEFORE task creation");
+            } catch (deductError: any) {
+                console.error("[PrepGuide] Token deduction failed:", deductError);
+                // Return early - task won't be created
+                Alert.alert("Token Error", deductError.message || "Failed to deduct tokens. Please try again.");
+                return;
+            }
 
-            if (signal?.aborted) return;
+            // 2. CREATE TASK ONLY AFTER SUCCESSFUL DEDUCTION
+            console.log("[PrepGuide] Creating background task for server-side generation...");
 
-            // 2. Generate PDF
-            const pdfUri = await prepGuidePdfGenerator.generateAndShare(sections, {
-                companyName: app.company,
-                jobTitle: app.jobTitle
-            });
+            await backgroundTaskService.createTask(
+                'prep_guide',
+                {
+                    applicationId: application.id,
+                    companyName: application.company,
+                    jobTitle: application.jobTitle,
+                    jobDescription: application.jobDescription || analysis.jobData.description,
+                    optimizedResume: JSON.stringify(resumeToUse),
+                    atsScore: application.atsScore,
+                    matchedSkills: analysis.analysisData.matchAnalysis?.matchedSkills.map((s: any) => s.skill) || [],
+                    partialMatches: analysis.analysisData.matchAnalysis?.partialMatches.map((s: any) => s.skill) || [],
+                    missingSkills: analysis.analysisData.matchAnalysis?.missingSkills.map((s: any) => s.skill) || [],
+                    newSkillsAcquired: []
+                },
+                // onComplete - called when Firestore updates with completion
+                async (bgTask: BackgroundTask) => {
+                    console.log("[PrepGuide] Background task completed");
 
-            // 3. Mark Complete
-            await applicationService.updatePrepStatus(app.id, {
-                status: 'completed',
-                progress: 100,
-                currentStep: 'Completed!',
-                downloadUrl: pdfUri,
-                generatedAt: new Date()
-            });
+                    // LOG AUDIT ACTIVITY - Use skipTokenDeduction because tokens were already deducted at the start
+                    // This serves as a "completion" marker in the log if needed, though usually the start log is enough.
+                    // To avoid cluttering the log with two entries for the same thing, we can either skip this
+                    // or mark it differently. Per user request "update log before task starts", 
+                    // we've already done the main log.
+                    console.log("[PrepGuide] Task completed, skipping duplicate logging.");
+                    // The Cloud Function already updated the application document with sections
+                    // Now generate PDF locally (needs file system access)
+                    const sections = bgTask.result?.sections;
+                    if (sections) {
+                        try {
+                            const pdfUri = await prepGuidePdfGenerator.generateAndShare(sections, {
+                                companyName: application.company,
+                                jobTitle: application.jobTitle
+                            });
+
+                            // Update with PDF URL
+                            await applicationService.updatePrepStatus(application.id, {
+                                downloadUrl: pdfUri,
+                                generatedAt: new Date()
+                            });
+                        } catch (pdfError) {
+                            console.error("[PrepGuide] PDF generation failed:", pdfError);
+                            // PDF generation failed but content is still available in Firestore
+                        }
+                    }
+
+                    // Note: Push notification is now handled by Cloud Function only
+                    // to prevent duplicates. No client-side notification calls needed.
+                },
+                // onError
+                async (bgTask: BackgroundTask) => {
+                    console.error("[PrepGuide] Background task failed:", bgTask.error);
+                    await applicationService.updatePrepStatus(appId, {
+                        status: 'failed',
+                        progress: 0,
+                        currentStep: `Failed: ${bgTask.error || 'Unknown error'}`
+                    }).catch(console.error);
+                }
+            );
+
+            // Task created successfully - the Cloud Function will process it
+            // Progress updates will happen via Firestore listeners in the Application document
 
         } catch (error) {
             console.error("Background Gen Error:", error);
-            // Service handles 'failed' status update in catch block internal, but strictly:
-            // updatePrepStatus('failed') is called in prepAssistantService catch.
+            // Update status to failed
+            await applicationService.updatePrepStatus(appId, {
+                status: 'failed',
+                progress: 0,
+                currentStep: `Failed: ${(error as any).message || 'Unknown error'}`
+            }).catch(console.error);
         }
     };
 
@@ -267,7 +583,7 @@ export default function ApplicationsScreen() {
         abortControllers.current.set(appId, controller);
 
         // Fire and forget (Background Process)
-        runBackgroundGeneration(appId, controller.signal).finally(() => {
+        runBackgroundGeneration(appId, controller.signal, () => setPrepConfirmationVisible(false)).finally(() => {
             if (abortControllers.current.get(appId) === controller) {
                 abortControllers.current.delete(appId);
             }
@@ -376,8 +692,42 @@ export default function ApplicationsScreen() {
         }
     };
 
+    // Handle navigation to complete optimization for read-only cards
+    const handleCompleteOptimization = async (analysisId: string) => {
+        try {
+            const analysis = pendingAnalyses.find(a => a.id === analysisId);
+            if (!analysis) {
+                Alert.alert("Error", "Analysis not found.");
+                return;
+            }
+
+            // Load analysis into store and navigate to analysis result
+            setCurrentAnalysis({
+                id: analysis.id,
+                resume: analysis.resumeData,
+                job: analysis.jobData,
+                matchAnalysis: analysis.draftMatchAnalysis || analysis.analysisData?.matchAnalysis,
+                recommendation: analysis.analysisData?.recommendation,
+                atsScore: analysis.draftAtsScore || analysis.atsScore,
+                optimizedResume: analysis.draftOptimizedResumeData,
+                changes: analysis.draftChangesData,
+                draftOptimizedResumeData: analysis.draftOptimizedResumeData,
+                draftChangesData: analysis.draftChangesData,
+                draftAtsScore: analysis.draftAtsScore,
+                draftMatchAnalysis: analysis.draftMatchAnalysis,
+                optimizedMatchAnalysis: analysis.analysisData?.matchAnalysis
+            } as any);
+
+            router.push('/analysis-result');
+        } catch (error) {
+            console.error("Error navigating to optimization:", error);
+            Alert.alert("Error", "Failed to load analysis.");
+        }
+    };
+
     return (
         <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
+            {/* Header Content */}
             <View style={styles.header}>
                 <Text variant="headlineMedium" style={{ fontWeight: 'bold', marginBottom: 8 }}>My Applications</Text>
 
@@ -387,8 +737,8 @@ export default function ApplicationsScreen() {
                         onValueChange={setViewMode}
                         style={{ flex: 1, marginRight: 8 }}
                         buttons={[
-                            { value: 'active', label: `Active (${applications.filter(a => !a.isArchived).length})` },
-                            { value: 'archived', label: 'Archive' },
+                            { value: 'active', label: `Active (${mergedApplications.filter(a => !a.isArchived).length})` },
+                            { value: 'archived', label: `Archive (${mergedApplications.filter(a => a.isArchived).length})` },
                         ]}
                     />
                 </View>
@@ -400,6 +750,13 @@ export default function ApplicationsScreen() {
                     style={{ marginBottom: 16, backgroundColor: theme.colors.elevation.level1 }}
                     elevation={0}
                 />
+
+                <ApplicationFilters
+                    applications={mergedApplications}
+                    onFilterChange={setFilters}
+                    currentSort={sortOption}
+                    onSortChange={setSortOption}
+                />
             </View>
 
             {loading ? (
@@ -408,6 +765,9 @@ export default function ApplicationsScreen() {
                 </View>
             ) : (
                 <FlatList
+                    refreshControl={
+                        <RefreshControl refreshing={loading} onRefresh={handleRefresh} />
+                    }
                     data={filteredApplications}
                     keyExtractor={item => item.id}
                     renderItem={({ item }) => (
@@ -419,13 +779,15 @@ export default function ApplicationsScreen() {
                             onDownloadResume={handlePreviewResume}
                             onRegeneratePrep={handleRegeneratePrep}
                             onCancelPrep={handleCancelPrep}
+                            onCompleteOptimization={handleCompleteOptimization}
                             isResumeUpdated={
-                                item.lastResumeUpdateAt
+                                !item.isReadOnly && item.lastResumeUpdateAt
                                     ? (item.prepGuide?.generatedAt
                                         ? new Date(item.lastResumeUpdateAt).getTime() > new Date(item.prepGuide.generatedAt).getTime()
                                         : true)
                                     : false
                             }
+                            onRestore={handleRestore}
                         />
                     )}
                     contentContainerStyle={{ paddingBottom: 80 }}
@@ -467,7 +829,7 @@ export default function ApplicationsScreen() {
                                     multiline
                                     value={editedCoverLetterContent}
                                     onChangeText={setEditedCoverLetterContent}
-                                    style={{ height: 400, backgroundColor: 'white' }}
+                                    style={{ height: 400, backgroundColor: theme.colors.surface }}
                                     autoFocus
                                 />
                             ) : (
@@ -493,8 +855,10 @@ export default function ApplicationsScreen() {
                         {!isEditingCoverLetter && (
                             <Button onPress={() => {
                                 const app = viewingCoverLetterApp!;
-                                setViewingCoverLetterApp(null);
-                                generateLetter(app);
+                                generateLetter(app, () => {
+                                    setViewingCoverLetterApp(null);
+                                    setIsEditingCoverLetter(false);
+                                });
                             }} textColor={theme.colors.error}>Regenerate</Button>
                         )}
                         {!isEditingCoverLetter && (
@@ -519,7 +883,7 @@ export default function ApplicationsScreen() {
                         <Text variant="bodyMedium" style={{ marginLeft: 8 }}>• Behavioral questions with YOUR stories</Text>
                         <Text variant="bodyMedium" style={{ marginLeft: 8 }}>• Strategic questions to ask</Text>
                         <Text variant="bodyMedium" style={{ marginTop: 12, fontWeight: 'bold' }}>
-                            Generation time: ~60-90 seconds
+                            Generation time: about 20 mins
                         </Text>
                         <Text variant="bodySmall" style={{ marginTop: 8, color: theme.colors.outline }}>
                             You can continue using the app while we generate this in the background.

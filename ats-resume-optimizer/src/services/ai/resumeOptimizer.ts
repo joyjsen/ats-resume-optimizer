@@ -23,7 +23,7 @@ Aim for an ATS score of 85-95%.
 
             const userContent = this.buildOptimizationPrompt(resume, job, analysis);
 
-            const response = await safeOpenAICall(() => openai.chat.completions.create({
+            const options = {
                 model: 'gpt-4o-mini',
                 messages: [
                     { role: 'system', content: systemInstruction },
@@ -31,7 +31,13 @@ Aim for an ATS score of 85-95%.
                 ],
                 response_format: { type: 'json_object' },
                 max_tokens: 10000,
-            }), 'Resume Optimization');
+            };
+
+            const response = await safeOpenAICall(
+                () => openai.chat.completions.create(options as any),
+                'Resume Optimization',
+                options
+            );
 
             const choice = response.choices[0];
             const content = choice.message.content;
@@ -166,14 +172,20 @@ OUTPUT JSON:
 }
             `.trim();
 
-            const response = await safeOpenAICall(() => openai.chat.completions.create({
+            const options = {
                 model: 'gpt-4o-mini',
                 messages: [
                     { role: 'system', content: systemInstruction },
                     { role: 'user', content: prompt }
                 ],
                 response_format: { type: 'json_object' },
-            }), 'Add Skill');
+            };
+
+            const response = await safeOpenAICall(
+                () => openai.chat.completions.create(options as any),
+                'Add Skill',
+                options
+            );
 
             const content = response.choices[0].message.content;
             if (!content) throw new Error('No content from OpenAI');

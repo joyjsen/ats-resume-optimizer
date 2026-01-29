@@ -1,6 +1,7 @@
 import { openai, safeOpenAICall } from '../../config/ai';
 import { perplexityService } from './perplexityService';
 import { applicationService } from '../firebase/applicationService';
+import { activityService } from '../firebase/activityService';
 import { Application } from '../../types/application.types';
 
 interface PrepGuideInput {
@@ -29,6 +30,17 @@ class PrepAssistantService {
             // STEP 1: Start
             console.log(`Starting Prep Guide generation for ${applicationId}`);
             if (signal?.aborted) return;
+
+            // DBS: Deduct Tokens & Log Activity
+            await activityService.logActivity({
+                type: 'interview_prep_generation',
+                description: `Interview Prep Guide for ${companyName} - ${jobTitle}`,
+                resourceId: applicationId,
+                resourceName: companyName,
+                aiProvider: 'openai-gpt4o-mini', // Default, fallback might change used provider strictly speaking but logging intent is key
+                platform: 'ios'
+            });
+
             await applicationService.updatePrepStatus(applicationId, {
                 status: 'generating',
                 startedAt: new Date(),
@@ -613,7 +625,7 @@ Be practical, specific, and encouraging. Help the candidate feel prepared and co
 
     private async callGptMini(prompt: string, taskName: string): Promise<string> {
         try {
-            const response = await safeOpenAICall(() => openai.chat.completions.create({
+            const options = {
                 model: 'gpt-4o-mini',
                 messages: [
                     { role: 'system', content: 'You are an expert technical interview coach.' },
@@ -621,15 +633,33 @@ Be practical, specific, and encouraging. Help the candidate feel prepared and co
                 ],
                 max_tokens: 5000,
                 temperature: 0.5,
-            }), taskName);
+            };
+
+            // safeOpenAICall now has built-in Perplexity fallback for timeouts
+            const response = await safeOpenAICall(
+                () => openai.chat.completions.create(options as any),
+                taskName,
+                options
+            );
 
             const content = response.choices[0]?.message?.content;
             if (!content) throw new Error(`No content from OpenAI for ${taskName}`);
             return content.trim();
 
-        } catch (error) {
-            console.error(`GPT-4o-mini Error (${taskName}):`, error);
-            throw error;
+        } catch (error: any) {
+            console.warn(`GPT-4o-mini Error (${taskName}): ${error.message}. Attempting secondary Perplexity fallback.`);
+
+            try {
+                // Secondary fallback to Perplexity (in case safeOpenAICall's fallback also failed)
+                return await perplexityService.chatCompletion(
+                    'You are an expert technical interview coach.',
+                    prompt,
+                    taskName
+                );
+            } catch (fallbackError: any) {
+                console.error(`Secondary Perplexity fallback also failed (${taskName}):`, fallbackError);
+                throw error;
+            }
         }
     }
 }

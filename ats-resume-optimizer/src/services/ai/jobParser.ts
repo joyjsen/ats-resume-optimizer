@@ -92,9 +92,41 @@ export class JobParserService {
     }
 
     /**
+     * Quickly fetch just the text description from a URL (skips AI parsing)
+     */
+    async fetchJobDescription(url: string): Promise<string> {
+        try {
+            const htmlContent = await this.scrapeJobPage(url);
+            return this.extractTextFromHTML(htmlContent);
+        } catch (error) {
+            console.error('Error fetching job description:', error);
+            throw new Error('Failed to fetch job text.');
+        }
+    }
+
+
+
+    /**
+     * Scrape job page HTML
+     */
+    /**
      * Scrape job page HTML
      */
     private async scrapeJobPage(url: string): Promise<string> {
+        // LinkedIn extraction strategy: Use jobs-guest API
+        if (url.includes('linkedin.com')) {
+            const jobId = this.extractLinkedInJobId(url);
+            if (jobId) {
+                console.log(`Detected LinkedIn URL. Extracted Job ID: ${jobId}`);
+                // Use the guest API which returns the job posting HTML fragment
+                const guestApiUrl = `https://www.linkedin.com/jobs-guest/jobs/api/jobPosting/${jobId}`;
+                console.log(`Fetching from Guest API: ${guestApiUrl}`);
+                url = guestApiUrl;
+            } else {
+                console.warn('Could not extract LinkedIn Job ID from URL');
+            }
+        }
+
         // Note: Direct scraping from client often fails due to CORS or bot protection.
         // In production, use a proxy or cloud function.
         console.warn('Scraping from client - might fail due to CORS');
@@ -108,31 +140,73 @@ export class JobParserService {
     }
 
     /**
+     * Extract LinkedIn Job ID from various URL formats
+     */
+    private extractLinkedInJobId(url: string): string | null {
+        // Pattern 1: /jobs/view/123456
+        const viewMatch = url.match(/\/jobs\/view\/(\d+)/);
+        if (viewMatch) return viewMatch[1];
+
+        // Pattern 2: currentJobId=123456
+        const queryMatch = url.match(/currentJobId=(\d+)/);
+        if (queryMatch) return queryMatch[1];
+
+        // Pattern 3: /jobs/search/?currentJobId=123456
+        // Pattern 4: /comm/jobs/view/123456 (mobile app links sometimes)
+
+        return null;
+    }
+
+    /**
      * Extract clean text from HTML
      */
     /**
      * Extract clean text from HTML
      */
     private extractTextFromHTML(html: string): string {
-        // 1. Remove script and style tags and their content
-        let text = html.replace(/<script\b[^>]*>([\s\S]*?)<\/script>/gim, ' ');
-        text = text.replace(/<style\b[^>]*>([\s\S]*?)<\/style>/gim, ' ');
+        try {
+            // 0. Attempt to extract specific container first (LinkedIn specific)
+            // LinkedIn 'jobs-guest' API often puts the description in a 'description__text' class
+            const descriptionMatch = html.match(/class="[^"]*description__text[^"]*">([\s\S]*?)<\/section>/i)
+                || html.match(/class="[^"]*show-more-less-html__markup[^"]*">([\s\S]*?)<\/(div|section)>/i);
 
-        // 2. Remove nav, header, footer and their content
-        text = text.replace(/<(nav|header|footer)\b[^>]*>([\s\S]*?)<\/\1>/gim, ' ');
+            let text = descriptionMatch ? descriptionMatch[1] : html;
 
-        // 3. Remove all other HTML tags
-        text = text.replace(/<[^>]+>/g, ' ');
+            // 1. Remove script and style tags and their content
+            text = text.replace(/<script\b[^>]*>([\s\S]*?)<\/script>/gim, '');
+            text = text.replace(/<style\b[^>]*>([\s\S]*?)<\/style>/gim, '');
 
-        // 4. Decode common HTML entities (basic)
-        text = text.replace(/&nbsp;/g, ' ')
-            .replace(/&amp;/g, '&')
-            .replace(/&lt;/g, '<')
-            .replace(/&gt;/g, '>')
-            .replace(/&quot;/g, '"');
+            // 2. Convert block elements to newlines to preserve structure
+            text = text.replace(/<(br|p|div|li|h[1-6])\b[^>]*>/gim, '\n');
+            text = text.replace(/<\/li>/gim, '\n'); // End of list item matches new line
+            text = text.replace(/<\/ul>|<\/ol>/gim, '\n'); // End of list matches new line
 
-        // 5. Clean up whitespace
-        return text.replace(/\s+/g, ' ').trim();
+            // 3. Remove all other HTML tags
+            text = text.replace(/<[^>]+>/g, ' ');
+
+            // 4. Decode common HTML entities
+            text = text.replace(/&nbsp;/g, ' ')
+                .replace(/&amp;/g, '&')
+                .replace(/&lt;/g, '<')
+                .replace(/&gt;/g, '>')
+                .replace(/&quot;/g, '"')
+                .replace(/&#39;/g, "'")
+                .replace(/&#x27;/g, "'");
+
+            // 5. Clean up "LinkedIn Noise" and excessive whitespace
+            text = text.replace(/Show more|Show less/gi, '');
+            text = text.replace(/Posted \d+ days? ago/gi, '');
+
+            // Collapse multiple spaces
+            text = text.replace(/[ \t]+/g, ' ');
+            // Collapse multiple newlines (max 2)
+            text = text.replace(/\n\s*\n\s*\n+/g, '\n\n');
+
+            return text.trim();
+        } catch (e) {
+            console.error("Error cleaning HTML, falling back to basic strip", e);
+            return html.replace(/<[^>]+>/g, ' ').trim();
+        }
     }
 
     /**
@@ -189,11 +263,17 @@ ${jobTitle ? `Known job title: ${jobTitle}` : ''}
 ${company ? `Known company: ${company}` : ''}
     `.trim();
 
-        const response = await safeOpenAICall(() => openai.chat.completions.create({
+        const options = {
             model: 'gpt-4o-mini',
             messages: [{ role: 'user', content: prompt }],
             response_format: { type: 'json_object' },
-        }), 'Job from Text');
+        };
+
+        const response = await safeOpenAICall(
+            () => openai.chat.completions.create(options as any),
+            'Job from Text',
+            options
+        );
 
         const contentResponse = response.choices[0].message.content;
         if (!contentResponse) throw new Error('No response from OpenAI');

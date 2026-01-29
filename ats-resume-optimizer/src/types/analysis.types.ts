@@ -16,6 +16,10 @@ export interface AnalysisResult {
     optimizedMatchAnalysis?: MatchAnalysis;
     isLocked?: boolean;
     applicationStatus?: string;
+
+    // Baseline Data for Dynamic Skill Score Calculation
+    baselineAtsScore?: number;  // ATS score after initial optimization (baseline for skill additions)
+    baselineTotalSkills?: number;  // Total skills (partial + missing) at baseline
 }
 
 export interface MatchAnalysis {

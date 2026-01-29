@@ -10,6 +10,7 @@ import { learningService } from '../../services/firebase/learningService';
 import { auth } from '../../services/firebase/config';
 import { useRouter } from 'expo-router';
 import { LearningEntry } from '../../types/learning.types';
+import { activityService } from '../../services/firebase/activityService';
 
 interface Props {
     visible: boolean;
@@ -20,6 +21,8 @@ interface Props {
     jobTitle?: string;
     companyName?: string;
 }
+
+import { useTokenCheck } from '../../hooks/useTokenCheck';
 
 export const SkillAdditionModal = ({ visible, skill, resume, onDismiss, onConfirm, jobTitle: propsJobTitle, companyName: propsCompanyName }: Props) => {
     const theme = useTheme();
@@ -32,6 +35,7 @@ export const SkillAdditionModal = ({ visible, skill, resume, onDismiss, onConfir
     const [loading, setLoading] = useState(false);
     const [optInAI, setOptInAI] = useState(false);
     const router = useRouter();
+    const { checkTokens } = useTokenCheck();
 
     // Reset state when modal opens
     React.useEffect(() => {
@@ -45,7 +49,8 @@ export const SkillAdditionModal = ({ visible, skill, resume, onDismiss, onConfir
             setOptInAI(false);
 
             // Check for existing learning in this context
-            const userId = auth.currentUser?.uid || 'anonymous_user';
+            if (!auth.currentUser) return;
+            const userId = auth.currentUser.uid;
             const jTitle = propsJobTitle || (resume.experience && resume.experience.length > 0 ? resume.experience[0].title : 'Unknown Role');
             const cName = propsCompanyName || (resume.experience && resume.experience.length > 0 ? resume.experience[0].company : 'Unknown Company');
 
@@ -153,9 +158,21 @@ export const SkillAdditionModal = ({ visible, skill, resume, onDismiss, onConfir
                 return (
                     <View>
                         <Text variant="headlineSmall" style={styles.title}>Skill Already Recorded</Text>
-                        <View style={{ backgroundColor: '#E8F5E9', padding: 16, borderRadius: 8, marginBottom: 24, flexDirection: 'row', alignItems: 'center' }}>
-                            <IconButton icon="check-decagram" iconColor="#2E7D32" size={24} style={{ margin: 0, marginRight: 12 }} />
-                            <Text variant="bodyMedium" style={{ color: '#2E7D32', flex: 1 }}>
+                        <View style={{
+                            backgroundColor: theme.dark ? '#2E7D32' : '#E8F5E9',
+                            padding: 16,
+                            borderRadius: 8,
+                            marginBottom: 24,
+                            flexDirection: 'row',
+                            alignItems: 'center'
+                        }}>
+                            <IconButton
+                                icon="check-decagram"
+                                iconColor={theme.dark ? '#E8F5E9' : '#2E7D32'}
+                                size={24}
+                                style={{ margin: 0, marginRight: 12 }}
+                            />
+                            <Text variant="bodyMedium" style={{ color: theme.dark ? '#E8F5E9' : '#2E7D32', flex: 1 }}>
                                 <Text style={{ fontWeight: 'bold' }}>{skill}</Text> is already in your Learning Hub for this position.
                             </Text>
                         </View>
@@ -165,7 +182,12 @@ export const SkillAdditionModal = ({ visible, skill, resume, onDismiss, onConfir
                         </Text>
 
                         {existingLearning?.path === 'self' && (
-                            <View style={{ backgroundColor: '#F5F5F5', padding: 16, borderRadius: 8, marginBottom: 24 }}>
+                            <View style={{
+                                backgroundColor: theme.dark ? theme.colors.elevation.level2 : '#F5F5F5',
+                                padding: 16,
+                                borderRadius: 8,
+                                marginBottom: 24
+                            }}>
                                 <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                                     <Checkbox.Android
                                         status={optInAI ? 'checked' : 'unchecked'}
@@ -221,9 +243,21 @@ export const SkillAdditionModal = ({ visible, skill, resume, onDismiss, onConfir
                 return (
                     <View>
                         <Text variant="headlineSmall" style={styles.title}>Training In Progress</Text>
-                        <View style={{ backgroundColor: '#E3F2FD', padding: 16, borderRadius: 8, marginBottom: 24, flexDirection: 'row', alignItems: 'center' }}>
-                            <IconButton icon="progress-clock" iconColor="#1976D2" size={24} style={{ margin: 0, marginRight: 12 }} />
-                            <Text variant="bodyMedium" style={{ color: '#1976D2', flex: 1 }}>
+                        <View style={{
+                            backgroundColor: theme.dark ? '#1565C0' : '#E3F2FD',
+                            padding: 16,
+                            borderRadius: 8,
+                            marginBottom: 24,
+                            flexDirection: 'row',
+                            alignItems: 'center'
+                        }}>
+                            <IconButton
+                                icon="progress-clock"
+                                iconColor={theme.dark ? '#E3F2FD' : '#1976D2'}
+                                size={24}
+                                style={{ margin: 0, marginRight: 12 }}
+                            />
+                            <Text variant="bodyMedium" style={{ color: theme.dark ? '#E3F2FD' : '#1976D2', flex: 1 }}>
                                 <Text style={{ fontWeight: 'bold' }}>{skill}</Text> training is currently in progress.
                             </Text>
                         </View>
@@ -277,7 +311,9 @@ export const SkillAdditionModal = ({ visible, skill, resume, onDismiss, onConfir
                             mode="contained"
                             loading={loading}
                             onPress={async () => {
-                                const userId = auth.currentUser?.uid || 'anonymous_user';
+                                if (!auth.currentUser) return;
+                                if (!checkTokens(30, onDismiss)) return;  // Pass onDismiss to close modal first
+                                const userId = auth.currentUser.uid;
                                 setLoading(true);
                                 try {
                                     const firstExperience = resume.experience && resume.experience.length > 0 ? resume.experience[0] : null;
@@ -289,6 +325,16 @@ export const SkillAdditionModal = ({ visible, skill, resume, onDismiss, onConfir
                                         path: 'ai',
                                         status: 'todo'
                                     });
+
+                                    // LOG ACTIVITY
+                                    await activityService.logActivity({
+                                        type: 'training_slideshow_generation',
+                                        description: `Started AI learning path for "${skill}"`,
+                                        resourceId: skill!,
+                                        resourceName: skill!,
+                                        aiProvider: 'openai-gpt4o-mini'
+                                    }).catch(e => console.log("Silent activity log fail:", e));
+
                                     onDismiss();
                                     router.push('/(tabs)/learning');
                                 } catch (error) {
@@ -317,7 +363,7 @@ export const SkillAdditionModal = ({ visible, skill, resume, onDismiss, onConfir
                                 Skip to Resume Integration
                             </Button>
                         </View>
-                    </View>
+                    </View >
                 );
             case 'self_date':
                 return (
@@ -359,7 +405,8 @@ export const SkillAdditionModal = ({ visible, skill, resume, onDismiss, onConfir
                                 mode="contained"
                                 loading={loading}
                                 onPress={async () => {
-                                    const userId = auth.currentUser?.uid || 'anonymous_user';
+                                    if (!auth.currentUser) return;
+                                    const userId = auth.currentUser.uid;
                                     setLoading(true);
                                     try {
                                         const firstExperience = resume.experience && resume.experience.length > 0 ? resume.experience[0] : null;
@@ -373,6 +420,15 @@ export const SkillAdditionModal = ({ visible, skill, resume, onDismiss, onConfir
                                             status: 'completed',
                                             completionDate: selectedDate
                                         });
+
+                                        // LOG ACTIVITY
+                                        await activityService.logActivity({
+                                            type: 'skill_marked_learned',
+                                            description: `Marked skill "${skill}" as learned (Self-taught)`,
+                                            resourceId: skill!,
+                                            resourceName: skill!
+                                        }).catch(e => console.log("Silent activity log fail:", e));
+
                                         setStep('select');
                                     } catch (error) {
                                         console.error("Failed to record learning:", error);
@@ -394,7 +450,15 @@ export const SkillAdditionModal = ({ visible, skill, resume, onDismiss, onConfir
             case 'select':
                 return (
                     <View style={{ maxHeight: 500 }}>
-                        <Text variant="headlineSmall" style={styles.title}>Select Sections</Text>
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <Text variant="headlineSmall" style={styles.title}>Select Sections</Text>
+                            <IconButton
+                                icon="close"
+                                size={24}
+                                onPress={onDismiss}
+                                style={{ margin: -8 }}
+                            />
+                        </View>
                         <Text variant="bodyMedium" style={{ marginBottom: 16 }}>
                             Where should <Text style={{ fontWeight: 'bold' }}>{skill}</Text> be added?
                         </Text>

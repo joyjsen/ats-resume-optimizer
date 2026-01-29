@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { View, ScrollView, StyleSheet, KeyboardAvoidingView, Platform } from 'react-native';
-import { TextInput, Button, Text } from 'react-native-paper';
+import { TextInput, Button, Text, useTheme } from 'react-native-paper';
 import { useRouter } from 'expo-router';
 import { useResumeStore } from '../src/store/resumeStore';
 
@@ -48,32 +48,36 @@ export default function OptimizationEditor() {
         setExperiences(newExperiences);
     };
 
+    const theme = useTheme();
+
     return (
         <KeyboardAvoidingView
             behavior={Platform.OS === "ios" ? "padding" : "height"}
             style={{ flex: 1 }}
         >
-            <ScrollView style={styles.container}>
-                <Text variant="headlineSmall" style={{ marginBottom: 16 }}>Review & Edit Optimization</Text>
+            <ScrollView style={[styles.container, { backgroundColor: theme.colors.background }]}>
+                <Text variant="headlineSmall" style={{ marginBottom: 16, color: theme.colors.onBackground }}>Review & Edit Optimization</Text>
 
                 <View style={styles.section}>
-                    <Text variant="titleMedium" style={styles.sectionTitle}>Professional Summary</Text>
+                    <Text variant="titleMedium" style={{ ...styles.sectionTitle, color: theme.colors.primary }}>Professional Summary</Text>
                     <TextInput
                         mode="outlined"
                         multiline
                         numberOfLines={6}
                         value={summary}
                         onChangeText={setSummary}
-                        style={styles.input}
+                        style={[styles.input, { backgroundColor: theme.colors.surface, color: theme.colors.onSurface }]}
+                        textColor={theme.colors.onSurface}
+                        outlineColor={theme.colors.outline}
                     />
                 </View>
 
                 <View style={styles.section}>
-                    <Text variant="titleMedium" style={styles.sectionTitle}>Experience</Text>
+                    <Text variant="titleMedium" style={{ ...styles.sectionTitle, color: theme.colors.primary }}>Experience</Text>
                     {experiences.map((exp, expIndex) => (
-                        <View key={expIndex} style={styles.experienceBlock}>
-                            <Text variant="titleSmall" style={{ fontWeight: 'bold' }}>{exp.title} at {exp.company}</Text>
-                            <Text variant="bodySmall" style={{ opacity: 0.7, marginBottom: 8 }}>{exp.startDate} - {exp.current ? 'Present' : exp.endDate}</Text>
+                        <View key={expIndex} style={[styles.experienceBlock, { borderColor: theme.colors.outlineVariant }]}>
+                            <Text variant="titleSmall" style={{ fontWeight: 'bold', color: theme.colors.onBackground }}>{exp.title} at {exp.company}</Text>
+                            <Text variant="bodySmall" style={{ opacity: 0.7, marginBottom: 8, color: theme.colors.onSurfaceVariant }}>{exp.startDate} - {exp.current ? 'Present' : exp.endDate}</Text>
 
                             {exp.bullets.map((bullet, bulletIndex) => (
                                 <TextInput
@@ -82,7 +86,9 @@ export default function OptimizationEditor() {
                                     multiline
                                     value={bullet}
                                     onChangeText={(text) => updateExperienceBullet(expIndex, bulletIndex, text)}
-                                    style={[styles.input, { fontSize: 13, minHeight: 60 }]}
+                                    style={[styles.input, { fontSize: 13, minHeight: 60, backgroundColor: theme.colors.surface }]}
+                                    textColor={theme.colors.onSurface}
+                                    outlineColor={theme.colors.outline}
                                     dense
                                 />
                             ))}
@@ -108,17 +114,14 @@ const styles = StyleSheet.create({
     },
     sectionTitle: {
         marginBottom: 8,
-        color: '#2196F3',
         fontWeight: 'bold',
     },
     input: {
-        backgroundColor: 'white',
         marginBottom: 8,
     },
     experienceBlock: {
         marginBottom: 16,
         paddingLeft: 8,
         borderLeftWidth: 2,
-        borderLeftColor: '#e0e0e0',
     }
 });

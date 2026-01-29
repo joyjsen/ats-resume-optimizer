@@ -1,6 +1,6 @@
-export type TaskType = 'analyze_resume' | 'optimize_resume' | 'add_skill';
+export type TaskType = 'analyze_resume' | 'optimize_resume' | 'add_skill' | 'cover_letter' | 'prep_guide' | 'prep_guide_refresh' | 'course_completion' | 'resume_validation';
 
-export type TaskStatus = 'queued' | 'processing' | 'completed' | 'failed';
+export type TaskStatus = 'queued' | 'processing' | 'completed' | 'failed' | 'cancelled';
 
 export interface AnalysisTask {
     id: string;

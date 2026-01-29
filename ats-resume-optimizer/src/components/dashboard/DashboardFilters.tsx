@@ -144,7 +144,7 @@ export const DashboardFilters: React.FC<DashboardFiltersProps> = ({
 
                 {/* Collapsible Filters */}
                 {isExpanded && (
-                    <View style={styles.filtersContent}>
+                    <View style={[styles.filtersContent, { backgroundColor: theme.colors.elevation.level2 }]}>
 
                         {/* Date Range */}
                         <Text variant="titleSmall" style={styles.filterTitle}>Date Range</Text>
@@ -165,11 +165,9 @@ export const DashboardFilters: React.FC<DashboardFiltersProps> = ({
                         <Text variant="titleSmall" style={styles.filterTitle}>ATS Score</Text>
                         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
                             {[
-                                { label: 'Critical (1-20)', value: '1-20' },
-                                { label: 'Low (21-40)', value: '21-40' },
-                                { label: 'Moderate (41-60)', value: '41-60' },
-                                { label: 'Good (61-80)', value: '61-80' },
-                                { label: 'Strong (81-100)', value: '81-100' }
+                                { label: 'Needs Brush-up (0-49)', value: '0-49' },
+                                { label: 'Encouraged (50-74)', value: '50-74' },
+                                { label: 'Strong Match (75-100)', value: '75-100' }
                             ].map(range => (
                                 <Chip
                                     key={range.value}
@@ -225,17 +223,17 @@ export const DashboardFilters: React.FC<DashboardFiltersProps> = ({
                 {!isExpanded && (
                     <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.activeFiltersRow}>
                         {filters.dateRange !== 'all' && (
-                            <Chip onClose={() => updateFilters({ dateRange: 'all' })} style={styles.activeChip} compact>
+                            <Chip onClose={() => updateFilters({ dateRange: 'all' })} style={[styles.activeChip, { backgroundColor: theme.colors.secondaryContainer }]} compact>
                                 Date: {filters.dateRange}
                             </Chip>
                         )}
                         {filters.companies.map(c => (
-                            <Chip key={c} onClose={() => toggleArrayFilter('companies', c)} style={styles.activeChip} compact>
+                            <Chip key={c} onClose={() => toggleArrayFilter('companies', c)} style={[styles.activeChip, { backgroundColor: theme.colors.secondaryContainer }]} compact>
                                 {c}
                             </Chip>
                         ))}
                         {filters.scoreRanges.map(s => (
-                            <Chip key={s} onClose={() => toggleArrayFilter('scoreRanges', s)} style={styles.activeChip} compact>
+                            <Chip key={s} onClose={() => toggleArrayFilter('scoreRanges', s)} style={[styles.activeChip, { backgroundColor: theme.colors.secondaryContainer }]} compact>
                                 Score: {s}
                             </Chip>
                         ))}
@@ -250,7 +248,8 @@ const styles = StyleSheet.create({
     container: {
         marginBottom: 16,
         borderRadius: 8,
-        backgroundColor: '#fff'
+        // backgroundColor: '#fff' - Removed hardcoded
+        // Surface component handles background color based on elevation
     },
     contentContainer: {
         borderRadius: 8,
@@ -268,7 +267,7 @@ const styles = StyleSheet.create({
     filtersContent: {
         padding: 16,
         paddingTop: 0,
-        backgroundColor: '#f8f9fa'
+        // backgroundColor: '#f8f9fa' - Removed, handled by inline style using theme
     },
     filterTitle: {
         marginTop: 12,
@@ -291,6 +290,6 @@ const styles = StyleSheet.create({
     },
     activeChip: {
         marginRight: 8,
-        backgroundColor: '#e3f2fd'
+        // backgroundColor: '#e3f2fd' - Removed, let Chip handle it or use theme in render
     }
 });

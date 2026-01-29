@@ -1,69 +1,219 @@
+import { AppState } from 'react-native';
 import { jobParserService } from '../services/ai/jobParser';
 import { resumeParserService } from '../services/ai/resumeParser';
 import { gapAnalyzerService } from '../services/ai/gapAnalyzer';
 import { historyService } from '../services/firebase/historyService';
 import { taskService } from '../services/firebase/taskService';
+import { activityService } from '../services/firebase/activityService';
 import { generateHash } from '../utils/hashUtils';
+import { notificationService } from '../services/firebase/notificationService';
+import { backgroundTaskService, BackgroundTask } from '../services/firebase/backgroundTaskService';
+import { getFunctions, httpsCallable } from 'firebase/functions';
+import { app } from '../services/firebase/config';
 
 import { resumeOptimizerService } from '../services/ai/resumeOptimizer';
 
-// ... other imports
+// Initialize Firebase Functions
+const functions = getFunctions(app, 'us-central1');
+
+// Cloud Functions for server-side processing (used as fallback)
+const performGapAnalysisCloud = httpsCallable(functions, 'performGapAnalysis');
+const generateRecommendationCloud = httpsCallable(functions, 'generateRecommendation');
 
 export const executeAnalysisTask = async (taskId: string, payload: any, type: string = 'analyze_resume') => {
+    console.log(`[Worker] Starting task: ${taskId} (${type})`);
     try {
         if (type === 'optimize_resume') {
             return await executeOptimizationTask(taskId, payload);
         } else if (type === 'add_skill') {
             return await executeAddSkillTask(taskId, payload);
+        } else if (type === 'cover_letter' || type === 'prep_guide' || type === 'prep_guide_refresh' || type === 'course_completion' || type === 'resume_validation') {
+            // These are "ghost" tasks created by the client to trigger notifications.
+            // They are already completed or handled on the client-side.
+            console.log(`[Worker] Skipping execution for client-side task: ${taskId} (${type})`);
+            return;
         }
 
         const { jobUrl, jobText, resumeText, resumeFiles, jobHash, resumeHash } = payload;
 
-        // ... existing analyze logic ...
-
-        let job;
-        // 1. Parse Job
-        if (payload.screenshots && payload.screenshots.length > 0) {
-            await taskService.updateProgress(taskId, 20, `Processing ${payload.screenshots.length} screenshot(s)...`);
-            job = await jobParserService.parseJobFromImage(payload.screenshots);
-        } else {
-            const hasValidText = jobText && jobText.trim().length > 50;
-            if (hasValidText) {
-                job = await jobParserService.parseJobFromText(jobText);
-            } else if (jobUrl) {
-                // Note: Direct scraping might be limited here if running strictly in background without WebView
-                // For now, assume simple fetch or previous import. 
-                // In a real background scenario, we might need a robust scraper service.
-                // Assuming jobText was pre-filled via import in UI for this version.
-                throw new Error("Direct URL scraping in background not fully supported without pre-import.");
-            } else {
-                throw new Error("No job input provided");
+        // OPTIMIZATION: Parse Job and Resume in PARALLEL to reduce total time
+        try {
+            await taskService.updateProgress(taskId, 15, 'Parsing job and resume...');
+        } catch (updateError: any) {
+            if (updateError.message?.includes('no longer exists')) {
+                console.warn(`[Worker] Task ${taskId} was cancelled, stopping execution.`);
+                return;
             }
+            throw updateError;
         }
 
-        await taskService.updateProgress(taskId, 40, 'Parsing resume...');
+        // Create job parsing promise
+        const jobParsePromise = (async () => {
+            if (payload.screenshots && payload.screenshots.length > 0) {
+                console.log(`[Worker] Parsing job from ${payload.screenshots.length} snapshots...`);
+                return await jobParserService.parseJobFromImage(payload.screenshots);
+            } else {
+                const hasValidText = jobText && jobText.trim().length > 50;
+                if (hasValidText) {
+                    console.log("[Worker] Parsing job from provided text...");
+                    return await jobParserService.parseJobFromText(jobText);
+                } else if (jobUrl) {
+                    console.log("[Worker] Parsing job from URL (Note: fallback text expected)...");
+                    throw new Error("Direct URL scraping in background not fully supported without pre-import.");
+                } else {
+                    throw new Error("No job input provided");
+                }
+            }
+        })();
 
-        // 2. Parse Resume
-        let resume;
-        if (resumeText && resumeText.trim().length > 0) {
-            resume = await resumeParserService.parseResumeFromContent(resumeText);
-        } else if (resumeFiles && resumeFiles.length > 0) {
-            // resumeFiles are URIs. React Native can read these if permission persists.
-            // If app was killed, temp URIs might be invalid. 
-            // Ideally we upload to Storage first. specific to this environment:
-            resume = await resumeParserService.parseResume(resumeFiles);
-        } else {
-            throw new Error("No resume input provided");
+        // Create resume parsing promise
+        const resumeParsePromise = (async () => {
+            if (resumeText && resumeText.trim().length > 0) {
+                console.log("[Worker] Parsing resume from text...");
+                return await resumeParserService.parseResumeFromContent(resumeText);
+            } else if (resumeFiles && resumeFiles.length > 0) {
+                console.log(`[Worker] Parsing resume from ${resumeFiles.length} files...`);
+                return await resumeParserService.parseResume(resumeFiles);
+            } else {
+                throw new Error("No resume input provided");
+            }
+        })();
+
+        // Execute both in parallel
+        const [job, resume] = await Promise.all([jobParsePromise, resumeParsePromise]);
+
+        console.log(`[Worker] Job parsed: ${job.title} @ ${job.company}`);
+        console.log(`[Worker] Resume parsed for: ${resume.contactInfo.name || 'User'}`);
+
+        try {
+            await taskService.updateProgress(taskId, 50, 'Analyzing fit...');
+        } catch (updateError: any) {
+            if (updateError.message?.includes('no longer exists')) {
+                console.warn(`[Worker] Task ${taskId} was cancelled, stopping execution.`);
+                return;
+            }
+            throw updateError;
         }
 
-        await taskService.updateProgress(taskId, 70, 'Analyzing fit...');
+        // 3. Gap Analysis - Try Cloud Function first (runs server-side, won't be interrupted by backgrounding)
+        console.log("[Worker] Running Gap Analysis...");
+        let analysis;
 
-        // 3. Gap Analysis
-        const analysis = await gapAnalyzerService.analyzeJobFit(resume, job);
+        try {
+            // OPTIMIZATION: If app is in background, log it but don't fail immediately.
+            // We now send a push notification to warn the user to come back.
+            if (AppState.currentState !== 'active') {
+                console.log("[Worker] App in background, relying on timeouts and user return...");
+                // throw new Error("App in background, force local"); <-- REMOVED to allow rescue
+            }
 
-        await taskService.updateProgress(taskId, 90, 'Saving results...');
+            console.log("[Worker] Attempting server-side analysis via Cloud Function...");
+            const cloudResult = await performGapAnalysisCloud({
+                taskId,
+                resume,
+                job
+            });
+
+            const data = cloudResult.data as any;
+
+            if (data.success) {
+                console.log("[Worker] Server-side analysis complete.");
+
+                // Build analysis result from cloud response
+                const matchAnalysis = data.matchAnalysis;
+                const gaps = data.gaps;
+                const atsScore = data.atsScore;
+                const readyToApply = data.readyToApply;
+
+                // Generate recommendation if not ready to apply
+                let recommendation;
+                if (readyToApply) {
+                    recommendation = {
+                        action: 'optimize' as const,
+                        confidence: atsScore,
+                        reasoning: atsScore >= 70
+                            ? `Your profile is a strong match! With an ATS score of ${atsScore}%, you're qualified for this role.`
+                            : `You're a potential match (ATS: ${atsScore}%) but there are some missing keywords.`,
+                    };
+                } else {
+                    // Get recommendation from cloud
+                    try {
+                        const recResult = await generateRecommendationCloud({ resume, job, gaps });
+                        const recData = recResult.data as any;
+
+                        const totalGapScore = gaps.totalGapScore || 0;
+                        let action: 'upskill' | 'apply_junior' | 'not_suitable';
+                        let reasoning: string;
+
+                        if (totalGapScore <= 40) {
+                            action = 'upskill';
+                            reasoning = `You're close! With an ATS score of ${atsScore}%, you have ${gaps.criticalGaps?.length || 0} critical skill gap(s).`;
+                        } else if (totalGapScore <= 70) {
+                            action = 'apply_junior';
+                            reasoning = `This role requires skills you haven't developed yet (ATS: ${atsScore}%).`;
+                        } else {
+                            action = 'not_suitable';
+                            reasoning = `This role requires significantly more experience and skills (ATS: ${atsScore}%).`;
+                        }
+
+                        recommendation = {
+                            action,
+                            confidence: 100 - totalGapScore,
+                            reasoning,
+                            upskillPath: recData.upskillPath,
+                            alternativeJobs: recData.alternativeJobs,
+                        };
+                    } catch (recError) {
+                        console.warn("[Worker] Failed to get recommendation from cloud, using minimal:", recError);
+                        recommendation = {
+                            action: 'upskill' as const,
+                            confidence: 100 - (gaps.totalGapScore || 50),
+                            reasoning: `Analysis complete. ATS Score: ${atsScore}%`,
+                        };
+                    }
+                }
+
+                analysis = {
+                    id: `analysis_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+                    resumeId: '',
+                    jobId: job.id,
+                    atsScore,
+                    readyToApply,
+                    matchAnalysis,
+                    gaps,
+                    recommendation,
+                    analyzedAt: new Date(),
+                };
+            } else {
+                throw new Error("Cloud function returned unsuccessful result");
+            }
+        } catch (cloudError: any) {
+            console.warn("[Worker] Cloud Function failed:", cloudError.message);
+
+            // If it's a token error, do NOT fall back to local (free) analysis
+            if (cloudError.message?.includes('Insufficient tokens') || cloudError.message?.includes('unauthenticated')) {
+                throw cloudError;
+            }
+
+            // Fallback to local analysis for other non-token related infrastructure errors
+            console.log("[Worker] Falling back to local analysis calculation...");
+            analysis = await gapAnalyzerService.analyzeJobFit(resume, job);
+        }
+
+        console.log(`[Worker] Analysis complete. Score: ${analysis.atsScore}`);
+
+        try {
+            await taskService.updateProgress(taskId, 90, 'Saving results...');
+        } catch (updateError: any) {
+            if (updateError.message?.includes('no longer exists')) {
+                console.warn(`[Worker] Task ${taskId} was cancelled, stopping execution.`);
+                return;
+            }
+            throw updateError;
+        }
 
         // 4. Save Result
+        console.log("[Worker] Saving analysis to Firestore...");
         const savedId = await historyService.saveAnalysis(
             analysis,
             job,
@@ -74,71 +224,113 @@ export const executeAnalysisTask = async (taskId: string, payload: any, type: st
             resumeHash
         );
 
+        if (savedId) {
+            console.log(`[Worker] Analysis saved successfully with ID: ${savedId}`);
+        } else {
+            console.warn("[Worker] HistoryService.saveAnalysis returned empty ID.");
+        }
+
         await taskService.completeTask(taskId, savedId);
+        console.log(`[Worker] Task ${taskId} marked as COMPLETED.`);
+
+        // Send local push notification for analysis completion
+        await notificationService.notifyAnalysisComplete(
+            job.title,
+            job.company,
+            analysis.atsScore,
+            savedId
+        ).catch((e: any) => console.error("Worker notification failed:", e));
+
         return savedId;
 
     } catch (error: any) {
-        console.error("Task failed:", error);
+        console.error(`[Worker] Task ${taskId} FAILED:`, error);
         await taskService.failTask(taskId, error.message || "Unknown error");
         throw error;
     }
 };
 
 const executeOptimizationTask = async (taskId: string, payload: any) => {
+    console.log(`[Worker] executeOptimizationTask started for task ${taskId}`);
+    console.log(`[Worker] Payload keys:`, Object.keys(payload));
+
     try {
         const { resume, job, currentAnalysis } = payload;
 
-        await taskService.updateProgress(taskId, 20, 'Analyzing skill gaps...');
+        console.log(`[Worker] Extracted from payload - resume:`, !!resume, 'job:', !!job, 'currentAnalysis:', !!currentAnalysis);
 
-        // Call the AI Optimizer
-        // Note: resumeOptimizerService.optimizeResume calls AI which takes time
-        const { optimizedResume, changes } = await resumeOptimizerService.optimizeResume(
-            resume,
-            job,
-            currentAnalysis
-        );
-
-        await taskService.updateProgress(taskId, 80, 'Finalizing optimization...');
-
-        await taskService.updateProgress(taskId, 80, 'Finalizing optimization...');
-
-        // CALIBRATION: Initial Optimization Score Increase
-        // Requirement: modest 1-2% increase for formatting/phrasing updates (no new skills).
-        const baseScore = currentAnalysis.atsScore || 0;
-        const calibratedScore = Math.min(100, baseScore + 2);
-
-        // Auto-save the update (AS DRAFT)
-        if (currentAnalysis.id) {
-            await historyService.updateAnalysis(
-                currentAnalysis.id,
-                currentAnalysis, // base object
-                job,
-                resume,
-                optimizedResume,
-                changes,
-                true, // isDraft
-                calibratedScore, // draftAtsScore
-                currentAnalysis.matchAnalysis // draftMatchAnalysis (unchanged for pure optimization)
-            );
-        } else {
-            // New save if for some reason ID is missing (AS DRAFT)
-            // We need to inject the calibrated score into the analysis object for the initial save
-            const calibratedAnalysis = { ...currentAnalysis, atsScore: calibratedScore };
-
-            await historyService.saveAnalysis(
-                calibratedAnalysis,
-                job,
-                resume,
-                optimizedResume,
-                changes,
-                undefined,
-                undefined,
-                true // isDraft
-            );
+        try {
+            console.log(`[Worker] Attempting to update progress to 20%...`);
+            await taskService.updateProgress(taskId, 20, 'Starting optimization...');
+        } catch (updateError: any) {
+            if (updateError.message?.includes('no longer exists')) {
+                console.warn(`[Worker] Task ${taskId} was cancelled, stopping execution.`);
+                return;
+            }
+            throw updateError;
         }
 
-        await taskService.completeTask(taskId, currentAnalysis.id);
-        return currentAnalysis.id;
+        console.log("[Worker] Creating background task for server-side optimization...");
+
+        return new Promise<string>((resolve, reject) => {
+            let isCancelled = false;
+
+            backgroundTaskService.createTask(
+                'optimize_resume',
+                {
+                    analysisTaskId: taskId,
+                    resume,
+                    job,
+                    analysis: currentAnalysis,
+                    historyId: currentAnalysis.id,
+                },
+                // onComplete callback
+                async (bgTask: BackgroundTask) => {
+                    if (isCancelled) return;
+                    try {
+                        // Check if the main task still exists before final updates
+                        const task = await taskService.getTask(taskId);
+                        if (!task) {
+                            console.log(`[Worker] Task ${taskId} was cancelled. Skipping completion.`);
+                            isCancelled = true;
+                            backgroundTaskService.stopListening(bgTask.id);
+                            return;
+                        }
+
+                        console.log("[Worker] Background optimization task completed");
+                        // Note: Push notification is sent by Cloud Function, not client
+                        // This ensures notifications work even when app is in background
+
+                        resolve(currentAnalysis.id);
+                    } catch (error: any) {
+                        console.error("[Worker] Error in onComplete:", error);
+                        reject(error);
+                    }
+                },
+                // onError callback
+                async (bgTask: BackgroundTask) => {
+                    if (isCancelled) return;
+                    const errorMsg = bgTask.error || "Background task failed";
+
+                    // Check if task still exists (was not cancelled/deleted)
+                    const task = await taskService.getTask(taskId);
+                    if (!task) {
+                        console.log(`[Worker] Task ${taskId} was cancelled. Skipping failTask.`);
+                        isCancelled = true;
+                        backgroundTaskService.stopListening(bgTask.id);
+                        return; // Don't reject, just exit gracefully
+                    }
+
+                    // Only log as error if it's a real failure, not a cancellation
+                    console.error("[Worker] Background optimization task failed:", errorMsg);
+                    await taskService.failTask(taskId, errorMsg);
+
+                    reject(new Error(errorMsg));
+                }
+            ).catch(err => {
+                if (!isCancelled) reject(err);
+            });
+        });
 
     } catch (error: any) {
         console.error("Optimization Task failed:", error);
@@ -150,92 +342,51 @@ const executeOptimizationTask = async (taskId: string, payload: any) => {
 const executeAddSkillTask = async (taskId: string, payload: any) => {
     try {
         const { currentAnalysis, resume, skill, targetSections } = payload;
-
-        await taskService.updateProgress(taskId, 20, `Adding ${skill} to resume...`);
-
-        // 1. Call Optimizer to add skill
-        const { optimizedResume, changes } = await resumeOptimizerService.addSkillToResume(
-            resume, // Note: This should be the latest resume (draft or original) passed in payload
-            skill,
-            targetSections
-        );
-
-        // 1.5. Re-analyze to get new score and match analysis
-        // We need the job data to analyze fit
         const job = currentAnalysis.job || currentAnalysis.jobData;
-        let newAnalysis = await gapAnalyzerService.analyzeJobFit(optimizedResume, job);
 
-        // FORCE INJECTION: Ensure added skills count as 'Matched'
-        // This guarantees the score increases as per user formula: f(Matched + New)
-        // We manually move them from Missing/Partial to Matched in the data object before saving.
-        const addedSkills = changes
-            .filter((c: any) => c.type === 'skill_addition')
-            .map((c: any) => c.skill)
-            .filter(Boolean);
-
-        if (addedSkills.length > 0) {
-            console.log("Force Injecting Skills into Analysis:", addedSkills);
-            const matches = newAnalysis.matchAnalysis.matchedSkills;
-            const partials = newAnalysis.matchAnalysis.partialMatches;
-            const missing = newAnalysis.matchAnalysis.missingSkills;
-
-            addedSkills.forEach((skillName: string) => {
-                // If not already in matched (case insensitive)
-                if (!matches.find(m => m.skill.toLowerCase() === skillName.toLowerCase())) {
-                    // Find it in partial/missing to get importance/confidence
-                    const existing = partials.find(p => p.skill.toLowerCase() === skillName.toLowerCase())
-                        || missing.find(m => m.skill.toLowerCase() === skillName.toLowerCase())
-                        || { skill: skillName, importance: 'high', confidence: 100, userHas: true }; // Default to high if unknown
-
-                    // Add to Matched
-                    matches.push({ ...existing, skill: skillName, userHas: true, confidence: 100 });
-
-                    // Remove from Partial/Missing
-                    newAnalysis.matchAnalysis.partialMatches = partials.filter(p => p.skill.toLowerCase() !== skillName.toLowerCase());
-                    newAnalysis.matchAnalysis.missingSkills = missing.filter(m => m.skill.toLowerCase() !== skillName.toLowerCase());
-                }
-            });
-
-            // Recalculate Score with the injected matches
-            newAnalysis.atsScore = gapAnalyzerService.calculateATSScore(newAnalysis.matchAnalysis);
-
-            // SAFEGUARD: Ensure strictly positive delta (Monotonic increase)
-            const baselineScore = currentAnalysis.draftAtsScore || currentAnalysis.atsScore || 0;
-            if (newAnalysis.atsScore <= baselineScore) {
-                console.log(`Safeguard: New score ${newAnalysis.atsScore} <= Baseline ${baselineScore}. Bumping.`);
-                newAnalysis.atsScore = Math.min(100, baselineScore + 1);
+        try {
+            await taskService.updateProgress(taskId, 20, `Adding ${skill} to resume...`);
+        } catch (updateError: any) {
+            if (updateError.message?.includes('no longer exists')) {
+                console.warn(`[Worker] Task ${taskId} was cancelled, stopping execution.`);
+                return;
             }
-
-            console.log("Recalculated Score (Forced):", newAnalysis.atsScore);
+            throw updateError;
         }
 
-        await taskService.updateProgress(taskId, 90, 'Saving updates...');
+        // Use fire-and-forget pattern: create a background task and let the Cloud Function process it
+        // The Cloud Function does ALL the work including re-analysis and saving to Firestore
+        console.log("[Worker] Creating background task for server-side skill addition...");
 
-        // 2. Save as Draft
-        // Fix: content object uses 'changes', DB uses 'changesData'. Check both.
-        const existingDraft = currentAnalysis.draftChangesData;
-        const existingFinal = currentAnalysis.changes || currentAnalysis.changesData;
-        const existingChanges = existingDraft || existingFinal || [];
+        return new Promise<string>((resolve, reject) => {
+            backgroundTaskService.createTask(
+                'add_skill',
+                {
+                    analysisTaskId: taskId,
+                    resume,
+                    skill,
+                    targetSections,
+                    historyId: currentAnalysis.id,
+                    currentAnalysis,
+                    job,
+                },
+                // onComplete - Cloud Function already did all the work
+                async (bgTask: BackgroundTask) => {
+                    console.log("[Worker] Background skill addition task completed - data already saved by Cloud Function");
+                    // Note: Push notification is sent by Cloud Function, not client
+                    // This ensures notifications work even when app is in background
 
-        const mergedChanges = [...existingChanges, ...changes];
-
-        // Update history
-        if (currentAnalysis.id) {
-            await historyService.updateAnalysis(
-                currentAnalysis.id,
-                currentAnalysis,
-                job,
-                currentAnalysis.resumeData,
-                optimizedResume,
-                mergedChanges,
-                true, // isDraft
-                newAnalysis.atsScore,           // New Draft Score
-                newAnalysis.matchAnalysis       // New Draft Match Analysis
-            );
-        }
-
-        await taskService.completeTask(taskId, currentAnalysis.id);
-        return currentAnalysis.id;
+                    resolve(currentAnalysis.id);
+                },
+                // onError
+                async (bgTask: BackgroundTask) => {
+                    const errorMsg = bgTask.error || "Background task failed";
+                    console.error("[Worker] Background skill addition task failed:", errorMsg);
+                    await taskService.failTask(taskId, errorMsg);
+                    reject(new Error(errorMsg));
+                }
+            ).catch(reject);
+        });
 
     } catch (error: any) {
         console.error("Add Skill Task failed:", error);
