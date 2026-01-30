@@ -75,11 +75,14 @@ Please output ONLY the text of the cover letter, starting with the header. Do no
     /**
      * Generate Company Intelligence Research for Prep Guide
      */
-    async generateCompanyResearch(companyName: string, jobTitle: string): Promise<string> {
+    async generateCompanyResearch(companyName: string, jobTitle: string, jobDescription?: string): Promise<string> {
         try {
-            const prompt = `Research ${companyName} for interview preparation. You are helping a candidate prepare for a ${jobTitle} interview.
+            const prompt = `Research ${companyName} for interview preparation. You are helping a candidate prepare for a "${jobTitle}" interview.
 
-Provide detailed, CURRENT information in the following structure:
+JOB CONTEXT:
+${jobDescription || "Not provided"}
+
+Provide detailed, CURRENT information in the following structure using professional MARKDOWN:
 
 ## 1. COMPANY OVERVIEW
 - Mission, values, and culture
@@ -87,14 +90,14 @@ Provide detailed, CURRENT information in the following structure:
 - Headquarters and global presence
 - Industry position and market share
 
-## 2. RECENT NEWS & DEVELOPMENTS (Last 30-90 days)
+## 2. RECENT NEWS & DEVELOPMENTS (Last 30-180 days)
 Search for and include:
 - Major product launches or announcements
 - Leadership changes
 - Strategic partnerships or acquisitions
 - Financial performance (if public)
 - Industry awards or recognition
-- Any news relevant to ${jobTitle} role
+- Any news relevant to the ${jobTitle} role
 - Use CURRENT sources (2024-2026)
 
 ## 3. COMPANY CULTURE & WORK ENVIRONMENT
@@ -109,7 +112,7 @@ Based on RECENT employee reviews (Glassdoor, Blind, LinkedIn):
 - Main product lines or services (current portfolio)
 - Revenue drivers
 - Recent innovations
-- Technologies used (especially relevant to ${jobTitle})
+- Technologies used (especially those relevant to the ${jobTitle} role)
 - Team/division structure
 
 ## 5. COMPETITIVE LANDSCAPE
@@ -127,7 +130,11 @@ Search for current information about:
 - Specific interview prep advice for ${companyName}
 - Recent changes to interview process (if any)
 
-Use RECENT, credible sources from 2024-2026. Include specific dates when mentioning news or events. Be specific and actionable for interview preparation.`;
+CRITICAL INSTRUCTIONS:
+- ❌ DO NOT output JSON. Use only Markdown.
+- ❌ DO NOT return an error message if specific role details at ${companyName} are not found. Instead, provide detailed general information about ${companyName} and then provide general interview expectations/best practices for a "${jobTitle}" role in that industry.
+- ✅ Use RECENT, credible sources from 2024-2026. Include specific dates when mentioning news or events.
+- ✅ Be specific, actionable, and encouraging for the candidate's preparation.`;
 
             const response = await axios.post(
                 API_URL,

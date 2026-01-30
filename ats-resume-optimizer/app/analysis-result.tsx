@@ -530,7 +530,13 @@ export default function AnalysisResultScreen() {
                                         <View key={index} style={{ marginBottom: 12, paddingLeft: 8, borderLeftWidth: 2, borderLeftColor: '#4CAF50' }}>
                                             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
                                                 <Text variant="labelLarge" style={{ color: '#2E7D32' }}>
-                                                    {change.type ? change.type.replace(/_/g, ' ').toUpperCase() : 'CHANGE'}
+                                                    {change.type
+                                                        ? change.type
+                                                            .replace(/([A-Z])/g, ' $1') // Add space before capital letters
+                                                            .replace(/_/g, ' ')         // Replace underscores with spaces
+                                                            .trim()
+                                                            .toUpperCase()
+                                                        : 'CHANGE'}
                                                 </Text>
                                                 {change.section && (
                                                     <Text variant="labelSmall" style={{ color: '#666', backgroundColor: '#f0f0f0', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>

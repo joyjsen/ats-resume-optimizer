@@ -1737,10 +1737,70 @@ async function processPrepGuide(
 
     // Step 1: Company Research (use markdown format, not JSON)
     await appRef.update({ "prepGuide.progress": 5, "prepGuide.currentStep": "Researching company..." });
+
+    const companyResearchPrompt = `Research ${companyName} for interview preparation. You are helping a candidate prepare for a "${jobTitle}" interview.
+
+JOB CONTEXT:
+${jobDescription || "Not provided"}
+
+Provide detailed, CURRENT information in the following structure using professional MARKDOWN:
+
+## 1. COMPANY OVERVIEW
+- Mission, values, and culture
+- Company size (employees, revenue if public)
+- Headquarters and global presence
+- Industry position and market share
+
+## 2. RECENT NEWS & DEVELOPMENTS (Last 30-180 days)
+Search for and include:
+- Major product launches or announcements
+- Leadership changes
+- Strategic partnerships or acquisitions
+- Financial performance (if public)
+- Industry awards or recognition
+- Any news relevant to the ${jobTitle} role
+- Use CURRENT sources (2024-2026)
+
+## 3. COMPANY CULTURE & WORK ENVIRONMENT
+Based on RECENT employee reviews (Glassdoor, Blind, LinkedIn):
+- Company values in practice
+- Work-life balance reputation
+- Remote/hybrid policies (current as of 2025-2026)
+- What employees say they love vs. challenges
+- Interview process insights
+
+## 4. KEY PRODUCTS & BUSINESS UNITS
+- Main product lines or services (current portfolio)
+- Revenue drivers
+- Recent innovations
+- Technologies used (especially those relevant to the ${jobTitle} role)
+- Team/division structure
+
+## 5. COMPETITIVE LANDSCAPE
+- Main competitors (current market position)
+- Company's competitive advantages
+- Current challenges or threats (2025-2026)
+- Market opportunities
+- Industry trends affecting ${companyName}
+
+## 6. INTERVIEW CULTURE & PROCESS
+Search for current information about:
+- What is ${companyName} known for in their interview process?
+- Interview format and number of rounds
+- What competencies do they value most?
+- Specific interview prep advice for ${companyName}
+- Recent changes to interview process (if any)
+
+CRITICAL INSTRUCTIONS:
+- ❌ DO NOT output JSON. Use only Markdown.
+- ❌ DO NOT return an error message if specific role details at ${companyName} are not found. Instead, provide detailed general information about ${companyName} and then provide general interview expectations/best practices for a "${jobTitle}" role in that industry.
+- ✅ Use RECENT, credible sources (2024-2026). Include specific dates when mentioning news or events.
+- ✅ Be specific, actionable, and encouraging for the candidate's preparation.`;
+
     sections.companyIntelligence = await callPerplexity(
         perplexityApiKey.value(),
-        "You are a company research analyst preparing interview prep materials.",
-        `Research ${companyName} for interview preparation for a ${jobTitle} role. Include company history, culture, recent news, products/services, and key leadership. Focus on information that would help a candidate in an interview.`,
+        "You are a company research analyst preparing detailed interview prep materials. Always use recent sources from 2024-2026 and include specific dates when relevant.",
+        companyResearchPrompt,
         false  // Return human-readable markdown, not JSON
     );
     await appRef.update({ "prepGuide.progress": 15, "prepGuide.sections.companyIntelligence": sections.companyIntelligence });

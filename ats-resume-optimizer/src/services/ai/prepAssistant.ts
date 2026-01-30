@@ -48,7 +48,7 @@ class PrepAssistantService {
                 currentStep: `Starting generation...`
             }, true); // true = force new history entry
 
-            sections.companyIntelligence = await perplexityService.generateCompanyResearch(companyName, jobTitle);
+            sections.companyIntelligence = await perplexityService.generateCompanyResearch(companyName, jobTitle, input.jobDescription);
 
             await applicationService.updatePrepStatus(applicationId, {
                 progress: 15,
