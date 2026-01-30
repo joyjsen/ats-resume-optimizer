@@ -38,7 +38,7 @@ exports.createStripePaymentIntent = functionsV1
     if (!context.auth) {
         throw new functionsV1.https.HttpsError("unauthenticated", "You must be logged in to make a purchase.");
     }
-    const { amount } = data;
+    const { amount, tokens, packageId } = data;
     if (!amount || typeof amount !== "number" || amount <= 0) {
         throw new functionsV1.https.HttpsError("invalid-argument", "A valid numeric amount is required.");
     }
@@ -49,7 +49,7 @@ exports.createStripePaymentIntent = functionsV1
         // 2. Create Payment Intent
         // Stripe expects amounts in cents
         const amountInCents = Math.round(amount * 100);
-        console.log(`Creating PaymentIntent for UID: ${context.auth.uid}, Amount: ${amountInCents} cents`);
+        console.log(`Creating PaymentIntent for UID: ${context.auth.uid}, Amount: ${amountInCents} cents, Tokens: ${tokens}`);
         const paymentIntent = await stripe.paymentIntents.create({
             amount: amountInCents,
             currency: "usd",
@@ -58,7 +58,9 @@ exports.createStripePaymentIntent = functionsV1
             },
             metadata: {
                 uid: context.auth.uid,
-                // You can add more metadata here for tracking
+                tokens: tokens?.toString() || "0",
+                packageId: packageId || "unknown",
+                amount: amount.toString(),
             },
         });
         // 3. Return the client secret
@@ -73,4 +75,5 @@ exports.createStripePaymentIntent = functionsV1
 });
 __exportStar(require("./notifications"), exports);
 __exportStar(require("./aiAnalysis"), exports);
+__exportStar(require("./stripeWebhook"), exports);
 //# sourceMappingURL=index.js.map

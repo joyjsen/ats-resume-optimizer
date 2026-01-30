@@ -202,7 +202,7 @@ export default function LearningScreen() {
                 if (entry) {
                     await activityService.logActivity({
                         type: 'learning_completion',
-                        description: `Completed learning module: ${entry.skillName} `,
+                        description: `Completed AI Training for "${entry.skillName}"`,
                         resourceId: entry.id,
                         resourceName: entry.skillName,
                         platform: 'ios'

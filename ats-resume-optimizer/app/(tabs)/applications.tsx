@@ -20,6 +20,7 @@ import { notificationService } from '../../src/services/firebase/notificationSer
 import { backgroundTaskService, BackgroundTask } from '../../src/services/firebase/backgroundTaskService';
 import { UserHeader } from '../../src/components/layout/UserHeader'; // Import UserHeader
 import { useTokenCheck } from '../../src/hooks/useTokenCheck';
+import { migrationService } from '../../src/services/firebase/migrationService';
 
 export default function ApplicationsScreen() {
     const router = useRouter();
@@ -134,7 +135,10 @@ export default function ApplicationsScreen() {
         // Sync Logic: Check for zombie applications (missing parent analysis)
         (async () => {
             try {
-                // 1. Fetch fresh data
+                // 1. Run one-time migration to fix prepGuideHistory status
+                await migrationService.fixPrepGuideHistoryStatus();
+
+                // 2. Fetch fresh data
                 const allAnalyses = await historyService.getUserHistory();
                 const allApps = await applicationService.getApplications();
 
@@ -404,12 +408,13 @@ export default function ApplicationsScreen() {
                     // Log activity (tokens already deducted by Cloud Function)
                     await activityService.logActivity({
                         type: 'cover_letter_generation',
-                        description: `Cover Letter for ${application.company}`,
+                        description: `Generated Cover Letter for ${application.company}`,
                         resourceId: application.id,
                         resourceName: application.company,
                         aiProvider: 'perplexity-sonar-pro',
                         platform: 'ios',
-                        skipTokenDeduction: true
+                        skipTokenDeduction: true,
+                        tokensUsed: 15
                     });
 
                     // Note: Push notification is now handled by Cloud Function only
@@ -477,13 +482,21 @@ export default function ApplicationsScreen() {
             try {
                 await activityService.logActivity({
                     type: 'interview_prep_generation',
-                    description: `Prep Guide for ${application.company} - ${application.jobTitle}`,
+                    description: `Generated Interview Prep Guide for ${application.company}`,
                     resourceId: application.id,
                     resourceName: application.company,
                     aiProvider: 'perplexity-sonar-pro',
                     platform: 'ios'
                 });
                 console.log("[PrepGuide] Tokens deducted successfully BEFORE task creation");
+
+                // 1.5 INITIALIZE STATUS - Force push a new history entry so the Cancel button shows up
+                await applicationService.updatePrepStatus(appId, {
+                    status: 'generating',
+                    currentStep: 'Initializing background task...',
+                    progress: 5
+                }, true);
+
             } catch (deductError: any) {
                 console.error("[PrepGuide] Token deduction failed:", deductError);
                 // Return early - task won't be created
@@ -518,20 +531,17 @@ export default function ApplicationsScreen() {
                     // or mark it differently. Per user request "update log before task starts", 
                     // we've already done the main log.
                     console.log("[PrepGuide] Task completed, skipping duplicate logging.");
+
                     // The Cloud Function already updated the application document with sections
                     // Now generate PDF locally (needs file system access)
                     const sections = bgTask.result?.sections;
+                    let pdfUri: string | undefined;
+
                     if (sections) {
                         try {
-                            const pdfUri = await prepGuidePdfGenerator.generateAndShare(sections, {
+                            pdfUri = await prepGuidePdfGenerator.generateAndShare(sections, {
                                 companyName: application.company,
                                 jobTitle: application.jobTitle
-                            });
-
-                            // Update with PDF URL
-                            await applicationService.updatePrepStatus(application.id, {
-                                downloadUrl: pdfUri,
-                                generatedAt: new Date()
                             });
                         } catch (pdfError) {
                             console.error("[PrepGuide] PDF generation failed:", pdfError);
@@ -539,17 +549,39 @@ export default function ApplicationsScreen() {
                         }
                     }
 
+                    // ALWAYS ensure status is marked complete (handles race condition with Cloud Function)
+                    await applicationService.updatePrepStatus(application.id, {
+                        status: 'completed',
+                        downloadUrl: pdfUri,
+                        generatedAt: new Date()
+                    });
+
                     // Note: Push notification is now handled by Cloud Function only
                     // to prevent duplicates. No client-side notification calls needed.
                 },
                 // onError
                 async (bgTask: BackgroundTask) => {
-                    console.error("[PrepGuide] Background task failed:", bgTask.error);
-                    await applicationService.updatePrepStatus(appId, {
-                        status: 'failed',
-                        progress: 0,
-                        currentStep: `Failed: ${bgTask.error || 'Unknown error'}`
-                    }).catch(console.error);
+                    // Check if this is a user-initiated cancellation (not a real error)
+                    const isCancellation = bgTask.error?.includes('cancelled by user') || bgTask.error?.includes('Task cancelled');
+                    if (isCancellation) {
+                        console.log("[PrepGuide] Generation was cancelled by user.");
+                        // Ensure history is updated to 'failed' (cancelled state) - handleCancelPrep may have already done this
+                        // but we update again to ensure consistency
+                        await applicationService.updatePrepStatus(appId, {
+                            status: 'cancelled',
+                            historyStatus: 'failed',
+                            progress: 0,
+                            currentStep: 'Generation Cancelled'
+                        }).catch(console.error);
+                    } else {
+                        console.error("[PrepGuide] Background task failed:", bgTask.error);
+                        await applicationService.updatePrepStatus(appId, {
+                            status: 'failed',
+                            historyStatus: 'failed',
+                            progress: 0,
+                            currentStep: `Failed: ${bgTask.error || 'Unknown error'}`
+                        }).catch(console.error);
+                    }
                 }
             );
 
@@ -682,10 +714,10 @@ export default function ApplicationsScreen() {
             const hasExistingGuide = app?.prepGuide?.sections && Object.keys(app.prepGuide.sections).length > 0;
 
             await applicationService.updatePrepStatus(id, {
-                status: hasExistingGuide ? 'completed' : 'failed',
+                status: 'cancelled',
                 historyStatus: 'failed',
-                currentStep: hasExistingGuide ? 'Generation Cancelled. Restored previous guide.' : 'Cancelled by user',
-                progress: hasExistingGuide ? 100 : 0
+                currentStep: 'Generation Cancelled by User',
+                progress: 0
             });
         } catch (error) {
             console.error("Error cancelling prep:", error);

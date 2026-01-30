@@ -225,14 +225,14 @@ export const ApplicationCardComponent = ({
                             </Button>
                             <Button
                                 mode={!isReadOnly && application.prepGuide?.status === 'completed' ? "contained-tonal" : "outlined"}
-                                icon={application.prepGuide?.status === 'completed' ? "book-open-variant" : "school-outline"}
+                                icon={application.prepGuide?.status === 'completed' && application.prepGuide.sections ? "book-open-variant" : "school-outline"}
                                 onPress={() => !isReadOnly && onGeneratePrep(application.id)}
                                 style={[styles.actionBtn, isReadOnly && styles.disabledBtn]}
                                 labelStyle={{ fontSize: 12 }}
                                 loading={!isReadOnly && application.prepGuide?.status === 'generating'}
                                 disabled={isReadOnly || application.prepGuide?.status === 'generating'}
                             >
-                                {application.prepGuide?.status === 'completed' ? 'View Guide' : 'Prep Guide'}
+                                {application.prepGuide?.status === 'completed' && application.prepGuide.sections ? 'View Guide' : 'Prep Guide'}
                             </Button>
                             <Button
                                 mode="text"
@@ -275,10 +275,10 @@ export const ApplicationCardComponent = ({
                                         <View style={{ flex: 1 }}>
                                             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                                                 <View style={{ flex: 1 }}>
-                                                    <Text variant="bodySmall" style={{ fontWeight: 'bold', color: guideRun.status === 'generating' ? theme.colors.primary : guideRun.status === 'failed' ? theme.colors.error : undefined }}>
+                                                    <Text variant="bodySmall" style={{ fontWeight: 'bold', color: guideRun.status === 'generating' ? theme.colors.primary : (guideRun.status === 'failed' || guideRun.status === 'cancelled') ? theme.colors.error : '#FF9800' }}>
                                                         {guideRun.status === 'generating'
                                                             ? (index > 0 ? "Prep Guide re-generation started" : "Prep Guide generation started")
-                                                            : guideRun.status === 'failed'
+                                                            : (guideRun.status === 'failed' || guideRun.status === 'cancelled')
                                                                 ? (index > 0 ? "Prep Guide re-generation cancelled" : "Prep Guide generation cancelled")
                                                                 : (index > 0 ? "Prep Guide Re-generation completed" : "Prep Guide generation completed")}
                                                     </Text>
@@ -296,9 +296,9 @@ export const ApplicationCardComponent = ({
                                                             onPress={() => {
                                                                 Alert.alert(
                                                                     "Cancel Generation",
-                                                                    "This action will cancel the prep guide generation, are you sure you want to continue to cancel the running task?",
+                                                                    "⚠️ Tokens are already deducted and will NOT be refunded.\n\nAre you sure you want to cancel? You will need to re-start generation if you wish to view the guide.\n\n💡 Tip: Wait for Prep Guide generation to complete.",
                                                                     [
-                                                                        { text: "No", style: "cancel" },
+                                                                        { text: "Keep Running", style: "cancel" },
                                                                         { text: "Yes, Cancel", style: 'destructive', onPress: () => onCancelPrep(application.id) }
                                                                     ]
                                                                 );
@@ -312,7 +312,7 @@ export const ApplicationCardComponent = ({
                                             </View>
                                             <Text variant="labelSmall" style={{ color: '#666', fontStyle: 'italic' }}>
                                                 {guideRun.status === 'generating' ? 'AI is analyzing role & resume...' :
-                                                    guideRun.status === 'failed' ? 'Prep guide is not available yet' :
+                                                    (guideRun.status === 'failed' || guideRun.status === 'cancelled') ? 'Prep guide is not available yet' :
                                                         'Ready to view'}
                                             </Text>
                                         </View>

@@ -49,7 +49,7 @@ export interface Application {
         completedAt?: Date;
     };
     prepGuide?: {
-        status: 'generating' | 'completed' | 'failed';
+        status: 'generating' | 'completed' | 'failed' | 'cancelled';
         startedAt: Date;
         progress: number;
         currentStep?: string;
@@ -68,7 +68,7 @@ export interface Application {
     };
     prepGuideHistory?: {
         id: string; // unique run ID
-        status: 'generating' | 'completed' | 'failed';
+        status: 'generating' | 'completed' | 'failed' | 'cancelled';
         startedAt: Date;
         generatedAt?: Date; // or failedAt
     }[];

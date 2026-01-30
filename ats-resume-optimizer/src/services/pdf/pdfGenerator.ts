@@ -4,55 +4,73 @@ import * as FS from 'expo-file-system/legacy';
 const FileSystem = FS as any;
 
 interface PrepGuideSections {
-    companyIntelligence: string;
-    roleAnalysis: string;
-    technicalPrep: string;
-    behavioralFramework: string;
-    storyMapping: string;
-    questionsToAsk: string;
-    interviewStrategy: string;
+  companyIntelligence: string;
+  roleAnalysis: string;
+  technicalPrep: string;
+  behavioralFramework: string;
+  storyMapping: string;
+  questionsToAsk: string;
+  interviewStrategy: string;
 }
 
 interface PrepGuideMetadata {
-    companyName: string;
-    jobTitle: string;
+  companyName: string;
+  jobTitle: string;
 }
 
 class PrepGuidePdfGenerator {
 
-    async generateAndShare(sections: PrepGuideSections, metadata: PrepGuideMetadata): Promise<string> {
-        try {
-            const htmlContent = this.createHtmlContent(sections, metadata);
+  async generateAndShare(sections: PrepGuideSections, metadata: PrepGuideMetadata): Promise<string> {
+    try {
+      const htmlContent = this.createHtmlContent(sections, metadata);
 
-            const { uri } = await Print.printToFileAsync({
-                html: htmlContent,
-                base64: false
-            });
+      const { uri } = await Print.printToFileAsync({
+        html: htmlContent,
+        base64: false
+      });
 
-            // Move to a more permanent location with readable name
-            const fileName = `${metadata.companyName.replace(/\s+/g, '_')}_${metadata.jobTitle.replace(/\s+/g, '_')}_PrepGuide.pdf`;
-            const fileUri = `${FileSystem.documentDirectory}${fileName}`;
+      // Move to a more permanent location with readable name
+      const fileName = `${metadata.companyName.replace(/\s+/g, '_')}_${metadata.jobTitle.replace(/\s+/g, '_')}_PrepGuide.pdf`;
+      const fileUri = `${FileSystem.documentDirectory}${fileName}`;
 
-            await FileSystem.moveAsync({
-                from: uri,
-                to: fileUri
-            });
+      // Ensure documentDirectory exists (it should, but just in case)
+      const dirInfo = await FileSystem.getInfoAsync(FileSystem.documentDirectory || '');
+      if (!dirInfo.exists) {
+        await FileSystem.makeDirectoryAsync(FileSystem.documentDirectory || '', { intermediates: true });
+      }
 
-            // Share immediately
-            if (await Sharing.isAvailableAsync()) {
-                await Sharing.shareAsync(fileUri);
-            }
-
-            return fileUri;
-
-        } catch (error) {
-            console.error('Error generating PDF:', error);
-            throw error;
+      // Use copyAsync which is more reliable on iOS, then delete original
+      try {
+        await FileSystem.copyAsync({
+          from: uri,
+          to: fileUri
+        });
+        // Delete the original temp file
+        await FileSystem.deleteAsync(uri, { idempotent: true });
+      } catch (moveError) {
+        console.warn('Copy failed, using original URI:', moveError);
+        // If copy fails, just use the original URI
+        if (await Sharing.isAvailableAsync()) {
+          await Sharing.shareAsync(uri);
         }
-    }
+        return uri;
+      }
 
-    private createHtmlContent(sections: PrepGuideSections, metadata: PrepGuideMetadata): string {
-        return `
+      // Share immediately
+      if (await Sharing.isAvailableAsync()) {
+        await Sharing.shareAsync(fileUri);
+      }
+
+      return fileUri;
+
+    } catch (error) {
+      console.error('Error generating PDF:', error);
+      throw error;
+    }
+  }
+
+  private createHtmlContent(sections: PrepGuideSections, metadata: PrepGuideMetadata): string {
+    return `
     <!DOCTYPE html>
     <html>
       <head>
@@ -227,37 +245,37 @@ class PrepGuidePdfGenerator {
       </body>
     </html>
         `;
-    }
+  }
 
-    private formatAIContent(content: string): string {
-        if (!content) return '';
+  private formatAIContent(content: string): string {
+    if (!content) return '';
 
-        let formatted = content
-            // Fix header hierarchy - map down one level to fit section structure
-            .replace(/^# (.+)$/gm, '<h3>$1</h3>')
-            .replace(/^## (.+)$/gm, '<h3>$1</h3>')
-            .replace(/^### (.+)$/gm, '<h4>$1</h4>')
+    let formatted = content
+      // Fix header hierarchy - map down one level to fit section structure
+      .replace(/^# (.+)$/gm, '<h3>$1</h3>')
+      .replace(/^## (.+)$/gm, '<h3>$1</h3>')
+      .replace(/^### (.+)$/gm, '<h4>$1</h4>')
 
-            // Bold
-            .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+      // Bold
+      .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
 
-            // Italic
-            .replace(/\*(.+?)\*/g, '<em>$1</em>')
+      // Italic
+      .replace(/\*(.+?)\*/g, '<em>$1</em>')
 
-            // List items - simple regex replacement
-            .replace(/^[-•] (.+)$/gm, '<li>$1</li>')
+      // List items - simple regex replacement
+      .replace(/^[-•] (.+)$/gm, '<li>$1</li>')
 
-            // Wrap loose list items in ul (simplified approach, better to use proper parser but regex works for generated content structure)
-            .replace(/(<li>.*?<\/li>\n?)+/gs, '<ul>$&</ul>')
+      // Wrap loose list items in ul (simplified approach, better to use proper parser but regex works for generated content structure)
+      .replace(/(<li>.*?<\/li>\n?)+/gs, '<ul>$&</ul>')
 
-            // Paragraphs - double newlines become new paragraphs
-            .replace(/\n\n/g, '</p><p>')
+      // Paragraphs - double newlines become new paragraphs
+      .replace(/\n\n/g, '</p><p>')
 
-            // Wrap anything that looks like a plain text line in p tags if not already tagged
-            .replace(/^(?!<[h|ul|ol|li|div|p])(.+)$/gm, '<p>$1</p>');
+      // Wrap anything that looks like a plain text line in p tags if not already tagged
+      .replace(/^(?!<[h|ul|ol|li|div|p])(.+)$/gm, '<p>$1</p>');
 
-        return formatted;
-    }
+    return formatted;
+  }
 }
 
 export const prepGuidePdfGenerator = new PrepGuidePdfGenerator();

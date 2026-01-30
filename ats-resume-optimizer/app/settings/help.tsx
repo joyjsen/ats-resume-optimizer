@@ -576,13 +576,6 @@ export default function HelpSupportScreen() {
             }
         });
     };
-
-    const handleCallSupport = () => {
-        const phone = '+16085717669';
-        const url = `tel:${phone}`;
-        Linking.openURL(url);
-    };
-
     const renderAnswer = (answer: string | string[]) => {
         if (Array.isArray(answer)) {
             return (
@@ -624,18 +617,6 @@ export default function HelpSupportScreen() {
                         </Button>
                         <Text variant="bodySmall" style={{ textAlign: 'center', marginTop: 4, color: theme.colors.outline }}>
                             pjmarket1316@gmail.com
-                        </Text>
-
-                        <Button
-                            mode="outlined"
-                            icon="phone"
-                            onPress={handleCallSupport}
-                            style={[styles.button, { marginTop: 12 }]}
-                        >
-                            Call Support
-                        </Button>
-                        <Text variant="bodySmall" style={{ textAlign: 'center', marginTop: 4, color: theme.colors.outline }}>
-                            +1 608-571-7669
                         </Text>
                     </Card.Content>
                 </Card>

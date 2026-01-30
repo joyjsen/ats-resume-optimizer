@@ -107,13 +107,25 @@ export const onActivityCreated = functionsV1
 
         // A. Token Purchase -> Invoice
         if (activity.type === "token_purchase" && email) {
-            const subject = "Purchase Confirmation & Invoice";
+            // Fetch user profile for personalization
+            const userDoc = await admin.firestore().collection("users").doc(uid).get();
+            const userData = userDoc.exists ? userDoc.data() : null;
+            const firstName = userData?.firstName || userData?.displayName?.split(' ')[0] || 'there';
+
+            const tokens = activity.contextData?.amount || 'tokens';
+            const cost = activity.contextData?.cost || '0.00';
+            const transactionId = snap.id;
+
+            const subject = "Your ResuMate Tokens Are Ready! 🚀";
             const html = `
-                <h1>Purchase Successful</h1>
-                <p>You have purchased ${activity.contextData?.amount || 'tokens'}.</p>
-                <p>Cost: $${activity.contextData?.cost || '0.00'}</p>
-                <p>Transaction ID: ${snap.id}</p>
-                <p>Thank you for your support!</p>
+                <p>Hi ${firstName},</p>
+                <p>Your token purchase is confirmed!</p>
+                <p><strong>${tokens} tokens added to your account</strong></p>
+                <p>Amount: $${cost}</p>
+                <p>Order ID: ${transactionId}</p>
+                <p>Your tokens are ready to use. Open ResuMate to start optimizing your applications.</p>
+                <p>Need help? Reply to this email.</p>
+                <p>Thanks,<br/>ResuMate</p>
             `;
             await sendEmail(email, subject, html);
         }

@@ -113,10 +113,13 @@ class BackgroundTaskService {
                 // Clean up listener
                 this.stopListening(taskId);
             } else if (task.status === 'failed') {
-                // Check if this is a cancellation-related error (NOT_FOUND means the parent task was deleted)
-                const isCancellationError = task.error?.includes('NOT_FOUND') || task.error?.includes('no longer exists');
+                // Check if this is a cancellation-related error
+                const isCancellationError = task.error?.includes('NOT_FOUND') ||
+                    task.error?.includes('no longer exists') ||
+                    task.error?.includes('cancelled by user') ||
+                    task.error?.includes('Task cancelled');
                 if (isCancellationError) {
-                    console.log(`[BackgroundTaskService] Task ${taskId} was cancelled (parent task deleted).`);
+                    console.log(`[BackgroundTaskService] Task ${taskId} was cancelled.`);
                 } else {
                     console.error(`[BackgroundTaskService] Task ${taskId} failed: ${task.error}`);
                 }

@@ -39,9 +39,15 @@ interface GapAnalysis {
 async function callPerplexity(
     perplexityKey: string,
     systemContent: string,
-    userContent: string
+    userContent: string,
+    returnJson: boolean = true
 ): Promise<string> {
     console.log("[AI Fallback] Calling Perplexity...");
+
+    // Only add JSON instruction when needed (for structured data parsing)
+    const finalUserContent = returnJson
+        ? userContent + "\n\nIMPORTANT: Return ONLY valid JSON."
+        : userContent + "\n\nFormat your response as clear, well-structured markdown with headings and bullet points.";
 
     const response = await axios.post(
         PERPLEXITY_API_URL,
@@ -49,7 +55,7 @@ async function callPerplexity(
             model: "sonar-pro",
             messages: [
                 { role: "system", content: systemContent },
-                { role: "user", content: userContent + "\n\nIMPORTANT: Return ONLY valid JSON." }
+                { role: "user", content: finalUserContent }
             ],
             temperature: 0.3,
             max_tokens: 4000,
@@ -1683,6 +1689,17 @@ async function processPrepGuide(
 
     const appRef = db.collection("user_applications").doc(applicationId);
 
+    // Helper to check if user has cancelled the task
+    const checkIfCancelled = async (): Promise<boolean> => {
+        const appSnap = await appRef.get();
+        const status = appSnap.data()?.prepGuide?.status;
+        if (status === 'cancelled' || status === 'failed') {
+            console.log(`[processPrepGuide] Task cancelled by user. Status: ${status}`);
+            return true;
+        }
+        return false;
+    };
+
     // Note: Token deduction now handled at task start in applications.tsx
 
     await appRef.update({
@@ -1718,34 +1735,60 @@ async function processPrepGuide(
         }
     };
 
-    // Step 1: Company Research
+    // Step 1: Company Research (use markdown format, not JSON)
     await appRef.update({ "prepGuide.progress": 5, "prepGuide.currentStep": "Researching company..." });
     sections.companyIntelligence = await callPerplexity(
         perplexityApiKey.value(),
-        "You are a company research analyst.",
-        `Research ${companyName} for interview preparation for a ${jobTitle} role.`
+        "You are a company research analyst preparing interview prep materials.",
+        `Research ${companyName} for interview preparation for a ${jobTitle} role. Include company history, culture, recent news, products/services, and key leadership. Focus on information that would help a candidate in an interview.`,
+        false  // Return human-readable markdown, not JSON
     );
     await appRef.update({ "prepGuide.progress": 15, "prepGuide.sections.companyIntelligence": sections.companyIntelligence });
+
+    // Check for cancellation after Step 1
+    if (await checkIfCancelled()) {
+        throw new Error("Task cancelled by user after Step 1");
+    }
 
     // Step 2: Role Analysis
     await appRef.update({ "prepGuide.currentStep": "Analyzing role requirements..." });
     sections.roleAnalysis = await callGpt(`Analyze ${jobTitle} at ${companyName}. JD: ${jobDescription || "N/A"}`, "Role Analysis");
     await appRef.update({ "prepGuide.progress": 30, "prepGuide.sections.roleAnalysis": sections.roleAnalysis });
 
+    // Check for cancellation after Step 2
+    if (await checkIfCancelled()) {
+        throw new Error("Task cancelled by user after Step 2");
+    }
+
     // Step 3: Technical Prep
     await appRef.update({ "prepGuide.currentStep": "Creating technical prep plan..." });
     sections.technicalPrep = await callGpt(`Technical prep for ${jobTitle} at ${companyName}. Skills: ${matchedSkills?.join(', ')}`, "Technical Prep");
     await appRef.update({ "prepGuide.progress": 50, "prepGuide.sections.technicalPrep": sections.technicalPrep });
+
+    // Check for cancellation after Step 3
+    if (await checkIfCancelled()) {
+        throw new Error("Task cancelled by user after Step 3");
+    }
 
     // Step 4: Behavioral Framework
     await appRef.update({ "prepGuide.currentStep": "Generating behavioral framework..." });
     sections.behavioralFramework = await callGpt(`Behavioral interview guide for ${jobTitle} at ${companyName}`, "Behavioral");
     await appRef.update({ "prepGuide.progress": 70, "prepGuide.sections.behavioralFramework": sections.behavioralFramework });
 
+    // Check for cancellation after Step 4
+    if (await checkIfCancelled()) {
+        throw new Error("Task cancelled by user after Step 4");
+    }
+
     // Step 5: Story Mapping
     await appRef.update({ "prepGuide.currentStep": "Mapping your experience..." });
     sections.storyMapping = await callGpt(`Map experiences to interview questions for ${jobTitle}`, "Story Mapping");
     await appRef.update({ "prepGuide.progress": 85, "prepGuide.sections.storyMapping": sections.storyMapping });
+
+    // Check for cancellation after Step 5
+    if (await checkIfCancelled()) {
+        throw new Error("Task cancelled by user after Step 5");
+    }
 
     // Step 6: Questions & Strategy
     await appRef.update({ "prepGuide.currentStep": "Finalizing questions & strategy..." });
@@ -1756,18 +1799,38 @@ async function processPrepGuide(
     sections.questionsToAsk = questionsToAsk;
     sections.interviewStrategy = interviewStrategy;
 
-    // Final update
+    // Final cancellation check before marking complete
+    if (await checkIfCancelled()) {
+        throw new Error("Task cancelled by user before completion");
+    }
+
+    // Read current history to update the latest entry
+    const appSnapForHistory = await appRef.get();
+    const appDataForHistory = appSnapForHistory.data();
+    let prepGuideHistory = appDataForHistory?.prepGuideHistory || [];
+
+    // Update the latest history entry to 'completed'
+    if (prepGuideHistory.length > 0) {
+        prepGuideHistory[prepGuideHistory.length - 1].status = 'completed';
+        // Note: serverTimestamp() doesn't work inside arrays, use Timestamp.now() instead
+        prepGuideHistory[prepGuideHistory.length - 1].generatedAt = admin.firestore.Timestamp.now();
+    }
+
+    // Final update - includes prepGuideHistory
     await appRef.update({
         "prepGuide.status": "completed",
         "prepGuide.progress": 100,
         "prepGuide.currentStep": "Complete",
         "prepGuide.completedAt": admin.firestore.FieldValue.serverTimestamp(),
+        "prepGuide.generatedAt": admin.firestore.FieldValue.serverTimestamp(),
         "prepGuide.sections.questionsToAsk": questionsToAsk,
         "prepGuide.sections.interviewStrategy": interviewStrategy,
+        "prepGuideHistory": prepGuideHistory,
     });
 
     await taskRef.update({ result: { sections } });
 }
+
 
 // Helper function: Send push notification to user via Expo Push API
 async function sendPushNotification(

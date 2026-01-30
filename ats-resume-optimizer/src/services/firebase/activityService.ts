@@ -34,7 +34,8 @@ export class ActivityService {
         contextData?: any,
         platform?: 'ios' | 'android' | 'web',
         targetUserId?: string,
-        skipTokenDeduction?: boolean
+        skipTokenDeduction?: boolean,
+        tokensUsed?: number
     }): Promise<string> {
         const user = auth.currentUser;
         if (!user) throw new Error("User not authenticated");
@@ -108,7 +109,7 @@ export class ActivityService {
                 uid: targetUid,
                 type: params.type,
                 description: params.description,
-                tokensUsed: cost,
+                tokensUsed: params.tokensUsed !== undefined ? params.tokensUsed : cost,
                 tokenBalance: newBalance,
                 aiProvider: params.aiProvider || 'none',
                 status: 'completed',

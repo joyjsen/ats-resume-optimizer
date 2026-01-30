@@ -329,7 +329,7 @@ export const SkillAdditionModal = ({ visible, skill, resume, onDismiss, onConfir
                                     // LOG ACTIVITY
                                     await activityService.logActivity({
                                         type: 'training_slideshow_generation',
-                                        description: `Started AI learning path for "${skill}"`,
+                                        description: `Started AI Training for "${skill}"`,
                                         resourceId: skill!,
                                         resourceName: skill!,
                                         aiProvider: 'openai-gpt4o-mini'
