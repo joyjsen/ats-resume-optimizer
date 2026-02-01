@@ -206,7 +206,7 @@ const ResuMateHome = () => {
                             <View style={{ marginTop: 16 }}>
                                 <ProgressBar progress={0.62} color={theme.colors.primary} style={{ height: 6, borderRadius: 3 }} />
                                 <Text variant="bodySmall" style={{ marginTop: 8, color: theme.colors.onSurfaceVariant }}>
-                                    ~{Math.floor(tokenBalance / 8)} analyses or ~{Math.floor(tokenBalance / 40)} optimizations remaining
+                                    ~{Math.floor(tokenBalance / 8)} analyses or ~{Math.floor(tokenBalance / 15)} optimizations remaining
                                 </Text>
                             </View>
                         </Card.Content>
