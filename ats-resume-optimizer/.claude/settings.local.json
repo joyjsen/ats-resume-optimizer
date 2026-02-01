@@ -1,9 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "Bash(npm uninstall:*)",
-      "Bash(npm run build:*)",
-      "Bash(npx firebase deploy:*)"
-    ]
-  }
-}

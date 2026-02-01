@@ -299,6 +299,15 @@ export default function AnalysisResultScreen() {
 
     const handleSave = async () => {
         setSaving(true);
+
+        // Safety timeout - if save takes longer than 15 seconds, force reset
+        const safetyTimeout = setTimeout(() => {
+            console.warn("[handleSave] Safety timeout triggered - forcing save state reset");
+            setSaving(false);
+            const { Alert } = require('react-native');
+            Alert.alert("Save Timeout", "The save operation took too long. Your changes may have been saved - please check the Applications tab.");
+        }, 15000);
+
         try {
             const { historyService } = require('../src/services/firebase/historyService');
 
@@ -323,25 +332,26 @@ export default function AnalysisResultScreen() {
                         skipTokenDeduction: true
                     }).catch((e: any) => console.error("Validation activity log failed:", e));
 
-                    // Trigger Push Notification via Ghost Task
+                    // Trigger Push Notification via Ghost Task - with timeout protection
                     try {
                         const { taskService } = require('../src/services/firebase/taskService');
-                        const taskId = await taskService.createTask('resume_validation', {
-                            analysisId: currentAnalysis.id,
-                            jobTitle: currentAnalysis.job.title
-                        });
-                        await taskService.completeTask(taskId, currentAnalysis.id);
+                        const ghostTaskPromise = (async () => {
+                            const taskId = await taskService.createTask('resume_validation', {
+                                analysisId: currentAnalysis.id,
+                                jobTitle: currentAnalysis.job.title
+                            });
+                            await taskService.completeTask(taskId, currentAnalysis.id);
+                        })();
+
+                        // Race against a 5 second timeout for the ghost task
+                        await Promise.race([
+                            ghostTaskPromise,
+                            new Promise((_, reject) => setTimeout(() => reject(new Error('Ghost task timeout')), 5000))
+                        ]);
                     } catch (pushError) {
                         console.warn("Failed to trigger validation push notification:", pushError);
+                        // Don't block save for notification failure
                     }
-
-                    // Send local push notification for validation completion - REMOVED (Duplicate)
-                    /*
-                    await notificationService.notifyValidationComplete(
-                        currentAnalysis.job.title,
-                        currentAnalysis.id
-                    ).catch((e: any) => console.warn("Validation notification failed:", e));
-                    */
 
                     // Update local store immediately to reflect "Saved" state
                     // This prevents the button from reappearing if we stay on screen
@@ -359,18 +369,17 @@ export default function AnalysisResultScreen() {
                     });
                 } else {
                     // Handle failure or race condition
+                    const { Alert } = require('react-native');
+                    Alert.alert("Save Failed", "Could not save changes. Please try again.");
                 }
             }
 
-            // Per user request: Stay on screen or go back?
-            // "should continue to show 'validate...' until i actually click on it"
-            // "when i do not click it and go back... it is again showing rewrite" (bug)
-            // Implicitly: clicking it should probably just update the state to "Saved".
-            // User didn't say "go back".
-            // Let's NOT dismissAll. Just validate and show "Optimized".
-            // router.dismissAll(); 
-
+        } catch (error: any) {
+            console.error("[handleSave] Error:", error);
+            const { Alert } = require('react-native');
+            Alert.alert("Save Error", error.message || "An unexpected error occurred while saving.");
         } finally {
+            clearTimeout(safetyTimeout);
             setSaving(false);
         }
     };

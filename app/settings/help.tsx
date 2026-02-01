@@ -589,6 +589,42 @@ export default function HelpSupportScreen() {
         });
     };
 
+    const handleEmergencyReset = () => {
+        Alert.alert(
+            "🔄 Emergency Reset",
+            "This will reset the app navigation and clear any stuck states. Your data will NOT be deleted.\n\nUse this if the app becomes unresponsive or buttons stop working.",
+            [
+                { text: "Cancel", style: "cancel" },
+                {
+                    text: "Reset App",
+                    style: "destructive",
+                    onPress: () => {
+                        try {
+                            // Clear Zustand store
+                            const { useResumeStore } = require('../../src/store/resumeStore');
+                            useResumeStore.getState().setCurrentAnalysis(null);
+
+                            // Use dismissAll if available, otherwise just navigate
+                            if (router.canDismiss()) {
+                                router.dismissAll();
+                            }
+
+                            // Short delay then navigate to home tab
+                            setTimeout(() => {
+                                router.navigate('/(tabs)/home');
+                                Alert.alert("Reset Complete", "The app has been reset. You can now continue using ResuMate.");
+                            }, 200);
+                        } catch (error) {
+                            console.error("Emergency reset error:", error);
+                            // Fallback: just try to navigate
+                            router.navigate('/(tabs)/home');
+                        }
+                    }
+                }
+            ]
+        );
+    };
+
     const handlePrivacyEnquiry = () => {
         const email = 'pjmarket1316@gmail.com';
         const subject = 'Privacy Enquiry: ResuMate App';
@@ -690,6 +726,24 @@ export default function HelpSupportScreen() {
                         {index < HELP_CONTENT.length - 1 && <Divider style={{ marginTop: 16 }} />}
                     </View>
                 ))}
+
+                <Card style={[styles.card, { borderColor: '#FF5722', borderWidth: 1 }]}>
+                    <Card.Content>
+                        <Text variant="titleMedium" style={[styles.sectionTitle, { color: '#FF5722' }]}>🔄 App Stuck?</Text>
+                        <Text variant="bodyMedium" style={{ marginBottom: 16 }}>
+                            If buttons stop responding or the app freezes, use the emergency reset to restore functionality without losing any data.
+                        </Text>
+                        <Button
+                            mode="outlined"
+                            icon="refresh"
+                            onPress={handleEmergencyReset}
+                            style={styles.button}
+                            textColor="#FF5722"
+                        >
+                            Emergency Reset
+                        </Button>
+                    </Card.Content>
+                </Card>
 
                 <Card style={styles.card}>
                     <Card.Content>

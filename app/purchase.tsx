@@ -1,27 +1,45 @@
-import React, { useState } from 'react';
-import { View, StyleSheet, ScrollView, Alert } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, StyleSheet, ScrollView, Alert, Platform } from 'react-native';
 import { Text, Card, Button, useTheme, ActivityIndicator, List } from 'react-native-paper';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { TOKEN_PACKAGES, TokenPackage } from '../src/types/profile.types';
 import { useProfileStore } from '../src/store/profileStore';
-import { stripeService } from '../src/services/stripe/stripeService';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { stripeService } from '../src/services/stripe/stripeService';
 
 export default function PurchaseScreen() {
     const theme = useTheme();
     const router = useRouter();
+    const { status } = useLocalSearchParams<{ status: string }>();
     const { userProfile, refreshProfile } = useProfileStore();
     const [loading, setLoading] = useState<string | null>(null);
+
+    // Handle return from Stripe Checkout on web
+    useEffect(() => {
+        if (Platform.OS === 'web' && status === 'success') {
+            const handleSuccess = async () => {
+                await refreshProfile();
+                Alert.alert(
+                    "Success!",
+                    "Your tokens have been added to your account.",
+                    [{ text: "OK", onPress: () => router.replace('/(tabs)/profile' as any) }]
+                );
+            };
+            handleSuccess();
+        } else if (Platform.OS === 'web' && status === 'cancel') {
+            Alert.alert("Canceled", "Your purchase was canceled.");
+        }
+    }, [status]);
 
     const handlePurchase = async (pkg: TokenPackage) => {
         if (!userProfile) return;
 
         setLoading(pkg.id);
         try {
-            // 1. Initialize payment sheet (Simulation/Backend call)
+            // 1. Initialize payment sheet (Native only, web handles it in openPaymentSheet)
             await stripeService.initializePaymentSheet(userProfile.uid, pkg.price, theme.dark);
 
-            // 2. Open payment sheet
+            // 2. Open payment sheet / Redirect to Checkout
             const result: any = await stripeService.openPaymentSheet(
                 userProfile.uid,
                 pkg.tokens,
@@ -30,14 +48,15 @@ export default function PurchaseScreen() {
             );
 
             if (result.success) {
-                await refreshProfile();
-                Alert.alert(
-                    "Success!",
-                    `Successfully purchased ${pkg.tokens} tokens. Your new balance is reflected in your profile.`,
-                    [{ text: "OK", onPress: () => router.back() }]
-                );
+                if (Platform.OS !== 'web') {
+                    await refreshProfile();
+                    Alert.alert(
+                        "Success!",
+                        `Successfully purchased ${pkg.tokens} tokens. Your new balance is reflected in your profile.`,
+                        [{ text: "OK", onPress: () => router.back() }]
+                    );
+                }
             } else if (result.message === 'canceled') {
-                // User closed the payment sheet, no error alert needed
                 console.log("User canceled checkout");
             }
         } catch (error: any) {

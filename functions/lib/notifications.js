@@ -18,7 +18,7 @@ const getTransporter = () => {
     });
 };
 // --- Helper: Send Email ---
-async function sendEmail(to, subject, html, text) {
+async function sendEmail(to, subject, html) {
     try {
         const transporter = getTransporter();
         await transporter.sendMail({
@@ -26,7 +26,6 @@ async function sendEmail(to, subject, html, text) {
             to,
             subject,
             html,
-            text, // Text version for plain email clients
         });
         console.log(`Email sent to ${to}: ${subject}`);
     }
@@ -106,63 +105,21 @@ exports.onActivityCreated = functionsV1
         const userDoc = await admin.firestore().collection("users").doc(uid).get();
         const userData = userDoc.exists ? userDoc.data() : null;
         const firstName = userData?.firstName || userData?.displayName?.split(' ')[0] || 'there';
-        // FIX: Data keys from Stripe Webhook/Activity
-        const tokens = activity.contextData?.tokens || 'tokens';
-        const cost = activity.contextData?.amount || '0.00';
-        const transactionId = activity.contextData?.stripePaymentIntentId || snap.id;
-        const dateStr = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+        const tokens = activity.contextData?.amount || 'tokens';
+        const cost = activity.contextData?.cost || '0.00';
+        const transactionId = snap.id;
         const subject = "Your ResuMate Tokens Are Ready! 🚀";
-        // HTML Version
         const html = `
-                <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; color: #333;">
-                    <p>Hi ${firstName},</p>
-                    <p>Your token purchase is confirmed!</p>
-                    <p style="font-size: 18px; color: #6200ee;"><strong>${tokens} tokens added to your account</strong></p>
-                    <p>Amount: $${cost}</p>
-                    <p>Order ID: ${transactionId}</p>
-                    <p>Date: ${dateStr}</p>
-                    <p>Your tokens are ready to use. Open ResuMate to start optimizing your applications.</p>
-                    <p>Need help? Reply to this email.</p>
-                    <p>Thanks,<br/>ResuMate</p>
-                    
-                    <hr style="border: 0; border-top: 1px solid #eee; margin: 30px 0;">
-                    
-                    <div style="font-size: 12px; color: #777; line-height: 1.6;">
-                        <p><strong>Resumate Inc.</strong><br>
-                        2 Birchcliffe Dr Brampton ON L6Z4T3</p>
-                        <p>Support: <a href="mailto:pjmarket1316@gmail.com" style="color: #6200ee;">pjmarket1316@gmail.com</a></p>
-                        <p style="margin-top: 20px;">
-                            You are receiving this email because you made a purchase on ResuMate.<br>
-                            <a href="#" style="color: #6200ee; text-decoration: none;">Unsubscribe</a> (Manage notifications in App Settings)
-                        </p>
-                    </div>
-                </div>
+                <p>Hi ${firstName},</p>
+                <p>Your token purchase is confirmed!</p>
+                <p><strong>${tokens} tokens added to your account</strong></p>
+                <p>Amount: $${cost}</p>
+                <p>Order ID: ${transactionId}</p>
+                <p>Your tokens are ready to use. Open ResuMate to start optimizing your applications.</p>
+                <p>Need help? Reply to this email.</p>
+                <p>Thanks,<br/>ResuMate</p>
             `;
-        // Plain Text Version
-        const text = `
-Hi ${firstName},
-
-Your token purchase is confirmed!
-${tokens} tokens added to your account
-
-Amount: $${cost}
-Order ID: ${transactionId}
-Date: ${dateStr}
-
-Your tokens are ready to use. Open ResuMate to start optimizing your applications.
-
-Need help? Reply to this email.
-
-Thanks,
-ResuMate
-
----
-Resumate Inc.
-2 Birchcliffe Dr Brampton ON L6Z4T3
-Support: pjmarket1316@gmail.com
-Unsubscribe: [Manage notifications in App Settings]
-            `.trim();
-        await sendEmail(email, subject, html, text);
+        await sendEmail(email, subject, html);
     }
     // B. Admin Adjustment -> Email
     // Assuming admin logs activity type 'admin_adjustment' (we might need to ensure this type exists)

@@ -105,7 +105,9 @@ export class ResumeParserService {
         allContents.push(imageContent);
       }
 
-      return allContents.join('\n\n');
+      const combined = allContents.join('\n\n');
+      console.log(`[ResumeParser] Extraction complete. Length: ${combined.length}`);
+      return combined;
     } catch (error) {
       console.error("File reading error:", error);
       throw error;
@@ -193,12 +195,18 @@ Guidelines:
     const messages: any[] = [{ role: 'user', content: prompt + `\n\nResume Content:\n${content}` }];
 
     // Validation
-    const isOnlyWarnings = !content.includes('[IMAGE_CONTENT:') &&
-      (content.trim().length === 0 ||
-        (content.includes('[WARNING:') && !content.split('\n').some(line => !line.startsWith('[WARNING:') && line.trim().length > 0)));
+    const lines = content.split('\n');
+    const warnings = lines.filter(l => l.startsWith('[WARNING:'));
+    const actualContent = lines.filter(l => !l.startsWith('[WARNING:') && l.trim().length > 0);
+
+    const isOnlyWarnings = content.trim().length === 0 || (warnings.length > 0 && actualContent.length === 0);
 
     if (isOnlyWarnings) {
-      throw new Error("No valid content found. Please upload a Screenshot (Image), Text file (.txt), PDF, or DOCX.");
+      let errorMessage = "No valid content found. Please upload a Screenshot (Image), Text file (.txt), or DOCX.";
+      if (warnings.length > 0) {
+        errorMessage = `Could not extract text from files: ${warnings.map(w => w.replace('[WARNING:', '').replace(']', '').trim()).join('; ')}`;
+      }
+      throw new Error(errorMessage);
     }
 
     const options = {

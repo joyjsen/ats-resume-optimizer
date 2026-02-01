@@ -1,9 +1,7 @@
 import React, { useEffect } from 'react';
-import { Alert } from 'react-native';
+import { Alert, Platform, View } from 'react-native';
 import { useRouter, useSegments, Stack } from 'expo-router';
 import { PaperProvider, Avatar, Text } from 'react-native-paper';
-import { StripeProvider } from '@stripe/stripe-react-native';
-import { ENV } from '../src/config/env';
 import { authService, UserInactiveError } from '../src/services/firebase/authService';
 import { useProfileStore } from '../src/store/profileStore';
 import { TaskQueueProvider } from '../src/context/TaskQueueContext';
@@ -11,6 +9,9 @@ import { UserHeader } from '../src/components/layout/UserHeader';
 import { auth } from '../src/services/firebase/config';
 import { notificationService } from '../src/services/firebase/notificationService';
 import { ThemeProvider, useAppTheme, LightTheme, DarkTheme } from '../src/context/ThemeContext';
+import { WebLandingPage } from '../src/components/web/WebLandingPage';
+import { WebAppLayout } from '../src/components/web/WebAppLayout';
+import { StripeProviderWrapper } from '../src/components/providers/StripeProviderWrapper';
 
 export default function RootLayout() {
     return (
@@ -57,7 +58,10 @@ function RootLayoutContent() {
         const currentRoute = (segments as any)[1];
 
         if (!userProfile && !inAuthGroup) {
-            router.replace('/(auth)/sign-in' as any);
+            // On web, we don't redirect - the RootLayoutContent handles showing the landing page
+            if (Platform.OS !== 'web') {
+                router.replace('/(auth)/sign-in' as any);
+            }
         } else if (userProfile) {
             const nativeUser = auth.currentUser;
             const isEmailUser = userProfile.provider === 'email';
@@ -93,46 +97,56 @@ function RootLayoutContent() {
 
     const headerOptions = {
         headerRight: () => userProfile ? <UserHeader /> : null,
-        headerStyle: { backgroundColor: theme.colors.elevation.level2 }, // This sets the header background
-        headerTintColor: theme.colors.onSurface, // Back button and text color
-        headerTitleStyle: { color: theme.colors.onSurface }, // Ensure title matches
+        headerStyle: { backgroundColor: theme.colors.elevation.level2 },
+        headerTintColor: theme.colors.onSurface,
+        headerTitleStyle: { color: theme.colors.onSurface },
     };
 
-    return (
-        <StripeProvider
-            publishableKey={ENV.STRIPE_PUBLISHABLE_KEY || 'pk_test_sample'}
-            merchantIdentifier="merchant.com.atsresumeoptimizer"
-        >
+    // Web: Show landing page if not logged in (except for public routes like terms/privacy)
+    const publicRoutes = ['settings/terms', 'settings/privacy'];
+    const isPublicRoute = publicRoutes.some(route => segments.join('/').includes(route));
+
+    if (Platform.OS === 'web' && !userProfile && isInitialized && !isPublicRoute) {
+        return (
             <PaperProvider theme={theme}>
-                <TaskQueueProvider>
-                    <Stack screenOptions={headerOptions}>
-                        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-                        <Stack.Screen name="(auth)" options={{ headerShown: false }} />
-                        <Stack.Screen
-                            name="analysis-result"
-                            options={{ title: 'Analysis Result', presentation: 'card' }}
-                        />
-                        <Stack.Screen
-                            name="upskilling-path"
-                            options={{ title: 'Your Learning Path', presentation: 'card' }}
-                        />
-                        <Stack.Screen
-                            name="optimization-editor"
-                            options={{ title: 'Resume Editor', presentation: 'modal' }}
-                        />
-                        <Stack.Screen
-                            name="resume-preview"
-                            options={{ title: 'Preview', presentation: 'modal' }}
-                        />
-                        <Stack.Screen name="purchase" options={{ title: 'Refill Tokens', presentation: 'modal' }} />
-                        <Stack.Screen name="purchase-history" options={{ title: 'Purchase History', presentation: 'modal' }} />
-                        <Stack.Screen name="analytics" options={{ title: 'Usage Analytics', headerBackTitle: '' }} />
-                        <Stack.Screen name="history-details" options={{ headerBackTitle: '', title: '' }} />
-                        <Stack.Screen name="user-activity" options={{ title: 'Activity History' }} />
-                        <Stack.Screen name="admin" options={{ headerShown: false }} />
-                    </Stack>
-                </TaskQueueProvider>
+                <WebLandingPage />
             </PaperProvider>
-        </StripeProvider>
+        );
+    }
+
+    const appContent = (
+        <Stack screenOptions={headerOptions}>
+            <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+            <Stack.Screen name="(auth)" options={{ headerShown: false }} />
+            <Stack.Screen name="analysis-result" options={{ title: 'Analysis Result', presentation: 'card' }} />
+            <Stack.Screen name="upskilling-path" options={{ title: 'Your Learning Path', presentation: 'card' }} />
+            <Stack.Screen name="optimization-editor" options={{ title: 'Resume Editor', presentation: 'modal' }} />
+            <Stack.Screen name="resume-preview" options={{ title: 'Preview', presentation: 'modal' }} />
+            <Stack.Screen name="purchase" options={{ title: 'Refill Tokens', presentation: 'modal' }} />
+            <Stack.Screen name="purchase-history" options={{ title: 'Purchase History', presentation: 'modal' }} />
+            <Stack.Screen name="analytics" options={{ title: 'Usage Analytics', headerBackTitle: '' }} />
+            <Stack.Screen name="history-details" options={{ headerBackTitle: '', title: '' }} />
+            <Stack.Screen name="user-activity" options={{ title: 'Activity History' }} />
+            <Stack.Screen name="admin" options={{ headerShown: false }} />
+        </Stack>
+    );
+
+    const mainApp = (
+        <PaperProvider theme={theme}>
+            <TaskQueueProvider>
+                {Platform.OS === 'web' && userProfile ? (
+                    <WebAppLayout>{appContent}</WebAppLayout>
+                ) : (
+                    appContent
+                )}
+            </TaskQueueProvider>
+        </PaperProvider>
+    );
+
+    return (
+        <StripeProviderWrapper>
+            {mainApp}
+        </StripeProviderWrapper>
     );
 }
+

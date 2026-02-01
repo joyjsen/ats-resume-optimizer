@@ -13,6 +13,7 @@ import {
     writeBatch
 } from 'firebase/firestore';
 import { db, auth } from './config';
+import { activityService } from './activityService';
 import { SavedAnalysis } from '../../types/history.types';
 import { AnalysisResult } from '../../types/analysis.types';
 import { JobPosting } from '../../types/job.types';
@@ -72,6 +73,19 @@ export class HistoryService {
 
             const docRef = await addDoc(this.analysesCollection, docData);
             console.log('Analysis saved with ID: ', docRef.id);
+
+            // Log activity
+            try {
+                await activityService.logActivity({
+                    type: 'gap_analysis',
+                    description: `Analyzed the resume for ${job.title} at ${job.company}`,
+                    resourceId: docRef.id,
+                    skipTokenDeduction: true
+                });
+            } catch (logError) {
+                console.warn("[HistoryService] Failed to log creation activity:", logError);
+            }
+
             return docRef.id;
         } catch (error) {
             console.error('Error saving analysis history:', error);

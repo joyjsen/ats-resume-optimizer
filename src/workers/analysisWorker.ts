@@ -49,6 +49,10 @@ export const executeAnalysisTask = async (taskId: string, payload: any, type: st
 
         // Create job parsing promise
         const jobParsePromise = (async () => {
+            try {
+                await taskService.updateProgress(taskId, 20, 'Parsing job details...');
+            } catch (ignore) { }
+
             if (payload.screenshots && payload.screenshots.length > 0) {
                 console.log(`[Worker] Parsing job from ${payload.screenshots.length} snapshots...`);
                 return await jobParserService.parseJobFromImage(payload.screenshots);
@@ -68,6 +72,10 @@ export const executeAnalysisTask = async (taskId: string, payload: any, type: st
 
         // Create resume parsing promise
         const resumeParsePromise = (async () => {
+            try {
+                await taskService.updateProgress(taskId, 30, 'Extracting resume text...');
+            } catch (ignore) { }
+
             if (resumeText && resumeText.trim().length > 0) {
                 console.log("[Worker] Parsing resume from text...");
                 return await resumeParserService.parseResumeFromContent(resumeText);

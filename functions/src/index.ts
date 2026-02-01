@@ -5,9 +5,7 @@ import { defineSecret } from "firebase-functions/params";
 
 admin.initializeApp();
 
-// Define the secret so it can be used in the function
-// This corresponds to 'firebase functions:secrets:set STRIPE_SECRET_KEY'
-const stripeSecretKey = defineSecret("STRIPE_SECRET_KEY");
+import { stripeSecretKey } from "./secrets";
 
 /**
  * Creates a Stripe Payment Intent for a token purchase.
@@ -72,5 +70,58 @@ export const createStripePaymentIntent = functionsV1
         }
     });
 
+/**
+ * Creates a Stripe Checkout Session for web-based token purchases.
+ */
+export const createStripeCheckoutSession = functionsV1
+    .region("us-central1")
+    .runWith({ secrets: [stripeSecretKey] })
+    .https.onCall(async (data: any, context: any) => {
+        if (!context.auth) {
+            throw new functionsV1.https.HttpsError("unauthenticated", "You must be logged in.");
+        }
+
+        const { amount, packageId, tokens, successUrl, cancelUrl } = data;
+
+        try {
+            const stripe = new Stripe(stripeSecretKey.value(), {
+                apiVersion: "2022-11-15",
+            });
+
+            const session = await stripe.checkout.sessions.create({
+                payment_method_types: ["card"],
+                line_items: [
+                    {
+                        price_data: {
+                            currency: "usd",
+                            product_data: {
+                                name: `${tokens} Tokens Package`,
+                                description: `Purchase ${tokens} tokens for ATS Resume Optimizer`,
+                            },
+                            unit_amount: Math.round(amount * 100),
+                        },
+                        quantity: 1,
+                    },
+                ],
+                mode: "payment",
+                success_url: successUrl,
+                cancel_url: cancelUrl,
+                metadata: {
+                    uid: context.auth.uid,
+                    packageId,
+                    tokens: tokens.toString(),
+                },
+                customer_email: context.auth.token.email,
+            });
+
+            return { sessionId: session.id, url: session.url };
+        } catch (error: any) {
+            console.error("Checkout Session Error:", error);
+            throw new functionsV1.https.HttpsError("internal", error.message);
+        }
+    });
+
+
 export * from "./notifications";
 export * from "./aiAnalysis";
+export * from "./stripeWebhook";

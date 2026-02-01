@@ -4,22 +4,21 @@ exports.stripeWebhook = void 0;
 const functionsV1 = require("firebase-functions/v1");
 const admin = require("firebase-admin");
 const stripe_1 = require("stripe");
-const params_1 = require("firebase-functions/params");
-const stripeSecretKey = (0, params_1.defineSecret)("STRIPE_SECRET_KEY");
-const stripeWebhookSecret = (0, params_1.defineSecret)("STRIPE_WEBHOOK_SECRET");
+const secrets_1 = require("./secrets");
 /**
  * Stripe Webhook Handler
  * Listen for successful payments and credit tokens server-side.
  */
 exports.stripeWebhook = functionsV1
     .region("us-central1")
-    .runWith({ secrets: [stripeSecretKey, stripeWebhookSecret] })
+    .runWith({ secrets: [secrets_1.stripeSecretKey, secrets_1.stripeWebhookSecret] })
     .https.onRequest(async (req, res) => {
     const sig = req.headers["stripe-signature"];
-    const stripe = new stripe_1.default(stripeSecretKey.value(), { apiVersion: "2022-11-15" });
+    const stripe = new stripe_1.default(secrets_1.stripeSecretKey.value(), { apiVersion: "2022-11-15" });
     let event;
     try {
-        event = stripe.webhooks.constructEvent(req.rawBody, sig, stripeWebhookSecret.value());
+        // Stripe expects the raw body for signature verification
+        event = stripe.webhooks.constructEvent(req.rawBody, sig, secrets_1.stripeWebhookSecret.value());
     }
     catch (err) {
         console.error(`Webhook Error: ${err.message}`);
@@ -27,18 +26,20 @@ exports.stripeWebhook = functionsV1
         return;
     }
     // Handle the event
-    if (event.type === "payment_intent.succeeded") {
-        const paymentIntent = event.data.object;
-        const { uid, tokens, packageId, amount } = paymentIntent.metadata;
+    if (event.type === "checkout.session.completed" || event.type === "payment_intent.succeeded") {
+        const session = event.data.object;
+        const metadata = session.metadata || {};
+        const { uid, tokens, packageId, amount } = metadata;
         if (uid && tokens) {
             const tokenCount = parseInt(tokens);
             const cost = parseFloat(amount || "0");
             console.log(`Processing successful payment for UID: ${uid}, Tokens: ${tokenCount}`);
             // 1. Idempotency Check: Check if this payment was already processed
-            const activityRef = admin.firestore().collection("activities").doc(paymentIntent.id);
+            const activityId = session.id;
+            const activityRef = admin.firestore().collection("activities").doc(activityId);
             const activityDoc = await activityRef.get();
             if (activityDoc.exists) {
-                console.log(`Payment ${paymentIntent.id} already processed. Skipping.`);
+                console.log(`Payment ${activityId} already processed. Skipping.`);
                 res.json({ received: true, status: "already_processed" });
                 return;
             }
@@ -51,7 +52,7 @@ exports.stripeWebhook = functionsV1
                 totalTokensPurchased: admin.firestore.FieldValue.increment(tokenCount),
                 updatedAt: admin.firestore.FieldValue.serverTimestamp(),
             });
-            // Log activity (using PaymentIntent ID as doc ID for idempotency)
+            // Log activity
             batch.set(activityRef, {
                 uid,
                 type: "token_purchase",
@@ -60,7 +61,7 @@ exports.stripeWebhook = functionsV1
                     packageId: packageId || "unknown",
                     tokens: tokenCount,
                     amount: cost,
-                    stripePaymentIntentId: paymentIntent.id
+                    stripeId: activityId
                 },
                 platform: "stripe_webhook",
                 timestamp: admin.firestore.FieldValue.serverTimestamp(),

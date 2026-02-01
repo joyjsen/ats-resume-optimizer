@@ -14,15 +14,12 @@ var __exportStar = (this && this.__exportStar) || function(m, exports) {
     for (var p in m) if (p !== "default" && !Object.prototype.hasOwnProperty.call(exports, p)) __createBinding(exports, m, p);
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.createStripePaymentIntent = void 0;
+exports.createStripeCheckoutSession = exports.createStripePaymentIntent = void 0;
 const functionsV1 = require("firebase-functions/v1");
 const admin = require("firebase-admin");
 const stripe_1 = require("stripe");
-const params_1 = require("firebase-functions/params");
 admin.initializeApp();
-// Define the secret so it can be used in the function
-// This corresponds to 'firebase functions:secrets:set STRIPE_SECRET_KEY'
-const stripeSecretKey = (0, params_1.defineSecret)("STRIPE_SECRET_KEY");
+const secrets_1 = require("./secrets");
 /**
  * Creates a Stripe Payment Intent for a token purchase.
  *
@@ -32,24 +29,24 @@ const stripeSecretKey = (0, params_1.defineSecret)("STRIPE_SECRET_KEY");
  */
 exports.createStripePaymentIntent = functionsV1
     .region("us-central1")
-    .runWith({ secrets: [stripeSecretKey] })
+    .runWith({ secrets: [secrets_1.stripeSecretKey] })
     .https.onCall(async (data, context) => {
     // 1. Authenticate user
     if (!context.auth) {
         throw new functionsV1.https.HttpsError("unauthenticated", "You must be logged in to make a purchase.");
     }
-    const { amount, tokens, packageId } = data;
+    const { amount } = data;
     if (!amount || typeof amount !== "number" || amount <= 0) {
         throw new functionsV1.https.HttpsError("invalid-argument", "A valid numeric amount is required.");
     }
     try {
-        const stripe = new stripe_1.default(stripeSecretKey.value(), {
+        const stripe = new stripe_1.default(secrets_1.stripeSecretKey.value(), {
             apiVersion: "2022-11-15", // Use a stable version
         });
         // 2. Create Payment Intent
         // Stripe expects amounts in cents
         const amountInCents = Math.round(amount * 100);
-        console.log(`Creating PaymentIntent for UID: ${context.auth.uid}, Amount: ${amountInCents} cents, Tokens: ${tokens}`);
+        console.log(`Creating PaymentIntent for UID: ${context.auth.uid}, Amount: ${amountInCents} cents`);
         const paymentIntent = await stripe.paymentIntents.create({
             amount: amountInCents,
             currency: "usd",
@@ -58,9 +55,7 @@ exports.createStripePaymentIntent = functionsV1
             },
             metadata: {
                 uid: context.auth.uid,
-                tokens: tokens?.toString() || "0",
-                packageId: packageId || "unknown",
-                amount: amount.toString(),
+                // You can add more metadata here for tracking
             },
         });
         // 3. Return the client secret
@@ -71,6 +66,53 @@ exports.createStripePaymentIntent = functionsV1
     catch (error) {
         console.error("Stripe Error:", error);
         throw new functionsV1.https.HttpsError("internal", error.message || "Failed to create payment intent.");
+    }
+});
+/**
+ * Creates a Stripe Checkout Session for web-based token purchases.
+ */
+exports.createStripeCheckoutSession = functionsV1
+    .region("us-central1")
+    .runWith({ secrets: [secrets_1.stripeSecretKey] })
+    .https.onCall(async (data, context) => {
+    if (!context.auth) {
+        throw new functionsV1.https.HttpsError("unauthenticated", "You must be logged in.");
+    }
+    const { amount, packageId, tokens, successUrl, cancelUrl } = data;
+    try {
+        const stripe = new stripe_1.default(secrets_1.stripeSecretKey.value(), {
+            apiVersion: "2022-11-15",
+        });
+        const session = await stripe.checkout.sessions.create({
+            payment_method_types: ["card"],
+            line_items: [
+                {
+                    price_data: {
+                        currency: "usd",
+                        product_data: {
+                            name: `${tokens} Tokens Package`,
+                            description: `Purchase ${tokens} tokens for ATS Resume Optimizer`,
+                        },
+                        unit_amount: Math.round(amount * 100),
+                    },
+                    quantity: 1,
+                },
+            ],
+            mode: "payment",
+            success_url: successUrl,
+            cancel_url: cancelUrl,
+            metadata: {
+                uid: context.auth.uid,
+                packageId,
+                tokens: tokens.toString(),
+            },
+            customer_email: context.auth.token.email,
+        });
+        return { sessionId: session.id, url: session.url };
+    }
+    catch (error) {
+        console.error("Checkout Session Error:", error);
+        throw new functionsV1.https.HttpsError("internal", error.message);
     }
 });
 __exportStar(require("./notifications"), exports);
