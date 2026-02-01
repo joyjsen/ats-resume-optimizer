@@ -24,7 +24,12 @@ const ResuMateHome = () => {
 
     // Data stores
     const { userProfile, refreshProfile, activities } = useProfileStore();
-    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    const sevenDaysAgo = (() => {
+        const d = new Date();
+        d.setDate(d.getDate() - 7);
+        d.setHours(0, 0, 0, 0);
+        return d;
+    })();
     const [history, setHistory] = useState<SavedAnalysis[]>([]);
     const [applications, setApplications] = useState<Application[]>([]);
     const [refreshing, setRefreshing] = useState(false);
@@ -73,7 +78,7 @@ const ResuMateHome = () => {
             unsubscribeHistory();
             unsubscribeApps();
         };
-    }, []);
+    }, [auth.currentUser?.uid, refreshProfile]);
 
     const onRefresh = useCallback(async () => {
         setRefreshing(true);
@@ -131,30 +136,32 @@ const ResuMateHome = () => {
     const weeklyStats = [
         {
             label: "Applications",
-            value: applications.filter(a => toDate(a.createdAt) > sevenDaysAgo).length,
+            value: applications.length, // Show total applications as requested
             icon: "clipboard-list-outline",
         },
         {
             label: "Avg ATS Score",
             value: (() => {
-                const recentHistory = history.filter(h => toDate(h.createdAt) > sevenDaysAgo);
-                if (recentHistory.length === 0) return "0%";
-                const avg = recentHistory.reduce((acc, curr) => acc + (curr.draftAtsScore || curr.atsScore || 0), 0) / recentHistory.length;
-                return Math.round(avg) + "%";
+                const optimizedHistory = history.filter(h =>
+                    (h.analysisStatus === 'optimized' || !!h.optimizedResumeData) &&
+                    (h.atsScore > 0 || (h.draftAtsScore && h.draftAtsScore > 0))
+                );
+                if (optimizedHistory.length === 0) return "0%";
+                const totalScore = optimizedHistory.reduce((acc, curr) => acc + (curr.draftAtsScore || curr.atsScore || 0), 0);
+                return Math.round(totalScore / optimizedHistory.length) + "%";
             })(),
             icon: "chart-bar",
         },
         {
             label: "Trainings",
-            value: activities.filter(a => (a.type === 'training_slideshow_generation' || a.type === 'learning_completion') && toDate(a.timestamp) > sevenDaysAgo).length,
+            value: activities.filter(a => a.type === 'learning_completion' && toDate(a.timestamp) >= sevenDaysAgo).length,
             icon: "school",
         },
         {
             label: "Interviews",
             value: applications.filter(a =>
-                !a.isArchived &&
-                ['submitted', 'phone_screen', 'technical', 'final_round'].includes(a.currentStage) &&
-                toDate(a.lastStatusUpdate) > sevenDaysAgo
+                ['submitted', 'phone_screen', 'technical', 'final_round', 'offer'].includes(a.currentStage) &&
+                toDate(a.lastStatusUpdate) >= sevenDaysAgo
             ).length,
             icon: "account-voice",
         },
@@ -243,9 +250,9 @@ const ResuMateHome = () => {
                     </View>
                 </View>
 
-                {/* Weekly Stats */}
+                {/* Stats Summary */}
                 <View style={styles.section}>
-                    <Text variant="titleMedium" style={styles.sectionTitle}>This Week</Text>
+                    <Text variant="titleMedium" style={styles.sectionTitle}>Overview</Text>
                     <View style={styles.statsGrid}>
                         {weeklyStats.map((stat, i) => (
                             <View key={i} style={[styles.statItem, { borderColor: theme.colors.outlineVariant, backgroundColor: theme.colors.elevation.level1 }]}>

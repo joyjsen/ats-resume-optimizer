@@ -486,6 +486,9 @@ export class HistoryService {
             draftChangesData: data.draftChangesData ? (typeof data.draftChangesData === 'string' ? JSON.parse(data.draftChangesData) : data.draftChangesData) : undefined,
             draftAtsScore: data.draftAtsScore,
             draftMatchAnalysis: data.draftMatchAnalysis ? (typeof data.draftMatchAnalysis === 'string' ? JSON.parse(data.draftMatchAnalysis) : data.draftMatchAnalysis) : undefined,
+            analysisStatus: data.analysisStatus,
+            applicationId: data.applicationId,
+            isLocked: data.isLocked,
         } as SavedAnalysis;
     }
 }
