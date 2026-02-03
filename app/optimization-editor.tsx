@@ -7,6 +7,7 @@ import { useResumeStore } from '../src/store/resumeStore';
 export default function OptimizationEditor() {
     const router = useRouter();
     const { currentAnalysis, setCurrentAnalysis } = useResumeStore();
+    const theme = useTheme();
 
     // For MVP, just allow editing the summary. 
     // In a real app, this would need a complex form for all fields.
@@ -48,7 +49,6 @@ export default function OptimizationEditor() {
         setExperiences(newExperiences);
     };
 
-    const theme = useTheme();
 
     return (
         <KeyboardAvoidingView

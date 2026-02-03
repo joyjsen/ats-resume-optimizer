@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { ScrollView, StyleSheet, View, Alert, TouchableOpacity } from 'react-native';
+import { ScrollView, StyleSheet, View, Alert, TouchableOpacity, Linking, TextInput } from 'react-native';
 import { Text, Divider, List, Switch, Button, useTheme, Portal, Dialog, ActivityIndicator } from 'react-native-paper';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { ProfileHeader } from '../../src/components/profile/ProfileHeader';
@@ -29,6 +29,18 @@ export default function ProfileScreen() {
     } = useProfileStore();
     const [loading, setLoading] = useState(false);
     const [deleteDialogVisible, setDeleteDialogVisible] = useState(false);
+    const [deletionReason, setDeletionReason] = useState('');
+    const [otherReason, setOtherReason] = useState('');
+    const [showReasonStep, setShowReasonStep] = useState(true);
+
+    const deletionReasons = [
+        "Found a job",
+        "Too expensive",
+        "Didn't meet expectations",
+        "Technical issues",
+        "Don't need it anymore",
+        "Other"
+    ];
 
     // Initial Data Fetch & Subscription
     useEffect(() => {
@@ -82,24 +94,56 @@ export default function ProfileScreen() {
     };
 
     const handleDeleteAccount = async () => {
+        const finalReason = deletionReason === 'Other' ? `Other: ${otherReason}` : deletionReason;
+
+        if (!finalReason) {
+            Alert.alert("Reason Required", "Please select a reason for deleting your account.");
+            return;
+        }
+
         setLoading(true);
         try {
             if (userProfile?.uid) {
-                await userService.deleteAccount(userProfile.uid);
+                // Archive data first
+                await userService.archiveAndSoftDelete(userProfile.uid, finalReason);
+                // Then delete from Auth
                 await authService.deleteUser();
             }
             setDeleteDialogVisible(false);
             setUserProfile(null);
             router.replace('/(auth)/sign-in' as any);
         } catch (error: any) {
-            if (error.code === 'auth/requires-recent-login' || error.code === 'auth/user-token-expired') {
-                Alert.alert("Security Check", "Please log out and log in again to delete your account.");
+            console.error("Deletion error:", error);
+            const errorCode = error.code || '';
+            const errorMessage = error.message || '';
+
+            // Check for requires-recent-login in multiple ways (Firebase can return it differently)
+            if (errorCode.includes('requires-recent-login') ||
+                errorCode.includes('user-token-expired') ||
+                errorMessage.includes('requires-recent-login') ||
+                errorMessage.includes('user-token-expired')) {
+                Alert.alert(
+                    "Security Check Required",
+                    "For your security, Firebase requires a recent login to delete your account.\n\nPlease log out, log back in, and try again immediately.",
+                    [{ text: "OK" }]
+                );
+            } else if (errorMessage.includes('permission') || errorCode === 'permission-denied') {
+                Alert.alert("Permission Error", "Firestore rules may need to be deployed. Please contact support.");
             } else {
-                Alert.alert("Error", "Failed to delete account. You may need to re-login.");
+                Alert.alert("Error", `Failed to delete account: ${errorMessage || 'Unknown error'}`);
             }
         } finally {
             setLoading(false);
         }
+    };
+
+    const handleGiveFeedback = () => {
+        const email = 'pjmarket1316@gmail.com';
+        const userName = userProfile?.displayName || 'User';
+        const subject = `RiResume App Feedback - ${userName}`;
+        const body = `Dear RiResume Team,\n\nI would like to share my experience and feedback regarding the RiResume application.\n\n[Please enter your feedback here]\n\nSincerely,\n${userName}\n\n---\nUser Information:\n- Email: ${userProfile?.email}\n- User ID: ${userProfile?.uid}`;
+
+        Linking.openURL(`mailto:${email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`);
     };
 
 
@@ -243,6 +287,12 @@ export default function ProfileScreen() {
                     onPress={() => router.push('/settings/help' as any)}
                 />
                 <List.Item
+                    title="Give Feedback"
+                    description="Help us improve RiResume"
+                    left={props => <List.Icon {...props} icon="message-draw" />}
+                    onPress={handleGiveFeedback}
+                />
+                <List.Item
                     title="Terms of Service"
                     left={props => <List.Icon {...props} icon="file-document-outline" />}
                     onPress={() => router.push('/settings/terms' as any)}
@@ -297,16 +347,78 @@ export default function ProfileScreen() {
             <View style={{ height: 40 }} />
 
             <Portal>
-                <Dialog visible={deleteDialogVisible} onDismiss={() => setDeleteDialogVisible(false)}>
-                    <Dialog.Title>Delete Account?</Dialog.Title>
+                <Dialog visible={deleteDialogVisible} onDismiss={() => {
+                    setDeleteDialogVisible(false);
+                    setShowReasonStep(true);
+                }}>
+                    <Dialog.Title>{showReasonStep ? "Why are you leaving?" : "Archive & Delete Account?"}</Dialog.Title>
                     <Dialog.Content>
-                        <Text variant="bodyMedium">
-                            This action is permanent and will delete all your data, including your token balance and saved resumes.
-                        </Text>
+                        {showReasonStep ? (
+                            <View>
+                                <Text variant="bodySmall" style={{ marginBottom: 12, color: theme.colors.onSurfaceVariant }}>
+                                    We're sorry to see you go. Please let us know why you're deleting your account.
+                                </Text>
+                                {deletionReasons.map((reason) => (
+                                    <TouchableOpacity
+                                        key={reason}
+                                        style={styles.reasonOption}
+                                        onPress={() => setDeletionReason(reason)}
+                                    >
+                                        <View style={[
+                                            styles.radioButton,
+                                            { borderColor: deletionReason === reason ? theme.colors.primary : theme.colors.outline }
+                                        ]}>
+                                            {deletionReason === reason && <View style={[styles.radioButtonInner, { backgroundColor: theme.colors.primary }]} />}
+                                        </View>
+                                        <Text variant="bodyMedium">{reason}</Text>
+                                    </TouchableOpacity>
+                                ))}
+                                {deletionReason === 'Other' && (
+                                    <TextInput
+                                        style={[styles.textInput, { borderColor: theme.colors.outline, color: theme.colors.onSurface }]}
+                                        placeholder="Please specify..."
+                                        placeholderTextColor={theme.colors.onSurfaceVariant}
+                                        value={otherReason}
+                                        onChangeText={setOtherReason}
+                                        multiline
+                                    />
+                                )}
+                            </View>
+                        ) : (
+                            <View>
+                                <Text variant="bodyMedium">
+                                    This action is permanent and will delete all your active data. Your profile and history will be archived for administrative review.
+                                </Text>
+                                <View style={styles.tokenWarning}>
+                                    <MaterialCommunityIcons name="alert" size={20} color={theme.colors.error} />
+                                    <Text variant="bodyMedium" style={{ marginLeft: 8, color: theme.colors.error, fontWeight: 'bold' }}>
+                                        Remaining Balance: {userProfile.tokenBalance} tokens
+                                    </Text>
+                                </View>
+                            </View>
+                        )}
                     </Dialog.Content>
                     <Dialog.Actions>
-                        <Button onPress={() => setDeleteDialogVisible(false)}>Cancel</Button>
-                        <Button onPress={handleDeleteAccount} textColor={theme.colors.error}>Delete</Button>
+                        <Button onPress={() => {
+                            setDeleteDialogVisible(false);
+                            setShowReasonStep(true);
+                        }}>Cancel</Button>
+                        {showReasonStep ? (
+                            <Button
+                                disabled={!deletionReason || (deletionReason === 'Other' && !otherReason)}
+                                onPress={() => setShowReasonStep(false)}
+                            >
+                                Next
+                            </Button>
+                        ) : (
+                            <Button
+                                onPress={handleDeleteAccount}
+                                textColor={theme.colors.error}
+                                loading={loading}
+                            >
+                                Confirm Delete
+                            </Button>
+                        )}
                     </Dialog.Actions>
                 </Dialog>
             </Portal>
@@ -334,6 +446,41 @@ const styles = StyleSheet.create({
         paddingBottom: 24,
     },
     adminButton: {
+        borderRadius: 8,
+    },
+    reasonOption: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingVertical: 10,
+    },
+    radioButton: {
+        width: 20,
+        height: 20,
+        borderRadius: 10,
+        borderWidth: 2,
+        marginRight: 12,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    radioButtonInner: {
+        width: 10,
+        height: 10,
+        borderRadius: 5,
+    },
+    textInput: {
+        borderWidth: 1,
+        borderRadius: 8,
+        padding: 12,
+        marginTop: 8,
+        height: 80,
+        textAlignVertical: 'top',
+    },
+    tokenWarning: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginTop: 16,
+        padding: 12,
+        backgroundColor: 'rgba(186, 26, 26, 0.1)',
         borderRadius: 8,
     }
 });

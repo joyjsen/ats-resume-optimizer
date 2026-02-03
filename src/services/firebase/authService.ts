@@ -15,6 +15,7 @@ import {
     signInWithPhoneNumber,
     RecaptchaVerifier
 } from 'firebase/auth';
+import { getFunctions, httpsCallable } from 'firebase/functions';
 import { GoogleSignin } from '@react-native-google-signin/google-signin';
 import * as AppleAuthentication from 'expo-apple-authentication';
 import * as crypto from 'expo-crypto';
@@ -41,9 +42,9 @@ export class AuthService {
     // Store phone confirmation result temporarily
     private confirmationResult: ConfirmationResult | null = null;
 
-    private checkAccountStatus(profile: UserProfile): void {
-        if (profile.accountStatus === 'suspended' || profile.accountStatus === 'inactive') {
-            signOut(auth).catch(() => { });
+    private async checkAccountStatus(profile: UserProfile): Promise<void> {
+        if (profile.accountStatus === 'suspended' || profile.accountStatus === 'inactive' || profile.accountStatus === 'deleted') {
+            signOut(auth).catch(() => { }); // Fire and forget to avoid potential hangs in the call chain
             throw new UserInactiveError();
         }
     }
@@ -63,7 +64,7 @@ export class AuthService {
 
                     const profile = await userService.syncUserProfile(user, provider);
 
-                    if (profile.accountStatus === 'suspended' || profile.accountStatus === 'inactive') {
+                    if (profile.accountStatus === 'suspended' || profile.accountStatus === 'inactive' || profile.accountStatus === 'deleted') {
                         await signOut(auth);
                         callback(null, new UserInactiveError());
                         return;
@@ -83,11 +84,40 @@ export class AuthService {
     async loginWithEmail(email: string, pass: string): Promise<UserProfile> {
         const { user } = await signInWithEmailAndPassword(auth, email, pass);
         const profile = await userService.syncUserProfile(user, 'email');
-        this.checkAccountStatus(profile);
+        await this.checkAccountStatus(profile);
         return profile;
     }
 
     async registerWithEmail(email: string, pass: string, fullName?: string, phoneNumber?: string): Promise<UserProfile> {
+        // First check if email already exists in the database safely via Cloud Function
+        try {
+            const functions = getFunctions();
+            const checkUserProvider = httpsCallable(functions, 'checkUserProvider');
+            const result = await checkUserProvider({ email });
+            const emailCheck = result.data as any;
+
+            if (emailCheck?.exists) {
+                const status = emailCheck.status;
+                const name = emailCheck.displayName || 'User';
+
+                if (status === 'deleted') {
+                    throw new Error(`This email is associated with a deleted account (${name}). Please contact support for account restoration.`);
+                } else if (status === 'inactive' || status === 'suspended') {
+                    throw new Error(`This email is associated with an inactive account (${name}). Please contact support to reactivate your account.`);
+                } else {
+                    // Active account - shouldn't sign up, should sign in instead
+                    throw new Error(`An account with this email already exists. Please sign in instead.`);
+                }
+            }
+        } catch (error: any) {
+            // If it's our explicit error, rethrow it
+            if (error.message && (error.message.includes('exists') || error.message.includes('account'))) {
+                throw error;
+            }
+            // Otherwise log and proceed (e.g. if function not deployed, let Firebase Auth handle duplication check)
+            console.error("AuthService.registerWithEmail: Pre-check failed, proceeding to registration:", error);
+        }
+
         const { user } = await createUserWithEmailAndPassword(auth, email, pass);
         let firstName = '';
         let lastName = '';
@@ -112,6 +142,7 @@ export class AuthService {
         return await userService.syncUserProfile(user, 'email', additionalData);
     }
 
+
     async signInWithGoogle(): Promise<UserProfile> {
         try {
             await GoogleSignin.hasPlayServices();
@@ -125,7 +156,7 @@ export class AuthService {
             const googleCredential = GoogleAuthProvider.credential(idToken);
             const { user } = await signInWithCredential(auth, googleCredential);
             const profile = await userService.syncUserProfile(user, 'google');
-            this.checkAccountStatus(profile);
+            await this.checkAccountStatus(profile);
             return profile;
         } catch (error) {
             console.error('Google Sign-In Error:', error);
@@ -163,7 +194,7 @@ export class AuthService {
 
             const { user } = await signInWithCredential(auth, credential);
             const profile = await userService.syncUserProfile(user, 'apple');
-            this.checkAccountStatus(profile);
+            await this.checkAccountStatus(profile);
             return profile;
         } catch (error) {
             console.error('Apple Sign-In Error:', error);
@@ -223,7 +254,7 @@ export class AuthService {
 
                 const { user } = await signInWithCredential(auth, credential);
                 const profile = await userService.syncUserProfile(user, 'microsoft');
-                this.checkAccountStatus(profile);
+                await this.checkAccountStatus(profile);
                 return profile;
             } else {
                 throw new Error('Microsoft Sign-In was cancelled or failed.');
@@ -238,16 +269,51 @@ export class AuthService {
     }
 
     // Phone Auth - Note: This requires a RecaptchaVerifier on web
-    // On mobile, this is handled differently and may need additional setup
+    // On mobile, this is handled differently (usually requiring a Recaptcha Modal)
     async signInWithPhoneNumber(phoneNumber: string, recaptchaVerifier?: RecaptchaVerifier): Promise<void> {
         try {
-            if (!recaptchaVerifier) {
-                throw new Error('Phone authentication requires a RecaptchaVerifier on this platform');
+            let verifier = recaptchaVerifier;
+
+            // Auto-initialize invisible reCAPTCHA on web if not provided
+            if (!verifier && typeof window !== 'undefined' && typeof document !== 'undefined') {
+                console.log("[AuthService] Initializing invisible reCAPTCHA for web...");
+                let container = document.getElementById('recaptcha-container');
+                if (!container) {
+                    container = document.createElement('div');
+                    container.id = 'recaptcha-container';
+                    document.body.appendChild(container);
+                }
+
+                // Clear any existing verifier to prevent re-initialization errors
+                try {
+                    verifier = new RecaptchaVerifier(auth, 'recaptcha-container', {
+                        size: 'invisible',
+                        callback: () => {
+                            console.log('[AuthService] reCAPTCHA verified');
+                        },
+                        'expired-callback': () => {
+                            console.log('[AuthService] reCAPTCHA expired');
+                        }
+                    });
+                } catch (recaptchaError) {
+                    console.error("[AuthService] Failed to create invisible reCAPTCHA:", recaptchaError);
+                }
             }
-            const confirmation = await signInWithPhoneNumber(auth, phoneNumber, recaptchaVerifier);
+
+            if (!verifier) {
+                // If we still don't have a verifier (e.g. on Native), 
+                // we'll try to let the SDK proceed (it might fail with argument-error)
+                // but we provide a clearer trace.
+                console.warn("[AuthService] No RecaptchaVerifier provided. Phone auth might fail on this platform.");
+            }
+
+            const confirmation = await signInWithPhoneNumber(auth, phoneNumber, verifier as any);
             this.confirmationResult = confirmation;
-        } catch (error) {
+        } catch (error: any) {
             console.error('Phone Sign-In Error:', error);
+            if (error.code === 'auth/argument-error') {
+                throw new Error("Phone login failed: Missing reCAPTCHA verification. Please try again or use a different login method.");
+            }
             throw error;
         }
     }
@@ -258,7 +324,7 @@ export class AuthService {
         try {
             const { user } = await this.confirmationResult.confirm(code);
             const profile = await userService.syncUserProfile(user, 'phone');
-            this.checkAccountStatus(profile);
+            // Note: Inactive user handling is done by subscribeToAuthChanges listener
             return profile;
         } catch (error) {
             console.error('Confirm Phone Code Error:', error);

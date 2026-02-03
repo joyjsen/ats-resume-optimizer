@@ -9,7 +9,8 @@ import {
     limit,
     onSnapshot,
     serverTimestamp,
-    runTransaction
+    runTransaction,
+    deleteDoc
 } from 'firebase/firestore';
 import { db, auth } from './config';
 import { UserActivity, ActivityType, ACTIVITY_COSTS, ActivityStatus, AIProvider } from '../../types/profile.types';
@@ -244,6 +245,26 @@ export class ActivityService {
             ...docSnap.data(),
             timestamp: (docSnap.data().timestamp as any)?.toDate?.() || new Date()
         })) as UserActivity[];
+    }
+
+    /**
+     * Delete all activities for a user (Admin only - for permanent deletion)
+     */
+    async deleteAllUserActivities(uid: string): Promise<void> {
+        // Query all activities for this user
+        const q = query(
+            this.activitiesCollection,
+            where('uid', '==', uid)
+        );
+        const snapshot = await getDocs(q);
+
+        // Delete each activity document
+        const deletePromises = snapshot.docs.map(activityDoc =>
+            deleteDoc(doc(db, this.collectionName, activityDoc.id))
+        );
+
+        await Promise.all(deletePromises);
+        console.log(`[ActivityService] Deleted ${snapshot.docs.length} activities for user ${uid}`);
     }
 }
 

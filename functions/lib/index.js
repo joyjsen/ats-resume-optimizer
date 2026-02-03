@@ -91,7 +91,7 @@ exports.createStripeCheckoutSession = functionsV1
                         currency: "usd",
                         product_data: {
                             name: `${tokens} Tokens Package`,
-                            description: `Purchase ${tokens} tokens for ATS Resume Optimizer`,
+                            description: `Purchase ${tokens} tokens for RiResume`,
                         },
                         unit_amount: Math.round(amount * 100),
                     },

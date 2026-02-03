@@ -1,8 +1,8 @@
 {
   "expo": {
-    "name": "ats-resume-optimizer",
-    "slug": "ats-resume-optimizer",
-    "scheme": "atsresumeoptimizer",
+    "name": "RiResume",
+    "slug": "riresume",
+    "scheme": "riresume",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -15,20 +15,18 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.jsn22.atsresumeoptimizer",
+      "bundleIdentifier": "com.jsn22.riresume",
       "infoPlist": {
         "UIBackgroundModes": [
           "fetch",
-          "processing",
-          "remote-notification",
-          "audio"
+          "remote-notification"
         ],
         "ITSAppUsesNonExemptEncryption": false,
         "CFBundleURLTypes": [
           {
             "CFBundleURLSchemes": [
-              "msauth.com.jsn22.atsresumeoptimizer",
-              "atsresumeoptimizer",
+              "msauth.com.jsn22.riresume",
+              "riresume",
               "com.googleusercontent.apps.776583109504-j4tdkj2e7oiore61l1q8m61b8v5po7nl"
             ]
           }
@@ -40,7 +38,7 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "package": "com.jsn22.atsresumeoptimizer",
+      "package": "com.jsn22.riresume",
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
       "permissions": [
@@ -59,7 +57,7 @@
       [
         "@stripe/stripe-react-native",
         {
-          "merchantIdentifier": "merchant.com.jsn22.atsresumeoptimizer",
+          "merchantIdentifier": "merchant.com.jsn22.riresume",
           "enableGooglePay": true
         }
       ],
@@ -77,7 +75,7 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "a39b06d0-f333-4c82-b903-8cec3aec2396"
+        "projectId": "3584d443-a654-4a9b-98bb-8344ba4c3110"
       }
     },
     "owner": "joyjsen1608"

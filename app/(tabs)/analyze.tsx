@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { View, ScrollView, StyleSheet, Alert, Image, KeyboardAvoidingView, Platform, TouchableWithoutFeedback, Keyboard } from 'react-native';
 import { Button, Text, ActivityIndicator, IconButton, Dialog, Portal, TextInput, useTheme } from 'react-native-paper';
 import { useRouter, useNavigation } from 'expo-router'; // Add useNavigation
@@ -151,11 +151,7 @@ export default function AnalyzeScreen() {
                                     changes: existingAnalysis.changesData
                                 });
 
-                                if (existingAnalysis.action === 'optimize') {
-                                    router.push('/analysis-result');
-                                } else {
-                                    router.push('/upskilling-path');
-                                }
+                                router.push({ pathname: '/analysis-result', params: { id: existingAnalysis.id } } as any);
                             }
                         },
                         {
@@ -192,6 +188,7 @@ export default function AnalyzeScreen() {
 
     const { activeTasks } = useTaskQueue();
     const [currentTaskId, setCurrentTaskId] = useState<string | null>(null);
+    const hasLoggedCompletionRef = useRef<string | null>(null); // Track which task completion has been logged
 
     // Watch for task completion (direct subscription)
     React.useEffect(() => {
@@ -220,20 +217,19 @@ export default function AnalyzeScreen() {
                             changes: saved.changesData
                         });
 
-                        // 3. Log completion (0 tokens)
-                        activityService.logActivity({
-                            type: 'gap_analysis',
-                            description: `Analyzed the resume for ${saved.jobData.title} at ${saved.jobData.company}`,
-                            skipTokenDeduction: true
-                        });
+                        // 3. Log completion (0 tokens) - only once per task
+                        if (hasLoggedCompletionRef.current !== task.resultId) {
+                            hasLoggedCompletionRef.current = task.resultId ?? null;
+                            activityService.logActivity({
+                                type: 'gap_analysis',
+                                description: `Analyzed the resume for ${saved.jobData.title} at ${saved.jobData.company}`,
+                                skipTokenDeduction: true
+                            });
+                        }
 
                         setCurrentTaskId(null); // Stop watching
 
-                        if (saved.action === 'optimize') {
-                            router.push('/analysis-result');
-                        } else {
-                            router.push('/upskilling-path');
-                        }
+                        router.push({ pathname: '/analysis-result', params: { id: saved.id } } as any);
                     } else {
                         // Fallback: If history fetch lags, try fetching specific doc?
                         console.warn("Task completed but result not found in history fetch yet.");
@@ -249,8 +245,7 @@ export default function AnalyzeScreen() {
                                         optimizedResume: retrySaved.optimizedResumeData,
                                         changes: retrySaved.changesData
                                     });
-                                    if (retrySaved.action === 'optimize') router.push('/analysis-result');
-                                    else router.push('/upskilling-path');
+                                    router.push({ pathname: '/analysis-result', params: { id: retrySaved.id } } as any);
                                 }
                             });
                         }, 2000);
@@ -402,7 +397,7 @@ export default function AnalyzeScreen() {
                         {isExtractingJob && (
                             <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 8, padding: 8, backgroundColor: theme.colors.primaryContainer, borderRadius: 8 }}>
                                 <ActivityIndicator size="small" color={theme.colors.primary} />
-                                <Text style={{ marginLeft: 8, color: theme.colors.onPrimaryContainer }}>Extracting job details from LinkedIn...</Text>
+                                <Text style={{ marginLeft: 8, color: theme.colors.onPrimaryContainer }}>Extracting job details...</Text>
                             </View>
                         )}
                     </View>

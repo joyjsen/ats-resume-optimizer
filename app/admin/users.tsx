@@ -5,6 +5,7 @@ import { useRouter } from 'expo-router';
 import { userService } from '../../src/services/firebase/userService';
 import { auth } from '../../src/services/firebase/config';
 import { UserProfile } from '../../src/types/profile.types';
+import { getFunctions, httpsCallable } from 'firebase/functions';
 
 export default function UserManagementScreen() {
     const theme = useTheme();
@@ -75,7 +76,28 @@ export default function UserManagementScreen() {
 
         const newStatus = user.accountStatus === 'active' ? 'suspended' : 'active';
         try {
-            await userService.updateProfile(user.uid, { accountStatus: newStatus });
+            // When reactivating, ensure profileCompleted stays true so user doesn't see onboarding again
+            const updateData: any = { accountStatus: newStatus };
+            if (newStatus === 'active') {
+                updateData.profileCompleted = true;
+                updateData.reactivatedAt = new Date();
+                updateData.reactivatedBy = 'admin';
+            }
+            await userService.updateProfile(user.uid, updateData);
+
+            // Send email notification
+            try {
+                const functions = getFunctions();
+                const sendAccountStatusEmail = httpsCallable(functions, 'sendAccountStatusEmail');
+                await sendAccountStatusEmail({
+                    email: user.email,
+                    displayName: user.displayName,
+                    action: newStatus === 'active' ? 'reactivated' : 'suspended'
+                });
+            } catch (emailError) {
+                console.error('[Admin] Failed to send status email:', emailError);
+            }
+
             loadUsers();
         } catch (error) {
             Alert.alert("Error", "Failed to update status.");
@@ -166,15 +188,27 @@ export default function UserManagementScreen() {
                     />
                 </View>
 
-                <Button
-                    mode="contained"
-                    onPress={handleActivateAll}
-                    icon="flash"
-                    style={styles.batchButton}
-                    loading={loading}
-                >
-                    Activate All Users
-                </Button>
+                <View style={styles.buttonRow}>
+                    <Button
+                        mode="contained"
+                        onPress={handleActivateAll}
+                        icon="flash"
+                        style={styles.batchButton}
+                        loading={loading}
+                    >
+                        Activate All
+                    </Button>
+
+                    <Button
+                        mode="outlined"
+                        onPress={() => router.push('/admin/deleted-users')}
+                        icon="account-remove"
+                        style={styles.deletedButton}
+                        textColor="#D32F2F"
+                    >
+                        Deleted Users
+                    </Button>
+                </View>
             </View>
 
             <FlatList
@@ -202,8 +236,19 @@ const styles = StyleSheet.create({
     searchRow: {
         marginBottom: 12,
     },
+    buttonRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        gap: 8,
+    },
     batchButton: {
         borderRadius: 8,
+        flex: 1,
+    },
+    deletedButton: {
+        borderRadius: 8,
+        borderColor: '#D32F2F',
+        flex: 1,
     },
     search: {
         elevation: 0,

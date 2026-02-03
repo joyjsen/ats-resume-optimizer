@@ -69,6 +69,18 @@ export default function EditProfileScreen() {
                 photoURL: finalPhotoURL
             };
 
+            // Check if profile is now complete
+            if (!userProfile.profileCompleted &&
+                updates.firstName &&
+                updates.lastName &&
+                userProfile.jobTitle &&
+                userProfile.targetJobTitle &&
+                userProfile.experienceLevel &&
+                userProfile.targetIndustry) {
+                updates.profileCompleted = true;
+                updates.profileCompletedAt = new Date();
+            }
+
             await userService.updateProfile(userProfile.uid, updates);
 
             // 2. Update Password if provided

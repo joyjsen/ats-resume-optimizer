@@ -3,6 +3,7 @@ import { Alert, Platform, View } from 'react-native';
 import { useRouter, useSegments, Stack } from 'expo-router';
 import { PaperProvider, Avatar, Text } from 'react-native-paper';
 import { authService, UserInactiveError } from '../src/services/firebase/authService';
+import { userService } from '../src/services/firebase/userService';
 import { useProfileStore } from '../src/store/profileStore';
 import { TaskQueueProvider } from '../src/context/TaskQueueContext';
 import { UserHeader } from '../src/components/layout/UserHeader';
@@ -51,8 +52,15 @@ function RootLayoutContent() {
         };
     }, []);
 
-    useEffect(() => {
-        if (!isInitialized) return;
+    const isMounted = React.useRef(false);
+
+    React.useEffect(() => {
+        isMounted.current = true;
+        return () => { isMounted.current = false; };
+    }, []);
+
+    React.useEffect(() => {
+        if (!isInitialized || !isMounted.current) return;
 
         const inAuthGroup = segments[0] === '(auth)';
         const currentRoute = (segments as any)[1];
@@ -83,7 +91,32 @@ function RootLayoutContent() {
                 return;
             }
 
-            if (userProfile.profileCompleted) {
+            const isExistingUser = !!(
+                (userProfile.totalTokensPurchased || 0) > 0 ||
+                (userProfile.totalTokensUsed || 0) > 0 ||
+                userProfile.role === 'admin'
+            );
+
+            const hasNameInfo = !!(
+                (userProfile.firstName && userProfile.lastName) ||
+                userProfile.displayName
+            );
+
+            const isProfileEssentiallyComplete = !!(
+                hasNameInfo &&
+                userProfile.targetJobTitle &&
+                (userProfile.targetIndustry || userProfile.industry)
+            );
+
+            if (userProfile.profileCompleted || isProfileEssentiallyComplete || isExistingUser) {
+                // If essentially complete or existing user, but flag is missing, update it silently
+                if (!userProfile.profileCompleted) {
+                    userService.updateProfile(userProfile.uid, {
+                        profileCompleted: true,
+                        profileCompletedAt: new Date()
+                    }).catch(console.error);
+                }
+
                 if (inAuthGroup) {
                     router.replace('/(tabs)' as any);
                 }

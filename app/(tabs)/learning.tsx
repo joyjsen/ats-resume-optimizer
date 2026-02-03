@@ -134,12 +134,13 @@ export default function LearningScreen() {
     };
 
     const handleStartTraining = async (item: LearningEntry) => {
-        if (!checkTokens(30)) return; // Cost: 30 tokens
         if (item.slides && item.slides.length > 0) {
             setSelectedEntry(item);
             setShowSlideshow(true);
             return;
         }
+
+        if (!checkTokens(30)) return; // Cost: 30 tokens
 
         setIsGenerating(item.id);
         try {
@@ -182,21 +183,6 @@ export default function LearningScreen() {
                 completionDate: new Date()
             });
 
-            // Trigger Email Notification via ghost task
-            try {
-                if (entry) {
-                    const taskId = await taskService.createTask('course_completion', {
-                        applicationId: entry.id, // Re-using applicationId field for entryId
-                        skillName: entry.skillName,
-                        company: entry.companyName,
-                        jobTitle: entry.jobTitle
-                    });
-                    await taskService.completeTask(taskId, entry.id);
-                }
-            } catch (notificationError) {
-                console.warn("Failed to trigger course completion notification task:", notificationError);
-            }
-
             // Log activity for course completion
             try {
                 if (entry) {
@@ -210,12 +196,6 @@ export default function LearningScreen() {
                 }
             } catch (activityError) {
                 console.warn("Failed to log learning completion activity:", activityError);
-            }
-
-            // Send local push notification for learning completion
-            if (entry) {
-                await notificationService.notifyLearningComplete(entry.skillName)
-                    .catch((e: any) => console.error("Learning notification failed:", e));
             }
 
             setShowSlideshow(false);

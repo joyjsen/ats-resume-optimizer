@@ -18,6 +18,32 @@ export default function AnalysisResultScreen() {
     const navigation = useNavigation();
     const { currentAnalysis, setCurrentAnalysis } = useResumeStore();
     const { activeTasks } = useTaskQueue();
+    const { id } = useLocalSearchParams<{ id: string }>();
+
+    // Initial load from params if store is empty or mismatched
+    React.useEffect(() => {
+        if (id && (!currentAnalysis || currentAnalysis.id !== id)) {
+            const { historyService } = require('../src/services/firebase/historyService');
+            historyService.getAnalysisById(id).then((analysis: any) => {
+                if (analysis) {
+                    setCurrentAnalysis({
+                        ...analysis.analysisData,
+                        id: analysis.id,
+                        job: analysis.jobData,
+                        resume: analysis.resumeData,
+                        optimizedResume: analysis.optimizedResumeData,
+                        changes: analysis.changesData,
+                        optimizedMatchAnalysis: analysis.optimizedMatchAnalysis,
+                        draftOptimizedResumeData: analysis.draftOptimizedResumeData,
+                        draftChangesData: analysis.draftChangesData,
+                        draftAtsScore: analysis.draftAtsScore,
+                        draftMatchAnalysis: analysis.draftMatchAnalysis,
+                        atsScore: analysis.atsScore
+                    });
+                }
+            });
+        }
+    }, [id]);
 
     // Local state
     const [optimizing, setOptimizing] = React.useState(false);
@@ -28,33 +54,16 @@ export default function AnalysisResultScreen() {
     const completionHandledRef = React.useRef<string | null>(null);
     const analysisRef = React.useRef(currentAnalysis);
 
+    // --- Misplaced Hooks (Moved from below) ---
+    const [skillModalVisible, setSkillModalVisible] = React.useState(false);
+    const [selectedSkillToAdd, setSelectedSkillToAdd] = React.useState<string | null>(null);
+
     // Keep ref updated for the listener
     React.useEffect(() => {
         analysisRef.current = currentAnalysis;
     }, [currentAnalysis]);
 
-    // Derived State and Safety Check
-    if (!currentAnalysis) {
-        return (
-            <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#fff' }}>
-                <Text style={{ marginBottom: 16 }}>No analysis data found.</Text>
-                <Button mode="contained" onPress={() => router.replace('/(tabs)/analyze')}>
-                    Go to Analyze
-                </Button>
-            </View>
-        );
-    }
-
-    const { job, resume } = currentAnalysis;
-
-    // Determine what to show (Draft vs Final vs Original)
-    const optimizedResume = currentAnalysis.draftOptimizedResumeData || currentAnalysis.optimizedResume;
-    const changes = currentAnalysis.draftChangesData || currentAnalysis.changes;
-    const atsScore = currentAnalysis.draftAtsScore || currentAnalysis.atsScore;
-    const matchAnalysis = currentAnalysis.draftMatchAnalysis || currentAnalysis.optimizedMatchAnalysis || currentAnalysis.matchAnalysis;
-
-    // Ideally we track original score separately, but fallback to current if not available
-    const originalScore = currentAnalysis.atsScore;
+    const { checkTokens } = useTokenCheck();
 
     // Real-time subscription to analysis changes (Instant Sync)
     React.useEffect(() => {
@@ -158,7 +167,30 @@ export default function AnalysisResultScreen() {
         };
     }, [navigation, currentAnalysis?.id, optimizing, isUnsaved]); // Re-run when key states change
 
-    const { checkTokens } = useTokenCheck();
+    const theme = useTheme();
+
+    // Derived State and Safety Check
+    if (!currentAnalysis) {
+        return (
+            <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: theme.colors.background }}>
+                <Text style={{ marginBottom: 16 }}>No analysis data found.</Text>
+                <Button mode="contained" onPress={() => router.replace('/(tabs)/analyze')}>
+                    Go to Analyze
+                </Button>
+            </View>
+        );
+    }
+
+    const { job, resume } = currentAnalysis;
+
+    // Determine what to show (Draft vs Final vs Original)
+    const optimizedResume = currentAnalysis.draftOptimizedResumeData || currentAnalysis.optimizedResume;
+    const changes = currentAnalysis.draftChangesData || currentAnalysis.changes;
+    const atsScore = currentAnalysis.draftAtsScore || currentAnalysis.atsScore;
+    const matchAnalysis = currentAnalysis.draftMatchAnalysis || currentAnalysis.optimizedMatchAnalysis || currentAnalysis.matchAnalysis;
+
+    // Ideally we track original score separately, but fallback to current if not available
+    const originalScore = currentAnalysis.atsScore;
 
     const handleOptimize = async () => {
         if (!checkTokens(15)) return;
@@ -216,8 +248,6 @@ export default function AnalysisResultScreen() {
     };
 
     // --- Interactive Skill Management ---
-    const [skillModalVisible, setSkillModalVisible] = React.useState(false);
-    const [selectedSkillToAdd, setSelectedSkillToAdd] = React.useState<string | null>(null);
 
     const handleSkillPress = (skillMatch: SkillMatch) => {
         if (optimizing) {
@@ -413,7 +443,6 @@ export default function AnalysisResultScreen() {
         }
     };
 
-    const theme = useTheme();
 
     return (
         <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
@@ -489,14 +518,26 @@ export default function AnalysisResultScreen() {
                             </Text>
 
                             {!optimizing ? (
-                                <Button
-                                    mode="contained"
-                                    onPress={handleOptimize}
-                                    style={{ marginTop: 16 }}
-                                    disabled={currentAnalysis.isLocked}
-                                >
-                                    {currentAnalysis.isLocked ? "Optimizer Locked" : "✨ Rewrite & Optimize Resume"}
-                                </Button>
+                                <>
+                                    <Button
+                                        mode="contained"
+                                        onPress={handleOptimize}
+                                        style={{ marginTop: 16 }}
+                                        disabled={currentAnalysis.isLocked}
+                                    >
+                                        {currentAnalysis.isLocked ? "Optimizer Locked" : "✨ Rewrite & Optimize Resume"}
+                                    </Button>
+                                    {currentAnalysis.recommendation.action === 'upskill' && (
+                                        <Button
+                                            mode="outlined"
+                                            onPress={() => router.push({ pathname: '/upskilling-path', params: { id: currentAnalysis.id } } as any)}
+                                            style={{ marginTop: 8 }}
+                                            icon="school"
+                                        >
+                                            View Detailed Learning Path
+                                        </Button>
+                                    )}
+                                </>
                             ) : (
                                 <View style={{ marginTop: 16 }}>
                                     <Text variant="bodySmall" style={{ marginBottom: 8, textAlign: 'center', color: theme.colors.primary }}>
@@ -663,7 +704,7 @@ export default function AnalysisResultScreen() {
                     </Dialog.Actions>
                 </Dialog>
             </Portal>
-        </View>
+        </View >
     );
 }
 

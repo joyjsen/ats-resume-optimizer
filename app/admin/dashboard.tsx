@@ -89,6 +89,14 @@ export default function AdminDashboard() {
                     />
                 </Card>
 
+                <Card style={styles.actionCard} onPress={() => router.push('/admin/deleted-users')}>
+                    <Card.Title
+                        title="Deleted Accounts"
+                        subtitle="View archived accounts and their activity history"
+                        left={(props) => <MaterialCommunityIcons name="account-remove" size={24} color="#D32F2F" />}
+                        right={(props) => <IconButton icon="chevron-right" {...props} />}
+                    />
+                </Card>
 
                 <Card style={styles.actionCard} onPress={() => router.push('/admin/activities')}>
                     <Card.Title

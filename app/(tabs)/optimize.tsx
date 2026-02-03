@@ -184,11 +184,7 @@ export default function Dashboard() {
             changes: item.changesData
         });
 
-        if (item.action === 'optimize') {
-            router.push('/analysis-result');
-        } else {
-            router.push('/upskilling-path');
-        }
+        router.push({ pathname: '/analysis-result', params: { id: item.id } } as any);
     };
 
     // ... (helper functions getScoreColor, formatDate, handleDelete remain the same)

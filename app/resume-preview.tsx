@@ -6,11 +6,12 @@ import { DocxGenerator } from '../src/services/docx/docxGenerator';
 
 export default function ResumePreview() {
     const { currentAnalysis } = useResumeStore();
+    const { activeTasks } = require('../src/context/TaskQueueContext').useTaskQueue();
     const theme = useTheme();
 
     if (!currentAnalysis) {
         return (
-            <View style={styles.container}>
+            <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
                 <Text>No analysis selected.</Text>
             </View>
         );
@@ -20,15 +21,13 @@ export default function ResumePreview() {
 
     if (!optimizedResume) {
         return (
-            <View style={styles.container}>
+            <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
                 <Text>No optimized resume available to preview.</Text>
             </View>
         );
     }
 
     // Gating Logic
-    // Gating Logic
-    const { activeTasks } = require('../src/context/TaskQueueContext').useTaskQueue();
     // Check if we are strictly in a "Loading/Processing" state for THIS analysis
     const isUpdating = activeTasks.some((t: any) =>
         t.payload?.currentAnalysis?.id === currentAnalysis.id &&

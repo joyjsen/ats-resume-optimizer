@@ -1,5 +1,5 @@
 {
-  "name": "ats-resume-optimizer",
+  "name": "riresume",
   "version": "1.0.0",
   "main": "index.ts",
   "scripts": {
@@ -73,5 +73,17 @@
     "babel-preset-expo": "^54.0.9",
     "typescript": "~5.9.2"
   },
-  "private": true
+  "private": true,
+  "overrides": {
+    "markdown-it": "^12.3.2"
+  },
+  "expo": {
+    "doctor": {
+      "reactNativeDirectoryCheck": {
+        "exclude": [
+          "react-native-background-actions"
+        ]
+      }
+    }
+  }
 }

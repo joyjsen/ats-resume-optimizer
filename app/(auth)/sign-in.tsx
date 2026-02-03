@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, StyleSheet, Alert, ScrollView } from 'react-native';
 import { Text, TextInput, Button, useTheme, Card } from 'react-native-paper';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { authService, UserInactiveError } from '../../src/services/firebase/authService';
+import { auth } from '../../src/services/firebase/config';
 
 export default function SignIn() {
     const router = useRouter();
@@ -13,9 +14,27 @@ export default function SignIn() {
     const [socialLoading, setSocialLoading] = useState<string | null>(null);
     const [showPhoneLogin, setShowPhoneLogin] = useState(false);
     const [phoneNumber, setPhoneNumber] = useState('');
-    // State
     const [verificationCode, setVerificationCode] = useState('');
-    const [confirming, setConfirming] = useState(false); // Track if we are in confirm step
+    const [confirming, setConfirming] = useState(false);
+    const params = useLocalSearchParams();
+
+    // Anti-hang: Reset loading states whenever auth state changes to "signed out"
+    useEffect(() => {
+        const unsubscribe = auth.onAuthStateChanged((user) => {
+            if (!user) {
+                setLoading(false);
+                setSocialLoading(null);
+            }
+        });
+        return unsubscribe;
+    }, []);
+
+    // Handle deep link to phone login
+    useEffect(() => {
+        if (params.phone === 'true') {
+            setShowPhoneLogin(true);
+        }
+    }, [params.phone]);
 
     const handleSocialLogin = async (provider: 'google' | 'apple' | 'microsoft') => {
         setSocialLoading(provider);
@@ -24,13 +43,19 @@ export default function SignIn() {
             else if (provider === 'apple') await authService.signInWithApple();
             else if (provider === 'microsoft') await authService.signInWithMicrosoft();
         } catch (error: any) {
-            if (error instanceof UserInactiveError || error.name === 'UserInactiveError') {
+            console.error(`${provider} Login Error:`, error);
+            const isInactive = error instanceof UserInactiveError ||
+                error.name === 'UserInactiveError' ||
+                error.message?.includes('User Inactive');
+
+            if (isInactive) {
                 Alert.alert("Account Inactive", "User Inactive: Please contact admin.");
-                return;
-            }
-            if (error.code !== -1) {
-                console.error(`${provider} Login Error:`, error);
-                Alert.alert("Login Failed", error.message || `Could not sign in with ${provider}.`);
+            } else if (error.code !== -1 && error.code !== 'auth/cancelled') {
+                let message = error.message;
+                if (error.code === 'auth/invalid-credential' || error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password') {
+                    message = "Invalid email or password. If you recently restored your account or used social login before, please try 'Forgot Password' or your social login method.";
+                }
+                Alert.alert("Login Failed", message || `Could not sign in with ${provider}.`);
             }
         } finally {
             setSocialLoading(null);
@@ -48,10 +73,18 @@ export default function SignIn() {
             await authService.loginWithEmail(email, password);
         } catch (error: any) {
             console.error("Login Error:", error);
-            if (error instanceof UserInactiveError || error.name === 'UserInactiveError') {
+            const isInactive = error instanceof UserInactiveError ||
+                error.name === 'UserInactiveError' ||
+                error.message?.includes('User Inactive');
+
+            if (isInactive) {
                 Alert.alert("Account Inactive", "User Inactive: Please contact admin.");
             } else {
-                Alert.alert("Login Failed", error.message || "Invalid credentials.");
+                let message = error.message;
+                if (error.code === 'auth/invalid-credential' || error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password') {
+                    message = "Invalid email or password. Please try again or use 'Forgot Password'. if you previously used Google/Apple login, please use that instead.";
+                }
+                Alert.alert("Login Failed", message || "Invalid credentials.");
             }
         } finally {
             setLoading(false);
@@ -167,49 +200,26 @@ export default function SignIn() {
                                 Continue with Google
                             </Button>
                             <Button
-                                icon="microsoft"
+                                icon="apple"
                                 mode="outlined"
-                                onPress={() => Alert.alert("Coming Soon", "Microsoft login will be available soon.")}
+                                onPress={() => handleSocialLogin('apple')}
+                                loading={socialLoading === 'apple'}
+                                disabled={loading || !!socialLoading}
                                 style={styles.socialButton}
                             >
-                                Continue with Microsoft
+                                Continue with Apple
                             </Button>
-                            <View style={styles.socialRow}>
-                                <Button
-                                    icon="apple"
-                                    mode="outlined"
-                                    onPress={() => handleSocialLogin('apple')}
-                                    loading={socialLoading === 'apple'}
-                                    disabled={loading || !!socialLoading}
-                                    style={[styles.socialButton, { flex: 1, marginRight: 8 }]}
-                                >
-                                    Apple
-                                </Button>
-                                <Button
-                                    icon="linkedin"
-                                    mode="outlined"
-                                    onPress={() => Alert.alert("Coming Soon", "LinkedIn login will be available soon.")}
-                                    style={[styles.socialButton, { flex: 1 }]}
-                                >
-                                    LinkedIn
-                                </Button>
-                            </View>
+
                             <Button
                                 icon="cellphone"
                                 mode="outlined"
-                                onPress={() => setShowPhoneLogin(true)}
+                                onPress={() => Alert.alert("Coming Soon", "Phone login will be available soon.")}
                                 style={styles.socialButton}
                             >
                                 Continue with Phone
                             </Button>
 
-                            <Button
-                                mode="contained"
-                                onPress={() => router.push('/(auth)/native-login' as any)}
-                                style={[styles.button, { marginTop: 24, backgroundColor: '#4285F4' }]}
-                            >
-                                Switch to Native Google Sign-In
-                            </Button>
+
                         </>
                     ) : (
                         <>

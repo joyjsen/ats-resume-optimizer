@@ -134,7 +134,8 @@ async function deductTokens(
     resourceId: string,
     db: admin.firestore.Firestore
 ) {
-    console.log(`[deductTokens] START: ${userId} requesting -${cost} for ${type} (${resourceId})`);
+    const requestId = Math.random().toString(36).substring(7);
+    console.log(`[deductTokens][${requestId}] START: ${userId} requesting -${cost} for ${type} (${resourceId})`);
 
     try {
         await db.runTransaction(async (transaction) => {
@@ -179,10 +180,10 @@ async function deductTokens(
                 createdAt: admin.firestore.FieldValue.serverTimestamp(),
             });
 
-            console.log(`[deductTokens] SUCCESS: ${userId} new balance: ${newBalance}`);
+            console.log(`[deductTokens][${requestId}] SUCCESS: ${userId} new balance: ${newBalance}`);
         });
     } catch (error: any) {
-        console.error(`[deductTokens] TRANSACTION ERROR for ${userId}:`, error.message);
+        console.error(`[deductTokens][${requestId}] TRANSACTION ERROR for ${userId}:`, error.message);
         throw error; // Rethrow to fail the Cloud Function
     }
 }
@@ -564,7 +565,7 @@ export const optimizeResume = onCall(
             });
 
             const systemInstruction = `
-You are an expert ATS resume optimizer. Optimize the provided resume for the target job while maintaining truthfulness.
+You are an expert RiResume engine. Optimize the provided resume for the target job while maintaining truthfulness.
 Return a JSON object with properties 'optimizedResume' (structure matching original) and 'changes' (array of change objects).
 Aim for an ATS score of 85-95%.
             `.trim();
@@ -1131,7 +1132,8 @@ Title: ${jobTitle}
 Company: ${company}
 Description: ${jobDescription || "N/A"}
 
-Please output ONLY the text of the cover letter, starting with the header. Do not include markdown naming blocks or introductory conversational text.
+Please output ONLY the text of the cover letter, starting with the header. 
+STRICT REQUIREMENT: Do NOT include any conversational filler, meta-commentary, or introductory remarks like "I appreciate your request" or "Here is the cover letter". Start IMMEDIATELY with the contact information or the salutation.
             `;
 
             let coverLetterText: string;
@@ -1140,8 +1142,9 @@ Please output ONLY the text of the cover letter, starting with the header. Do no
             try {
                 coverLetterText = await callPerplexity(
                     perplexityApiKey.value(),
-                    "You are a helpful, professional career assistant.",
-                    prompt
+                    "You are a professional Executive Resume Writer. You MUST output ONLY the cover letter text itself. No introductions, no pleasantries, no meta-commentary, and no explanations.",
+                    prompt,
+                    false // Return plaintext markdown/text, NOT JSON
                 );
             } catch (perplexityError: any) {
                 console.warn(`[generateCoverLetter] Perplexity failed: ${perplexityError.message}, trying OpenAI...`);
@@ -1155,7 +1158,7 @@ Please output ONLY the text of the cover letter, starting with the header. Do no
                 const response = await openai.chat.completions.create({
                     model: "gpt-4o-mini",
                     messages: [
-                        { role: "system", content: "You are a helpful, professional career assistant." },
+                        { role: "system", content: "You are a professional Executive Resume Writer. You MUST output ONLY the cover letter text itself. No meta-commentary or conversational filler." },
                         { role: "user", content: prompt }
                     ],
                     max_tokens: 2000,
@@ -1265,11 +1268,7 @@ export const onBackgroundTaskCreated = onDocumentCreated(
             });
 
             // Send push notification to user
-            // Get the task result to include score in notification
-            const completedTask = await taskRef.get();
-            const taskResult = completedTask.data()?.result;
-            await sendPushNotification(task.userId, taskType, task.payload, db, taskResult);
-
+            // MOVED to notifications.ts (onBackgroundTaskUpdated)
             console.log(`[BackgroundTask] Task ${taskId} completed successfully`);
 
         } catch (error: any) {
@@ -1311,7 +1310,7 @@ async function processOptimizeResume(
     }).catch(e => console.warn(`[processOptimizeResume] Update failed: ${e.message}`));
 
     const systemInstruction = `
-You are an expert ATS resume optimizer. Optimize the provided resume for the target job while maintaining truthfulness.
+You are an expert RiResume engine. Optimize the provided resume for the target job while maintaining truthfulness.
 Return a JSON object with properties 'optimizedResume' (structure matching original) and 'changes' (array of change objects).
 Aim for an ATS score of 85-95%.
     `.trim();
@@ -1832,115 +1831,6 @@ async function processPrepGuide(
 }
 
 
-// Helper function: Send push notification to user via Expo Push API
-async function sendPushNotification(
-    userId: string,
-    taskType: string,
-    payload: any,
-    db: admin.firestore.Firestore,
-    result?: any
-) {
-    try {
-        // Get user's push tokens from Firestore
-        const userDoc = await db.collection("users").doc(userId).get();
-        if (!userDoc.exists) {
-            console.log(`[sendPushNotification] User ${userId} not found`);
-            return;
-        }
-
-        const userData = userDoc.data();
-        const tokens = userData?.pushTokens || [];
-
-        if (!tokens.length) {
-            console.log(`[sendPushNotification] No push tokens for user ${userId}`);
-            return;
-        }
-
-        // Determine notification content based on task type
-        let title = "";
-        let body = "";
-        let data: any = {};
-
-        switch (taskType) {
-            case "optimize_resume":
-                title = "Resume Optimized";
-                const optimizeScore = result?.calibratedScore;
-                body = optimizeScore
-                    ? `Your resume for ${payload?.job?.title || 'the position'} at ${payload?.job?.company || 'the company'} has been optimized. New ATS Score: ${optimizeScore}%`
-                    : `Your resume for ${payload?.job?.title || 'the position'} at ${payload?.job?.company || 'the company'} has been optimized`;
-                data = {
-                    type: "optimize_resume",
-                    historyId: payload?.historyId || payload?.analysis?.id,
-                    route: "/analysis-result",
-                };
-                break;
-            case "add_skill":
-                title = "Skill Added";
-                const skillScore = result?.newScore;
-                body = skillScore
-                    ? `Successfully added "${payload?.skill || 'skill'}" to your resume. New ATS Score: ${skillScore}%`
-                    : `Successfully added "${payload?.skill || 'skill'}" to your resume`;
-                data = {
-                    type: "add_skill",
-                    historyId: payload?.historyId || payload?.currentAnalysis?.id,
-                    route: "/analysis-result",
-                };
-                break;
-            case "prep_guide":
-                title = "Prep Guide Ready";
-                body = `Your interview prep guide for ${payload?.jobTitle || 'the position'} at ${payload?.companyName || 'the company'} is ready`;
-                data = {
-                    type: "prep_guide",
-                    applicationId: payload?.applicationId,
-                    route: "/(tabs)/applications",
-                    action: "viewPrep",
-                };
-                break;
-            case "cover_letter":
-                title = "Cover Letter Ready";
-                body = `Your cover letter for ${payload?.jobTitle || 'the position'} at ${payload?.company || 'the company'} is ready`;
-                data = {
-                    type: "cover_letter",
-                    applicationId: payload?.applicationId,
-                    route: "/(tabs)/applications",
-                    action: "viewCoverLetter",
-                };
-                break;
-            default:
-                console.log(`[sendPushNotification] Unknown task type: ${taskType}`);
-                return;
-        }
-
-        // Build messages for Expo Push API
-        const messages = tokens.map((token: string) => ({
-            to: token,
-            sound: "default",
-            title,
-            body,
-            data,
-        }));
-
-        // Send to Expo Push API
-        const response = await fetch("https://exp.host/--/api/v2/push/send", {
-            method: "POST",
-            headers: {
-                Accept: "application/json",
-                "Accept-encoding": "gzip, deflate",
-                "Content-Type": "application/json",
-            },
-            body: JSON.stringify(messages),
-        });
-
-        if (!response.ok) {
-            console.error(`[sendPushNotification] Expo API error: ${response.status}`);
-        } else {
-            console.log(`[sendPushNotification] Push sent to ${userId}: ${title}`);
-        }
-
-    } catch (error) {
-        console.error("[sendPushNotification] Error:", error);
-    }
-}
 
 // Helper function: Process cover_letter task
 async function processCoverLetter(
@@ -1994,8 +1884,9 @@ Output ONLY the cover letter text.
     try {
         coverLetterText = await callPerplexity(
             perplexityApiKey.value(),
-            "You are a professional career assistant. Output ONLY plain text, no JSON, no markdown, no code blocks.",
-            prompt
+            "You are a professional Executive Resume Writer. You MUST output ONLY the cover letter text itself. No introductions, no pleasantries, no meta-commentary, and no explanations.",
+            prompt,
+            false // Return plaintext markdown/text, NOT JSON
         );
     } catch (perplexityError: any) {
         // Fallback to OpenAI
@@ -2068,15 +1959,58 @@ export const generateTrainingSlideshow = onCall(
         const db = admin.firestore();
 
         try {
+            const entryRef = db.collection("user_learning").doc(entryId);
+
+            // ATOMIC CHECK & LOCK
+            const shouldProceed = await db.runTransaction(async (transaction) => {
+                const entrySnap = await transaction.get(entryRef);
+                if (!entrySnap.exists) {
+                    throw new Error("Learning entry not found");
+                }
+
+                const data = entrySnap.data();
+
+                // 1. Check if slides already exist
+                if (data?.slides && data.slides.length > 0) {
+                    console.log(`[generateTrainingSlideshow] Slides already exist for entry ${entryId}. Returning existing slides.`);
+                    return { action: "return_existing", slides: data.slides };
+                }
+
+                // 2. Check concurrency lock
+                if (data?.generationStatus === "generating") {
+                    console.log(`[generateTrainingSlideshow] Lock active for entry ${entryId}. Rejecting re-request.`);
+                    throw new Error("Training content is already being generated. Please wait.");
+                }
+
+                // 3. Acquire lock
+                transaction.update(entryRef, {
+                    generationStatus: "generating",
+                    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+                });
+
+                return { action: "proceed" };
+            });
+
+            if (shouldProceed.action === "return_existing") {
+                return { success: true, slides: shouldProceed.slides };
+            }
+
             // TRANSACTION: Deduct tokens and log activity (30 tokens)
-            await deductTokens(
-                request.auth.uid,
-                30,
-                "training_slideshow_generation",
-                `Generated AI Training Slideshow for ${skill}`,
-                entryId,
-                db
-            );
+            // Note: This is a separate transaction, which is fine since the lock is already set
+            try {
+                await deductTokens(
+                    request.auth.uid,
+                    30,
+                    "training_slideshow_generation",
+                    `Generated AI Training Slideshow for ${skill}`,
+                    entryId,
+                    db
+                );
+            } catch (deductionError: any) {
+                // If deduction fails, we MUST release the lock
+                await entryRef.update({ generationStatus: null }).catch(console.error);
+                throw deductionError;
+            }
 
             const openai = new OpenAI({ apiKey: openaiApiKey.value() });
             const prompt = `You are an expert technical trainer. Create a comprehensive training slideshow for a candidate learning a specific skill for a specific job at a specific company.
@@ -2115,11 +2049,12 @@ Respond ONLY with the JSON object.`;
             const parsed = JSON.parse(content);
             const slides = parsed.slides || [];
 
-            // Update the learning entry in Firestore
+            // Update the learning entry in Firestore and release lock
             await db.collection("user_learning").doc(entryId).update({
                 slides,
                 totalSlides: slides.length,
                 currentSlide: 0,
+                generationStatus: "completed",
                 updatedAt: admin.firestore.FieldValue.serverTimestamp(),
             });
 
@@ -2127,6 +2062,10 @@ Respond ONLY with the JSON object.`;
 
         } catch (error: any) {
             console.error("[generateTrainingSlideshow] Failed:", error);
+            // Ensure lock is released on internal error
+            const entryRef = db.collection("user_learning").doc(entryId);
+            await entryRef.update({ generationStatus: "failed" }).catch(() => { });
+
             throw new HttpsError("internal", error.message || "Failed to generate training content.");
         }
     }

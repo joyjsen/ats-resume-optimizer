@@ -48,9 +48,10 @@ service cloud.firestore {
       allow read: if isAuthenticated() &&
                      (resource == null || resource.data.userId == request.auth.uid || resource.data.uid == request.auth.uid || isAdmin());
       allow create: if isAuthenticated() &&
-                       (request.resource.data.userId == request.auth.uid || request.resource.data.uid == request.auth.uid);
+                       (request.resource.data.userId == request.auth.uid || request.resource.data.uid == request.auth.uid || isAdmin());
       allow update: if isAuthenticated() &&
                        (resource.data.userId == request.auth.uid || resource.data.uid == request.auth.uid || isAdmin());
+      allow delete: if isAdmin();
     }
 
     // Job applications - users can only access their own applications (admin can access all for management)
@@ -89,6 +90,17 @@ service cloud.firestore {
       allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
       allow update: if false; // Only Cloud Functions can update
       allow delete: if isAuthenticated() && resource.data.userId == request.auth.uid;
+    }
+    
+    // Deleted accounts archive - user can create/update their own, admin can manage any
+    match /deleted_accounts/{userId} {
+      allow create, update: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
+      allow read, delete: if isAdmin();
+    }
+
+    // Audit trail for permanently deleted accounts - admin only
+    match /audit_trail/{userId} {
+      allow read, write: if isAdmin();
     }
 
     // Default deny all other access

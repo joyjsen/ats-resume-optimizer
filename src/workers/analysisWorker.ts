@@ -241,13 +241,7 @@ export const executeAnalysisTask = async (taskId: string, payload: any, type: st
         await taskService.completeTask(taskId, savedId);
         console.log(`[Worker] Task ${taskId} marked as COMPLETED.`);
 
-        // Send local push notification for analysis completion
-        await notificationService.notifyAnalysisComplete(
-            job.title,
-            job.company,
-            analysis.atsScore,
-            savedId
-        ).catch((e: any) => console.error("Worker notification failed:", e));
+        // Local notifications removed to prevent duplicates (backend handles this)
 
         return savedId;
 
@@ -306,8 +300,6 @@ const executeOptimizationTask = async (taskId: string, payload: any) => {
                         }
 
                         console.log("[Worker] Background optimization task completed");
-                        // Note: Push notification is sent by Cloud Function, not client
-                        // This ensures notifications work even when app is in background
 
                         resolve(currentAnalysis.id);
                     } catch (error: any) {
@@ -381,8 +373,6 @@ const executeAddSkillTask = async (taskId: string, payload: any) => {
                 // onComplete - Cloud Function already did all the work
                 async (bgTask: BackgroundTask) => {
                     console.log("[Worker] Background skill addition task completed - data already saved by Cloud Function");
-                    // Note: Push notification is sent by Cloud Function, not client
-                    // This ensures notifications work even when app is in background
 
                     resolve(currentAnalysis.id);
                 },

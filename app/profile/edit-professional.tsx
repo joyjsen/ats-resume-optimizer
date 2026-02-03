@@ -41,6 +41,18 @@ export default function EditProfessionalDetailsScreen() {
                 primaryGoal
             };
 
+            // Check if profile is now complete (requires both personal and professional info)
+            if (!userProfile.profileCompleted &&
+                updates.jobTitle &&
+                updates.targetJobTitle &&
+                updates.experienceLevel &&
+                updates.targetIndustry &&
+                userProfile.firstName &&
+                userProfile.lastName) {
+                updates.profileCompleted = true;
+                updates.profileCompletedAt = new Date();
+            }
+
             await userService.updateProfile(userProfile.uid, updates);
             await refreshProfile();
             Alert.alert("Success", "Professional details updated.");

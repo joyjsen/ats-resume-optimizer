@@ -18,8 +18,8 @@ const HELP_CONTENT: HelpSection[] = [
         title: "Getting Started",
         items: [
             {
-                question: "What is ResuMate?",
-                answer: "ResuMate is an AI-powered ATS Resume Optimizer that helps you create job-specific resumes, prepare for interviews, and manage your entire job application lifecycle. Unlike traditional resume scanners, ResuMate actually rewrites and optimizes your resume content using advanced AI technology."
+                question: "What is RiResume?",
+                answer: "RiResume is an AI-powered ATS Resume Optimizer that helps you create job-specific resumes, prepare for interviews, and manage your entire job application lifecycle. Unlike traditional resume scanners, RiResume actually rewrites and optimizes your resume content using advanced AI technology."
             },
             {
                 question: "How do I create an account?",
@@ -34,7 +34,7 @@ const HELP_CONTENT: HelpSection[] = [
             {
                 question: "What is the token system?",
                 answer: [
-                    "ResuMate uses a token-based credit system. Tokens are used for AI-powered features:",
+                    "RiResume uses a token-based credit system. Tokens are used for AI-powered features:",
                     "• Resume Analysis: 8 tokens (~40 seconds)",
                     "• Resume Optimization: 15 tokens (~60 seconds)",
                     "• Resume Re-optimization (Add skills to resume): 15 tokens (~60 seconds)",
@@ -67,7 +67,7 @@ const HELP_CONTENT: HelpSection[] = [
             {
                 question: "What happens during analysis?",
                 answer: [
-                    "ResuMate compares your resume against the job description and identifies:",
+                    "RiResume compares your resume against the job description and identifies:",
                     "• Matching Skills: Skills you have that match the job requirements",
                     "• Partially Matching Skills: Skills you have that are somewhat relevant",
                     "• Missing Skills: Skills the job requires that aren't on your resume",
@@ -112,7 +112,7 @@ const HELP_CONTENT: HelpSection[] = [
             {
                 question: "What does optimization include?",
                 answer: [
-                    "ResuMate's AI rewrites and enhances:",
+                    "RiResume's AI rewrites and enhances:",
                     "• Professional Summary: Tailored to the specific job",
                     "• Experience Sections: Optimized bullet points with relevant keywords",
                     "• Skills Section: Added relevant skills from the job description",
@@ -342,7 +342,7 @@ const HELP_CONTENT: HelpSection[] = [
             },
             {
                 question: "Is my payment information secure?",
-                answer: "Yes! ResuMate uses Stripe, a industry-leading secure payment processor. We never store your credit card information on our servers."
+                answer: "Yes! RiResume uses Stripe, a industry-leading secure payment processor. We never store your credit card information on our servers."
             },
             {
                 question: "What happens if I run out of tokens?",
@@ -364,6 +364,24 @@ const HELP_CONTENT: HelpSection[] = [
             {
                 question: "How do I delete my account?",
                 answer: "Go to Profile, scroll to bottom, and tap \"Delete Account\". ⚠️ Warning: Account deletion is permanent. All your data will be lost."
+            }
+        ]
+    },
+    {
+        title: "Account Management & Restoration",
+        items: [
+            {
+                question: "I was reactivated but can't log in with my old password",
+                answer: "If your account was recently reactivated by an admin, you might encounter a login error on the first attempt due to local caching. Please try logging in with the same password a second time—this typically clears the cache and allows you to enter successfully."
+            },
+            {
+                question: "Can I restore a deleted account?",
+                answer: [
+                    "Yes! You have a 30-day window to change your mind after deleting your account. If you contact support and an admin restores your profile:",
+                    "• You may need to click \"Forgot Password\" to re-verify your access and set a new password.",
+                    "• Your account will be restored to the exact state it was in at the time of deletion, preserving all your tokens, resume history, and optimized applications.",
+                    "After 30 days, all data is permanently purged and cannot be recovered."
+                ]
             }
         ]
     },
@@ -412,7 +430,7 @@ const HELP_CONTENT: HelpSection[] = [
             {
                 question: "How is my data protected?",
                 answer: [
-                    "ResuMate takes your privacy seriously:",
+                    "RiResume takes your privacy seriously:",
                     "• All data is encrypted in transit and at rest",
                     "• We use Firebase secure authentication",
                     "• Payment processing through Stripe (PCI compliant)",
@@ -450,7 +468,7 @@ const HELP_CONTENT: HelpSection[] = [
                     "• Browse FAQs and help articles",
                     "• Submit a support request if needed",
                     "",
-                    "Email Support: support@resumate.ai",
+                    "Email Support: support@riresume.com",
                     "Response Time: We typically respond within 24-48 hours"
                 ]
             },
@@ -486,12 +504,12 @@ const HELP_CONTENT: HelpSection[] = [
         ]
     },
     {
-        title: "About ResuMate",
+        title: "About RiResume",
         items: [
             {
-                question: "What makes ResuMate different?",
+                question: "What makes RiResume different?",
                 answer: [
-                    "Unlike traditional resume scanners that just give you a score, ResuMate:",
+                    "Unlike traditional resume scanners that just give you a score, RiResume:",
                     "• Actually rewrites your content using advanced AI",
                     "• Optimizes for specific jobs, not generic templates",
                     "• Manages your entire job search lifecycle in one place",
@@ -500,11 +518,11 @@ const HELP_CONTENT: HelpSection[] = [
                 ]
             },
             {
-                question: "What AI technology does ResuMate use?",
-                answer: "ResuMate uses state-of-the-art language models optimized for resume writing, skill matching, and career content generation. We've carefully selected cost-efficient models that maintain high quality while keeping token prices affordable."
+                question: "What AI technology does RiResume use?",
+                answer: "RiResume uses state-of-the-art language models optimized for resume writing, skill matching, and career content generation. We've carefully selected cost-efficient models that maintain high quality while keeping token prices affordable."
             },
             {
-                question: "How often is ResuMate updated?",
+                question: "How often is RiResume updated?",
                 answer: "We regularly release updates with new features, improvements, and bug fixes. Enable automatic updates in your device settings to always have the latest version."
             },
             {
@@ -576,7 +594,7 @@ export default function HelpSupportScreen() {
 
     const handleEmailSupport = () => {
         const email = 'pjmarket1316@gmail.com';
-        const subject = 'Support Request: ATS Resume Optimizer';
+        const subject = 'Support Request: RiResume';
         const body = 'Please describe your issue here...';
         const url = `mailto:${email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
 
@@ -612,7 +630,7 @@ export default function HelpSupportScreen() {
                             // Short delay then navigate to home tab
                             setTimeout(() => {
                                 router.navigate('/(tabs)/home');
-                                Alert.alert("Reset Complete", "The app has been reset. You can now continue using ResuMate.");
+                                Alert.alert("Reset Complete", "The app has been reset. You can now continue using RiResume.");
                             }, 200);
                         } catch (error) {
                             console.error("Emergency reset error:", error);
@@ -627,8 +645,8 @@ export default function HelpSupportScreen() {
 
     const handlePrivacyEnquiry = () => {
         const email = 'pjmarket1316@gmail.com';
-        const subject = 'Privacy Enquiry: ResuMate App';
-        const body = 'Hello,\n\nI have a privacy-related enquiry regarding the ResuMate app:\n\n[Please detail your enquiry here]\n\nAccount Email: [Your account email if different]\nDate: ' + new Date().toLocaleDateString();
+        const subject = 'Privacy Enquiry: RiResume App';
+        const body = 'Hello,\n\nI have a privacy-related enquiry regarding the RiResume app:\n\n[Please detail your enquiry here]\n\nAccount Email: [Your account email if different]\nDate: ' + new Date().toLocaleDateString();
         const url = `mailto:${email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
 
         Linking.canOpenURL(url).then(supported => {

@@ -13,7 +13,7 @@ try {
 
 const options = {
     taskName: 'AIAnalysisTask',
-    taskTitle: 'ATS Resume Optimizer',
+    taskTitle: 'RiResume',
     taskDesc: 'Processing in background...',
     taskIcon: {
         name: 'ic_launcher',

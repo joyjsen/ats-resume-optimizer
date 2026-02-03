@@ -34,7 +34,7 @@ export default function LoginScreen({ navigation }: any) {
                 style={styles.logo}
             />
 
-            <Text style={styles.title}>ATS Resume Optimizer</Text>
+            <Text style={styles.title}>RiResume</Text>
             <Text style={styles.subtitle}>
                 Optimize your resume for any job with AI-powered insights
             </Text>

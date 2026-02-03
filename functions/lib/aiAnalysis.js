@@ -421,7 +421,7 @@ exports.optimizeResume = (0, https_1.onCall)({
             timeout: 90000,
         });
         const systemInstruction = `
-You are an expert ATS resume optimizer. Optimize the provided resume for the target job while maintaining truthfulness.
+You are an expert RiResume engine. Optimize the provided resume for the target job while maintaining truthfulness.
 Return a JSON object with properties 'optimizedResume' (structure matching original) and 'changes' (array of change objects).
 Aim for an ATS score of 85-95%.
             `.trim();
@@ -980,10 +980,7 @@ exports.onBackgroundTaskCreated = (0, firestore_1.onDocumentCreated)({
             completedAt: admin.firestore.FieldValue.serverTimestamp(),
         });
         // Send push notification to user
-        // Get the task result to include score in notification
-        const completedTask = await taskRef.get();
-        const taskResult = completedTask.data()?.result;
-        await sendPushNotification(task.userId, taskType, task.payload, db, taskResult);
+        // MOVED to notifications.ts (onBackgroundTaskUpdated)
         console.log(`[BackgroundTask] Task ${taskId} completed successfully`);
     }
     catch (error) {
@@ -1013,7 +1010,7 @@ async function processOptimizeResume(task, taskRef, openai, db) {
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
     }).catch(e => console.warn(`[processOptimizeResume] Update failed: ${e.message}`));
     const systemInstruction = `
-You are an expert ATS resume optimizer. Optimize the provided resume for the target job while maintaining truthfulness.
+You are an expert RiResume engine. Optimize the provided resume for the target job while maintaining truthfulness.
 Return a JSON object with properties 'optimizedResume' (structure matching original) and 'changes' (array of change objects).
 Aim for an ATS score of 85-95%.
     `.trim();
@@ -1433,103 +1430,6 @@ async function processPrepGuide(task, taskRef, openai, db) {
     });
     await taskRef.update({ result: { sections } });
 }
-// Helper function: Send push notification to user via Expo Push API
-async function sendPushNotification(userId, taskType, payload, db, result) {
-    try {
-        // Get user's push tokens from Firestore
-        const userDoc = await db.collection("users").doc(userId).get();
-        if (!userDoc.exists) {
-            console.log(`[sendPushNotification] User ${userId} not found`);
-            return;
-        }
-        const userData = userDoc.data();
-        const tokens = userData?.pushTokens || [];
-        if (!tokens.length) {
-            console.log(`[sendPushNotification] No push tokens for user ${userId}`);
-            return;
-        }
-        // Determine notification content based on task type
-        let title = "";
-        let body = "";
-        let data = {};
-        switch (taskType) {
-            case "optimize_resume":
-                title = "Resume Optimized";
-                const optimizeScore = result?.calibratedScore;
-                body = optimizeScore
-                    ? `Your resume for ${payload?.job?.title || 'the position'} at ${payload?.job?.company || 'the company'} has been optimized. New ATS Score: ${optimizeScore}%`
-                    : `Your resume for ${payload?.job?.title || 'the position'} at ${payload?.job?.company || 'the company'} has been optimized`;
-                data = {
-                    type: "optimize_resume",
-                    historyId: payload?.historyId || payload?.analysis?.id,
-                    route: "/analysis-result",
-                };
-                break;
-            case "add_skill":
-                title = "Skill Added";
-                const skillScore = result?.newScore;
-                body = skillScore
-                    ? `Successfully added "${payload?.skill || 'skill'}" to your resume. New ATS Score: ${skillScore}%`
-                    : `Successfully added "${payload?.skill || 'skill'}" to your resume`;
-                data = {
-                    type: "add_skill",
-                    historyId: payload?.historyId || payload?.currentAnalysis?.id,
-                    route: "/analysis-result",
-                };
-                break;
-            case "prep_guide":
-                title = "Prep Guide Ready";
-                body = `Your interview prep guide for ${payload?.jobTitle || 'the position'} at ${payload?.companyName || 'the company'} is ready`;
-                data = {
-                    type: "prep_guide",
-                    applicationId: payload?.applicationId,
-                    route: "/(tabs)/applications",
-                    action: "viewPrep",
-                };
-                break;
-            case "cover_letter":
-                title = "Cover Letter Ready";
-                body = `Your cover letter for ${payload?.jobTitle || 'the position'} at ${payload?.company || 'the company'} is ready`;
-                data = {
-                    type: "cover_letter",
-                    applicationId: payload?.applicationId,
-                    route: "/(tabs)/applications",
-                    action: "viewCoverLetter",
-                };
-                break;
-            default:
-                console.log(`[sendPushNotification] Unknown task type: ${taskType}`);
-                return;
-        }
-        // Build messages for Expo Push API
-        const messages = tokens.map((token) => ({
-            to: token,
-            sound: "default",
-            title,
-            body,
-            data,
-        }));
-        // Send to Expo Push API
-        const response = await fetch("https://exp.host/--/api/v2/push/send", {
-            method: "POST",
-            headers: {
-                Accept: "application/json",
-                "Accept-encoding": "gzip, deflate",
-                "Content-Type": "application/json",
-            },
-            body: JSON.stringify(messages),
-        });
-        if (!response.ok) {
-            console.error(`[sendPushNotification] Expo API error: ${response.status}`);
-        }
-        else {
-            console.log(`[sendPushNotification] Push sent to ${userId}: ${title}`);
-        }
-    }
-    catch (error) {
-        console.error("[sendPushNotification] Error:", error);
-    }
-}
 // Helper function: Process cover_letter task
 async function processCoverLetter(task, taskRef, db) {
     const { applicationId, resume, jobTitle, company, jobDescription } = task.payload;
@@ -1631,6 +1531,16 @@ exports.generateTrainingSlideshow = (0, https_1.onCall)({
     }
     const db = admin.firestore();
     try {
+        // SAFEGUARD: If slides already exist, don't deduct tokens or re-generate
+        const entryRef = db.collection("user_learning").doc(entryId);
+        const entrySnap = await entryRef.get();
+        if (entrySnap.exists) {
+            const data = entrySnap.data();
+            if (data?.slides && data.slides.length > 0) {
+                console.log(`[generateTrainingSlideshow] Slides already exist for entry ${entryId}. Returning existing slides.`);
+                return { success: true, slides: data.slides };
+            }
+        }
         // TRANSACTION: Deduct tokens and log activity (30 tokens)
         await deductTokens(request.auth.uid, 30, "training_slideshow_generation", `Generated AI Training Slideshow for ${skill}`, entryId, db);
         const openai = new openai_1.default({ apiKey: openaiApiKey.value() });

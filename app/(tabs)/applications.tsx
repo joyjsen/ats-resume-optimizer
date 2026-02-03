@@ -420,6 +420,8 @@ export default function ApplicationsScreen() {
                     // Note: Push notification is now handled by Cloud Function only
                     // to prevent duplicates. No client-side notification calls needed.
 
+                    // Local notifications removed to prevent duplicates (backend handles this)
+
                     Alert.alert("Success", "Cover Letter generated successfully!");
                 },
                 // onError
@@ -558,6 +560,8 @@ export default function ApplicationsScreen() {
 
                     // Note: Push notification is now handled by Cloud Function only
                     // to prevent duplicates. No client-side notification calls needed.
+
+                    // Local notifications removed to prevent duplicates (backend handles this)
                 },
                 // onError
                 async (bgTask: BackgroundTask) => {

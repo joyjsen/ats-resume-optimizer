@@ -326,13 +326,14 @@ export const SkillAdditionModal = ({ visible, skill, resume, onDismiss, onConfir
                                         status: 'todo'
                                     });
 
-                                    // LOG ACTIVITY
+                                    // LOG ACTIVITY (Enrollment only, no deduction)
                                     await activityService.logActivity({
                                         type: 'training_slideshow_generation',
-                                        description: `Started AI Training for "${skill}"`,
+                                        description: `Enrolled in AI Training for "${skill}" (Starting soon)`,
                                         resourceId: skill!,
                                         resourceName: skill!,
-                                        aiProvider: 'openai-gpt4o-mini'
+                                        aiProvider: 'openai-gpt4o-mini',
+                                        skipTokenDeduction: true
                                     }).catch(e => console.log("Silent activity log fail:", e));
 
                                     onDismiss();

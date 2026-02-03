@@ -5,8 +5,8 @@ import { Stack, useRouter } from 'expo-router';
 import Markdown from 'react-native-markdown-display';
 
 const ABOUT_CONTENT = `
-**What is ResuMate?**
-ResuMate is your AI-powered career companion that transforms the job search experience. Unlike traditional resume scanners that only give you a score, ResuMate actively rewrites and optimizes your resume for each specific job, manages your entire application lifecycle, and prepares you for success from application to interview.
+**What is RiResume?**
+RiResume is your AI-powered career companion that transforms the job search experience. Unlike traditional resume scanners that only give you a score, RiResume actively rewrites and optimizes your resume for each specific job, manages your entire application lifecycle, and prepares you for success from application to interview.
 
 **Our Mission**
 We believe job searching shouldn't be a guessing game. Our mission is to empower job seekers with intelligent tools that level the playing field, helping you present your best self to every opportunity.
@@ -17,10 +17,10 @@ We believe job searching shouldn't be a guessing game. Our mission is to empower
 We don't just scan—we rewrite. Our advanced AI technology crafts job-specific content that highlights your strengths and matches what employers are looking for.
 
 **Complete Job Search Management**
-From initial analysis to interview preparation, ResuMate guides you through every step of your job search journey in one integrated platform.
+From initial analysis to interview preparation, RiResume guides you through every step of your job search journey in one integrated platform.
 
 **Mobile-First Design**
-Job search on your terms. Built specifically for mobile, ResuMate lets you optimize resumes, track applications, and prepare for interviews wherever you are.
+Job search on your terms. Built specifically for mobile, RiResume lets you optimize resumes, track applications, and prepare for interviews wherever you are.
 
 **Transparent & Affordable**
 Our token-based system means you only pay for what you use, with no hidden subscriptions or surprise charges.
@@ -56,7 +56,7 @@ export default function AboutScreen() {
                         style={styles.logo}
                         resizeMode="contain"
                     />
-                    <Text variant="headlineMedium" style={styles.appName}>ResuMate</Text>
+                    <Text variant="headlineMedium" style={styles.appName}>RiResume</Text>
                     <Text variant="titleMedium" style={styles.version}>Version 1.0.0</Text>
                 </View>
 
@@ -103,7 +103,7 @@ export default function AboutScreen() {
                         © 2026 Antigravity. All rights reserved.
                     </Text>
                     <Text variant="bodySmall" style={styles.copyright}>
-                        ResuMate - Your AI Career Companion
+                        RiResume - Your AI Career Companion
                     </Text>
                 </View>
 

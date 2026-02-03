@@ -12,19 +12,25 @@ export const AppLogo = () => {
             // Clear any stored analysis state
             setCurrentAnalysis(null);
 
+            // Guard: Only navigate if the router is ready
+            // Check if we can navigate by verifying the navigation state exists
+            const canNavigate = router && typeof router.navigate === 'function';
+            if (!canNavigate) {
+                console.warn("[AppLogo] Router not ready, skipping navigation.");
+                return;
+            }
+
             // Use dismissAll if available (safer than while loop)
             if (router.canDismiss()) {
                 router.dismissAll();
             }
 
             // Navigate to home with clean state
-            setTimeout(() => {
-                router.navigate('/(tabs)/home');
-            }, 100);
+            // Use replace to avoid stacking and reduce chance of race conditions
+            router.replace('/(tabs)/home');
         } catch (error) {
             console.error("Logo reset error:", error);
-            // Fallback
-            router.navigate('/(tabs)/home');
+            // Silently fail - don't attempt fallback navigation as it may cause the same error
         }
     };
 

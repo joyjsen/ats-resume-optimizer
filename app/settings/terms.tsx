@@ -5,18 +5,18 @@ import { Stack } from 'expo-router';
 import Markdown from 'react-native-markdown-display';
 
 const TERMS_CONTENT = `
-# ResuMate Terms of Service
+# RiResume Terms of Service
 **Last Updated:** January 27, 2026
 **Effective Date:** January 27, 2026
 
-Please read these Terms of Service ("Terms", "Terms of Service") carefully before using the ResuMate mobile application (the "Service") operated by [Your Company Name] ("us", "we", or "our").
+Please read these Terms of Service ("Terms", "Terms of Service") carefully before using the RiResume mobile application (the "Service") operated by [Your Company Name] ("us", "we", or "our").
 
 Your access to and use of the Service is conditioned on your acceptance of and compliance with these Terms. These Terms apply to all visitors, users, and others who access or use the Service.
 
 By accessing or using the Service you agree to be bound by these Terms. If you disagree with any part of the terms, then you may not access the Service.
 
 ## 1. Definitions
-**1.1** "Service" refers to the ResuMate mobile application and all related services, features, content, and applications offered by us.
+**1.1** "Service" refers to the RiResume mobile application and all related services, features, content, and applications offered by us.
 **1.2** "User," "you," and "your" refer to the individual person, company, or organization that has visited or is using the Service.
 **1.3** "Content" means text, graphics, images, music, software, audio, video, works of authorship of any kind, and information or other materials that are posted, generated, provided, or otherwise made available through the Service.
 **1.4** "User Content" means any Content that you upload, submit, post, or otherwise make available through the Service, including but not limited to resumes, cover letters, job descriptions, and profile information.
@@ -166,7 +166,7 @@ The Service does not provide professional career counseling, legal advice, or em
 The Service and its original content (excluding User Content), features, and functionality are and will remain the exclusive property of [Your Company Name] and its licensors. The Service is protected by copyright, trademark, and other laws of both the United States and foreign countries.
 
 **7.2 Trademarks**
-ResuMate and related logos, graphics, and service names are trademarks of [Your Company Name]. You may not use these trademarks without our prior written permission.
+RiResume and related logos, graphics, and service names are trademarks of [Your Company Name]. You may not use these trademarks without our prior written permission.
 
 **7.3 Feedback**
 If you provide us with any feedback, suggestions, or ideas about the Service ("Feedback"), you grant us a perpetual, irrevocable, worldwide, royalty-free license to use, modify, and incorporate such Feedback into the Service without any obligation to you.

@@ -14,13 +14,28 @@ export default function OnboardingScreen() {
     const { userProfile, setUserProfile } = useProfileStore();
 
     // ... state ...
-    const [firstName, setFirstName] = useState(userProfile?.firstName || '');
-    const [lastName, setLastName] = useState(userProfile?.lastName || '');
-    const [currentJobTitle, setCurrentJobTitle] = useState('');
-    const [targetJobTitle, setTargetJobTitle] = useState('');
-    const [industry, setIndustry] = useState(''); // Target Industry
-    const [experienceLevel, setExperienceLevel] = useState<'entry' | 'mid' | 'senior' | 'executive'>('mid');
-    const [linkedInUrl, setLinkedInUrl] = useState('');
+    // Name Fallbacks
+    const getInitialNames = () => {
+        let fName = userProfile?.firstName || '';
+        let lName = userProfile?.lastName || '';
+
+        // Only use displayName if it's not the default "User" placeholder
+        if (!fName && userProfile?.displayName && userProfile.displayName !== 'User') {
+            const parts = userProfile.displayName.split(' ');
+            fName = parts[0];
+            lName = parts.slice(1).join(' ');
+        }
+        return { fName, lName };
+    };
+
+    const initialNames = getInitialNames();
+    const [firstName, setFirstName] = useState(initialNames.fName);
+    const [lastName, setLastName] = useState(initialNames.lName);
+    const [currentJobTitle, setCurrentJobTitle] = useState(userProfile?.jobTitle || '');
+    const [targetJobTitle, setTargetJobTitle] = useState(userProfile?.targetJobTitle || '');
+    const [industry, setIndustry] = useState(userProfile?.targetIndustry || userProfile?.industry || ''); // Pre-fill from either
+    const [experienceLevel, setExperienceLevel] = useState<'entry' | 'mid' | 'senior' | 'executive'>(userProfile?.experienceLevel as any || 'mid');
+    const [linkedInUrl, setLinkedInUrl] = useState(userProfile?.linkedInUrl || '');
     const [loading, setLoading] = useState(false);
 
     const handleBack = () => {
@@ -76,6 +91,9 @@ export default function OnboardingScreen() {
 
             // Update local store immediately to trigger navigation guard
             setUserProfile({ ...userProfile, ...updates });
+
+            // Explicitly navigate to home/tabs to avoid being stuck
+            router.replace('/(tabs)' as any);
 
         } catch (error: any) {
             console.error("Onboarding Error:", error);

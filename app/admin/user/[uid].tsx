@@ -1,10 +1,11 @@
 import React, { useEffect, useState, useMemo } from 'react';
-import { View, StyleSheet, ScrollView, Alert, TouchableOpacity, Modal, Pressable } from 'react-native';
+import { View, StyleSheet, ScrollView, Alert, TouchableOpacity, Modal, Pressable, TextInput } from 'react-native';
 import { Text, useTheme, ActivityIndicator, Card, Button, Divider, List, Chip } from 'react-native-paper';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { userService } from '../../../src/services/firebase/userService';
 import { activityService } from '../../../src/services/firebase/activityService';
 import { historyService } from '../../../src/services/firebase/historyService';
+import { getFunctions, httpsCallable } from 'firebase/functions';
 import { UserProfile, UserActivity, ACTIVITY_COSTS } from '../../../src/types/profile.types';
 import { SavedAnalysis } from '../../../src/types/history.types';
 import { ProfileHeader } from '../../../src/components/profile/ProfileHeader';
@@ -26,6 +27,8 @@ export default function AdminUserDetailScreen() {
     const [historyExpanded, setHistoryExpanded] = useState(false);
     const [activityExpanded, setActivityExpanded] = useState(false);
     const [tokenBreakdownVisible, setTokenBreakdownVisible] = useState(false);
+    const [tokenSetModalVisible, setTokenSetModalVisible] = useState(false);
+    const [newTokenBalance, setNewTokenBalance] = useState('');
 
     // Calculate token usage breakdown by activity type
     const tokenBreakdown = useMemo(() => {
@@ -118,6 +121,43 @@ export default function AdminUserDetailScreen() {
         }
     };
 
+    const handleSetTokenBalance = async () => {
+        if (!profile) return;
+
+        const newBalance = parseInt(newTokenBalance, 10);
+        if (isNaN(newBalance) || newBalance < 0) {
+            Alert.alert("Invalid Input", "Please enter a valid non-negative number.");
+            return;
+        }
+
+        setLoading(true);
+        try {
+            const oldBalance = profile.tokenBalance || 0;
+            const difference = newBalance - oldBalance;
+
+            // Directly update the token balance
+            await userService.updateProfile(profile.uid, { tokenBalance: newBalance });
+
+            // Log Activity (for Notification)
+            await activityService.logActivity({
+                type: 'admin_adjustment' as any,
+                description: `Admin set token balance from ${oldBalance} to ${newBalance} (${difference >= 0 ? '+' : ''}${difference})`,
+                targetUserId: profile.uid,
+                contextData: { oldBalance, newBalance, difference }
+            });
+
+            Alert.alert("Success", `Token balance set to ${newBalance}.`);
+            setTokenSetModalVisible(false);
+            setNewTokenBalance('');
+            loadUserData();
+        } catch (error) {
+            console.error("Set Token Error", error);
+            Alert.alert("Error", "Failed to set token balance.");
+        } finally {
+            setLoading(false);
+        }
+    };
+
     const formatActivityType = (type: string) => {
         return type.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
     };
@@ -168,12 +208,64 @@ export default function AdminUserDetailScreen() {
         if (!profile) return;
         const newStatus = profile.accountStatus === 'active' ? 'suspended' : 'active';
         try {
-            await userService.updateProfile(profile.uid, { accountStatus: newStatus });
+            // When reactivating, ensure profileCompleted stays true so user doesn't see onboarding again
+            const updateData: any = { accountStatus: newStatus };
+            if (newStatus === 'active') {
+                updateData.profileCompleted = true;
+                updateData.reactivatedAt = new Date();
+                updateData.reactivatedBy = 'admin';
+            }
+            await userService.updateProfile(profile.uid, updateData);
+
+            // Send email notification
+            try {
+                const functions = getFunctions();
+                const sendAccountStatusEmail = httpsCallable(functions, 'sendAccountStatusEmail');
+                await sendAccountStatusEmail({
+                    email: profile.email,
+                    displayName: profile.displayName,
+                    action: newStatus === 'active' ? 'reactivated' : 'suspended'
+                });
+                console.log(`[Admin] ${newStatus} email sent to ${profile.email}`);
+            } catch (emailError) {
+                console.error('[Admin] Failed to send status email:', emailError);
+                // Don't fail the whole action if email fails
+            }
+
             loadUserData();
-            Alert.alert("Success", `Account ${newStatus} successfully.`);
+            Alert.alert("Success", `Account ${newStatus} successfully. Email notification sent.`);
         } catch (error) {
             Alert.alert("Error", "Failed to update account status.");
         }
+    };
+
+    const handleDeleteUser = async () => {
+        if (!profile) return;
+
+        Alert.alert(
+            "Delete User Account?",
+            `This will archive ${profile.displayName}'s data (for admin review), send them a farewell email, and mark their account as deleted. This action is irreversible from the user's perspective.\n\nProceed?`,
+            [
+                { text: "Cancel", style: "cancel" },
+                {
+                    text: "Delete",
+                    style: "destructive",
+                    onPress: async () => {
+                        setLoading(true);
+                        try {
+                            await userService.archiveAndSoftDelete(profile.uid, "Admin deletion from User Management");
+                            Alert.alert("User Deleted", `${profile.displayName} has been archived and will receive a farewell email.`);
+                            router.back(); // Return to user list
+                        } catch (error: any) {
+                            console.error("Admin Delete Error:", error);
+                            Alert.alert("Error", `Failed to delete user: ${error.message}`);
+                        } finally {
+                            setLoading(false);
+                        }
+                    }
+                }
+            ]
+        );
     };
 
     if (loading) return <View style={styles.centered}><ActivityIndicator size="large" /></View>;
@@ -284,6 +376,60 @@ export default function AdminUserDetailScreen() {
                 </Pressable>
             </Modal>
 
+            {/* Token Set Modal */}
+            <Modal
+                visible={tokenSetModalVisible}
+                transparent
+                animationType="fade"
+                onRequestClose={() => setTokenSetModalVisible(false)}
+            >
+                <Pressable
+                    style={styles.modalOverlay}
+                    onPress={() => setTokenSetModalVisible(false)}
+                >
+                    <Pressable style={styles.modalContent} onPress={(e) => e.stopPropagation()}>
+                        <Text variant="titleLarge" style={{ marginBottom: 8 }}>Set Token Balance</Text>
+                        <Text variant="bodyMedium" style={{ color: '#666', marginBottom: 16 }}>
+                            Enter the exact token balance for {profile?.displayName || 'this user'}:
+                        </Text>
+
+                        <TextInput
+                            style={styles.tokenInput}
+                            value={newTokenBalance}
+                            onChangeText={setNewTokenBalance}
+                            keyboardType="number-pad"
+                            placeholder="Enter token amount"
+                            placeholderTextColor="#999"
+                        />
+
+                        <Text variant="labelSmall" style={{ color: '#888', marginBottom: 16 }}>
+                            Current balance: {profile?.tokenBalance || 0} tokens
+                        </Text>
+
+                        <View style={{ flexDirection: 'row', gap: 12 }}>
+                            <Button
+                                mode="outlined"
+                                onPress={() => {
+                                    setTokenSetModalVisible(false);
+                                    setNewTokenBalance('');
+                                }}
+                                style={{ flex: 1 }}
+                            >
+                                Cancel
+                            </Button>
+                            <Button
+                                mode="contained"
+                                onPress={handleSetTokenBalance}
+                                style={{ flex: 1 }}
+                                disabled={loading}
+                            >
+                                {loading ? 'Saving...' : 'Set Balance'}
+                            </Button>
+                        </View>
+                    </Pressable>
+                </Pressable>
+            </Modal>
+
             <View style={styles.adminActions}>
                 <Text variant="titleMedium" style={styles.sectionTitle}>Admin Actions</Text>
                 <View style={styles.actionRow}>
@@ -297,6 +443,20 @@ export default function AdminUserDetailScreen() {
                     </Button>
                     <Button
                         mode="outlined"
+                        onPress={() => {
+                            setNewTokenBalance(String(profile.tokenBalance || 0));
+                            setTokenSetModalVisible(true);
+                        }}
+                        style={styles.actionButton}
+                        icon="pencil"
+                    >
+                        Set Tokens
+                    </Button>
+                </View>
+
+                <View style={styles.actionRow}>
+                    <Button
+                        mode="outlined"
                         onPress={handleSuspendAccount}
                         style={styles.actionButton}
                         textColor={profile.accountStatus === 'active' ? theme.colors.error : theme.colors.primary}
@@ -304,9 +464,6 @@ export default function AdminUserDetailScreen() {
                     >
                         {profile.accountStatus === 'active' ? 'Suspend' : 'Activate'}
                     </Button>
-                </View>
-
-                <View style={styles.actionRow}>
                     <Button
                         mode="outlined"
                         onPress={async () => {
@@ -324,6 +481,9 @@ export default function AdminUserDetailScreen() {
                     >
                         {profile.role === 'admin' ? 'Remove Admin' : 'Make Admin'}
                     </Button>
+                </View>
+
+                <View style={styles.actionRow}>
                     <Button
                         mode="text"
                         onPress={() => Alert.alert("GDPR", "Exporting user data...")}
@@ -331,6 +491,14 @@ export default function AdminUserDetailScreen() {
                         icon="export"
                     >
                         Export Data
+                    </Button>
+                    <Button
+                        mode="contained"
+                        onPress={handleDeleteUser}
+                        style={[styles.actionButton, { backgroundColor: theme.colors.error }]}
+                        icon="delete-forever"
+                    >
+                        Delete User
                     </Button>
                 </View>
             </View>
@@ -650,5 +818,15 @@ const styles = StyleSheet.create({
     emptyBreakdown: {
         alignItems: 'center',
         padding: 40,
+    },
+    tokenInput: {
+        borderWidth: 1,
+        borderColor: '#ddd',
+        borderRadius: 8,
+        padding: 12,
+        fontSize: 18,
+        textAlign: 'center',
+        marginBottom: 8,
+        backgroundColor: '#f9f9f9',
     },
 });

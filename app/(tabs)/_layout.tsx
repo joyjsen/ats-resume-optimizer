@@ -1,11 +1,22 @@
+import { useEffect } from 'react';
 import { Tabs } from 'expo-router';
 import { Platform } from 'react-native';
 import { useTheme, Icon } from 'react-native-paper';
 import { UserHeader } from '../../src/components/layout/UserHeader';
 import { AppLogo } from '../../src/components/layout/AppLogo';
+import { useProfileStore } from '../../src/store/profileStore';
 
 export default function TabsLayout() {
     const theme = useTheme();
+    const { userProfile, subscribeToProfile } = useProfileStore();
+
+    // Set up global profile subscription for real-time updates (token balance, etc.)
+    useEffect(() => {
+        if (userProfile?.uid) {
+            const unsubscribe = subscribeToProfile(userProfile.uid);
+            return () => unsubscribe();
+        }
+    }, [userProfile?.uid, subscribeToProfile]);
 
     return (
         <Tabs

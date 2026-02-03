@@ -13,7 +13,7 @@ import { SavedAnalysis } from "../../src/types/history.types";
 import { Application } from "../../src/types/application.types";
 import { auth } from "../../src/services/firebase/config";
 
-const ResuMateHome = () => {
+const RiResumeHome = () => {
     const router = useRouter();
     const theme = useTheme();
     const insets = useSafeAreaInsets();
@@ -117,7 +117,7 @@ const ResuMateHome = () => {
             id: "skill",
             icon: "school-outline",
             label: "Skill Addition",
-            cost: "30 tokens",
+            cost: "15 tokens",
             route: "/(tabs)/optimize",
             infoMessage: "Open an optimized resume to add skills"
         },
@@ -258,7 +258,14 @@ const ResuMateHome = () => {
                             <View key={i} style={[styles.statItem, { borderColor: theme.colors.outlineVariant, backgroundColor: theme.colors.elevation.level1 }]}>
                                 <IconButton icon={stat.icon} size={20} style={{ margin: 0 }} />
                                 <Text variant="titleLarge" style={{ fontWeight: 'bold' }}>{stat.value}</Text>
-                                <Text variant="labelSmall" style={{ color: theme.colors.onSurfaceVariant }}>{stat.label}</Text>
+                                <Text
+                                    variant="labelSmall"
+                                    numberOfLines={1}
+                                    adjustsFontSizeToFit
+                                    style={{ color: theme.colors.onSurfaceVariant, fontSize: 10 }}
+                                >
+                                    {stat.label}
+                                </Text>
                             </View>
                         ))}
                     </View>
@@ -386,4 +393,4 @@ const styles = StyleSheet.create({
     },
 });
 
-export default ResuMateHome;
+export default RiResumeHome;

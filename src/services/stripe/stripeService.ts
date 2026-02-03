@@ -33,7 +33,7 @@ export class StripeService {
 
             // 2. Initialize the native payment sheet
             const { error } = await initPaymentSheet({
-                merchantDisplayName: 'ATS Resume Optimizer',
+                merchantDisplayName: 'RiResume',
                 paymentIntentClientSecret: clientSecret,
                 defaultBillingDetails: {
                     name: 'User Name',

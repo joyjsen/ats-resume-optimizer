@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, StyleSheet, Alert, ScrollView } from 'react-native';
 import { Text, TextInput, Button, useTheme, Card } from 'react-native-paper';
 import { useRouter } from 'expo-router';
-import { authService } from '../../src/services/firebase/authService';
+import { authService, UserInactiveError } from '../../src/services/firebase/authService';
+import { auth } from '../../src/services/firebase/config';
 
 export default function SignUp() {
     const router = useRouter();
@@ -15,6 +16,17 @@ export default function SignUp() {
     const [loading, setLoading] = useState(false);
     const [socialLoading, setSocialLoading] = useState<string | null>(null);
 
+    // Anti-hang: Reset loading states whenever auth state changes to "signed out"
+    useEffect(() => {
+        const unsubscribe = auth.onAuthStateChanged((user) => {
+            if (!user) {
+                setLoading(false);
+                setSocialLoading(null);
+            }
+        });
+        return unsubscribe;
+    }, []);
+
     const handleSocialLogin = async (provider: 'google' | 'apple' | 'microsoft') => {
         setSocialLoading(provider);
         try {
@@ -22,8 +34,14 @@ export default function SignUp() {
             else if (provider === 'apple') await authService.signInWithApple();
             else if (provider === 'microsoft') await authService.signInWithMicrosoft();
         } catch (error: any) {
-            if (error.code !== -1) {
-                console.error(`${provider} Login Error:`, error);
+            console.error(`${provider} Login Error:`, error);
+            const isInactive = error instanceof UserInactiveError ||
+                error.name === 'UserInactiveError' ||
+                error.message?.includes('User Inactive');
+
+            if (isInactive) {
+                Alert.alert("Account Inactive", "User Inactive: Please contact admin.");
+            } else if (error.code !== -1 && error.code !== 'auth/cancelled') {
                 Alert.alert("Sign Up Failed", error.message || `Could not sign up with ${provider}.`);
             }
         } finally {
@@ -161,35 +179,16 @@ export default function SignUp() {
                         Sign up with Google
                     </Button>
                     <Button
-                        icon="microsoft"
+                        icon="apple"
                         mode="outlined"
-                        onPress={() => handleSocialLogin('microsoft')}
-                        loading={socialLoading === 'microsoft'}
+                        onPress={() => handleSocialLogin('apple')}
+                        loading={socialLoading === 'apple'}
                         disabled={loading || !!socialLoading}
                         style={styles.socialButton}
                     >
-                        Sign up with Microsoft
+                        Sign up with Apple
                     </Button>
-                    <View style={styles.socialRow}>
-                        <Button
-                            icon="apple"
-                            mode="outlined"
-                            onPress={() => handleSocialLogin('apple')}
-                            loading={socialLoading === 'apple'}
-                            disabled={loading || !!socialLoading}
-                            style={[styles.socialButton, { flex: 1, marginRight: 8 }]}
-                        >
-                            Apple
-                        </Button>
-                        <Button
-                            icon="facebook"
-                            mode="outlined"
-                            onPress={() => Alert.alert("Coming Soon", "Facebook signup will be available soon.")}
-                            style={[styles.socialButton, { flex: 1 }]}
-                        >
-                            Facebook
-                        </Button>
-                    </View>
+
                     <Button
                         icon="cellphone"
                         mode="outlined"
