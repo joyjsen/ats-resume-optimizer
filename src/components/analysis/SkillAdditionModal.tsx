@@ -221,7 +221,7 @@ export const SkillAdditionModal = ({ visible, skill, resume, onDismiss, onConfir
                                                 status: 'todo'
                                             });
                                             onDismiss();
-                                            router.push('/(tabs)/learning');
+                                            router.replace('/(tabs)/learning');
                                         } catch (error) {
                                             console.error("Failed to upgrade to AI learning:", error);
                                             setStep('select');
@@ -272,7 +272,7 @@ export const SkillAdditionModal = ({ visible, skill, resume, onDismiss, onConfir
                                 mode="contained"
                                 onPress={() => {
                                     onDismiss();
-                                    router.push('/(tabs)/learning');
+                                    router.replace('/(tabs)/learning');
                                 }}
                                 style={{ flex: 1 }}
                             >
@@ -317,33 +317,29 @@ export const SkillAdditionModal = ({ visible, skill, resume, onDismiss, onConfir
                                 setLoading(true);
                                 try {
                                     const firstExperience = resume.experience && resume.experience.length > 0 ? resume.experience[0] : null;
-                                    await learningService.addEntry({
+                                    const jobTitle = propsJobTitle || firstExperience?.title || 'Unknown Role';
+                                    const companyName = propsCompanyName || firstExperience?.company || 'Unknown Company';
+
+                                    const entryId = await learningService.addEntry({
                                         userId,
                                         skillName: skill!,
-                                        jobTitle: propsJobTitle || firstExperience?.title || 'Unknown Role',
-                                        companyName: propsCompanyName || firstExperience?.company || 'Unknown Company',
+                                        jobTitle,
+                                        companyName,
                                         path: 'ai',
                                         status: 'todo'
                                     });
 
-                                    // LOG ACTIVITY (Enrollment only, no deduction)
-                                    await activityService.logActivity({
-                                        type: 'training_slideshow_generation',
-                                        description: `Enrolled in AI Training for "${skill}" (Starting soon)`,
-                                        resourceId: skill!,
-                                        resourceName: skill!,
-                                        aiProvider: 'openai-gpt4o-mini',
-                                        skipTokenDeduction: true
-                                    }).catch(e => console.log("Silent activity log fail:", e));
+                                    // Enrollment is now free. Generation (and token deduction) happens 
+                                    // when the user clicks "Start Training" in the Learning Hub.
 
                                     onDismiss();
-                                    router.push('/(tabs)/learning');
+                                    router.replace('/(tabs)/learning');
                                 } catch (error) {
                                     console.error("Failed to add AI learning entry:", error);
                                     const { Alert } = require('react-native');
                                     Alert.alert("Notice", "We couldn't track this entry, but we'll take you to the Learning Hub.");
                                     onDismiss();
-                                    router.push('/(tabs)/learning');
+                                    router.replace('/(tabs)/learning');
                                 } finally {
                                     setLoading(false);
                                 }

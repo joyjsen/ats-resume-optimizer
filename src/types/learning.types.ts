@@ -19,4 +19,5 @@ export interface LearningEntry {
     totalSlides?: number;
     createdAt: Date;
     updatedAt: Date;
+    generationStatus?: 'generating' | 'completed' | 'failed' | null;
 }

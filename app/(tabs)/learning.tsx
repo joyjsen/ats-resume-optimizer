@@ -4,6 +4,7 @@ import { Text, Card, Chip, useTheme, ActivityIndicator, Button, IconButton } fro
 import { learningService } from '../../src/services/firebase/learningService';
 import { auth } from '../../src/services/firebase/config';
 import { LearningEntry, LearningPath } from '../../src/types/learning.types';
+import { ACTIVITY_COSTS } from '../../src/types/profile.types';
 import { TrainingSlideshow } from '../../src/components/learning/TrainingSlideshow';
 import { LearningFilters, LearningFilterState, LearningSortOption } from '../../src/components/learning/LearningFilters';
 import { taskService } from '../../src/services/firebase/taskService';
@@ -152,6 +153,30 @@ export default function LearningScreen() {
                 item.userId
             );
 
+            // Log activity client-side (Server deducts tokens, but we log here for immediate visibility)
+            // Using skipTokenDeduction: true to avoid double deduction
+            try {
+                // DEBUG: Alert to confirm we reached this point
+                // Alert.alert("Debug", "Generation complete. Attempting to log...");
+
+                await activityService.logActivity({
+                    type: 'training_slideshow_generation',
+                    description: `Generated AI Training for "${item.skillName}"`,
+                    resourceId: item.id,
+                    resourceName: item.skillName,
+                    platform: 'ios',
+                    skipTokenDeduction: true,
+                    tokensUsed: ACTIVITY_COSTS.training_slideshow_generation,
+                    aiProvider: 'openai-gpt4o-mini' // Matches 'openai-gpt4o-mini' | 'perplexity-sonar' | 'other'
+                });
+
+                // DEBUG: Alert to confirm log success
+                // Alert.alert("Debug", "Activity logged successfully!");
+            } catch (logError: any) {
+                console.warn("Failed to log training generation activity:", logError);
+                Alert.alert("Log Error", "Failed to log activity: " + logError.message);
+            }
+
             // Re-fetch or rely on subscription to update entries
             // For better UX, we can manually construct the item for the modal
             const updatedItem = { ...item, slides, currentSlide: 0, totalSlides: slides.length };
@@ -213,7 +238,7 @@ export default function LearningScreen() {
 
         const isStarted = hasSlides && currentIdx > 0;
         const isFinished = hasSlides && currentIdx === total - 1 && total > 0;
-        const isGeneratingThis = isGenerating === item.id;
+        const isGeneratingThis = isGenerating === item.id || item.generationStatus === 'generating';
 
         return (
             <Card style={styles.card}>

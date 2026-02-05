@@ -132,7 +132,8 @@ async function deductTokens(
     type: string,
     description: string,
     resourceId: string,
-    db: admin.firestore.Firestore
+    db: admin.firestore.Firestore,
+    aiProvider?: string
 ) {
     const requestId = Math.random().toString(36).substring(7);
     console.log(`[deductTokens][${requestId}] START: ${userId} requesting -${cost} for ${type} (${resourceId})`);
@@ -178,6 +179,8 @@ async function deductTokens(
                 tokenBalance: newBalance,
                 status: "completed",
                 createdAt: admin.firestore.FieldValue.serverTimestamp(),
+                timestamp: admin.firestore.FieldValue.serverTimestamp(),
+                aiProvider: aiProvider || 'none'
             });
 
             console.log(`[deductTokens][${requestId}] SUCCESS: ${userId} new balance: ${newBalance}`);
@@ -1869,7 +1872,8 @@ async function processCoverLetter(
         "cover_letter_generation",
         `Generated Cover Letter for ${company}`,
         applicationId,
-        db
+        db,
+        'openai'
     );
 
     const prompt = `
@@ -2002,9 +2006,10 @@ export const generateTrainingSlideshow = onCall(
                     request.auth.uid,
                     30,
                     "training_slideshow_generation",
-                    `Generated AI Training Slideshow for ${skill}`,
+                    `Generated AI Training for "${skill}"`,
                     entryId,
-                    db
+                    db,
+                    'openai'
                 );
             } catch (deductionError: any) {
                 // If deduction fails, we MUST release the lock
