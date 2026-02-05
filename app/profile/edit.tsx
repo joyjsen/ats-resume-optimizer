@@ -16,6 +16,7 @@ export default function EditProfileScreen() {
     const [firstName, setFirstName] = useState(userProfile?.firstName || '');
     const [lastName, setLastName] = useState(userProfile?.lastName || '');
     const [phone, setPhone] = useState(userProfile?.phoneNumber || '');
+    const [email, setEmail] = useState(userProfile?.email || '');
 
     // Photo State
     const [photoUri, setPhotoUri] = useState<string | null>(userProfile?.photoURL || null);
@@ -25,6 +26,8 @@ export default function EditProfileScreen() {
     const [newPassword, setNewPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
     const [loading, setLoading] = useState(false);
+
+    const isPhoneAuth = userProfile?.provider === 'phone';
 
     const handlePickImage = async () => {
         try {
@@ -44,11 +47,40 @@ export default function EditProfileScreen() {
         }
     };
 
+    const validateEmail = (email: string) => {
+        return String(email)
+            .toLowerCase()
+            .match(
+                /^(([^<>()[\]\\.,;:\s@"]+(\.[^<>()[\]\\.,;:\s@"]+)*)|(".+"))@((\[[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\])|(([a-zA-Z\-0-9]+\.)+[a-zA-Z]{2,}))$/
+            );
+    };
+
     const handleSave = async () => {
         if (!userProfile) return;
         setLoading(true);
 
         try {
+            // Validation
+            if (isPhoneAuth) {
+                if (!email) {
+                    Alert.alert("Error", "Email address is required for your account.");
+                    setLoading(false);
+                    return;
+                }
+                if (!validateEmail(email)) {
+                    Alert.alert("Error", "Please enter a valid email address.");
+                    setLoading(false);
+                    return;
+                }
+            } else {
+                // For other providers, if they input specific fields, validate them
+                if (email && !validateEmail(email)) {
+                    Alert.alert("Error", "Please enter a valid email address.");
+                    setLoading(false);
+                    return;
+                }
+            }
+
             // 0. Upload Photo if changed
             let finalPhotoURL = userProfile.photoURL;
             if (isNewPhoto && photoUri) {
@@ -66,6 +98,7 @@ export default function EditProfileScreen() {
                 lastName,
                 displayName: `${firstName} ${lastName}`.trim(),
                 phoneNumber: phone,
+                email: email, // Save email
                 photoURL: finalPhotoURL
             };
 
@@ -167,6 +200,26 @@ export default function EditProfileScreen() {
                         style={[styles.input, { backgroundColor: theme.colors.surface }]}
                         mode="outlined"
                     />
+
+                    {/* Email Field - Editable for Phone Users, Readonly for others usually (or editable but strict) */}
+                    <TextInput
+                        label={isPhoneAuth ? "Email Address (Required)" : "Email Address"}
+                        value={email}
+                        onChangeText={setEmail}
+                        style={[styles.input, { backgroundColor: theme.colors.surface }]}
+                        mode="outlined"
+                        keyboardType="email-address"
+                        autoCapitalize="none"
+                        disabled={userProfile?.provider === 'google' || userProfile?.provider === 'apple'} // Often social logins email is fixed
+                        right={isPhoneAuth ? <TextInput.Icon icon="pencil" /> : null}
+                    />
+                    {isPhoneAuth && (
+                        <HelperText type="info" visible>
+                            Since you signed in with phone, please add your email for important notifications.
+                        </HelperText>
+                    )}
+
+                    {/* Phone Field - Disabled for phone users */}
                     <TextInput
                         label="Phone Number"
                         value={phone}
@@ -174,7 +227,14 @@ export default function EditProfileScreen() {
                         style={[styles.input, { backgroundColor: theme.colors.surface }]}
                         mode="outlined"
                         keyboardType="phone-pad"
+                        disabled={isPhoneAuth} // Phone users cannot change their ID
+                        right={isPhoneAuth ? <TextInput.Icon icon="lock" /> : null}
                     />
+                    {isPhoneAuth && (
+                        <HelperText type="info" visible style={{ marginTop: -12, marginBottom: 12 }}>
+                            Phone number cannot be changed as it is your login ID.
+                        </HelperText>
+                    )}
 
                     {userProfile?.provider === 'email' ? (
                         <View style={[styles.passwordSection, { borderTopColor: theme.colors.outlineVariant }]}>
@@ -207,7 +267,7 @@ export default function EditProfileScreen() {
                     ) : (
                         <View style={styles.passwordSection}>
                             <Text variant="bodyMedium" style={{ color: theme.colors.outline, fontStyle: 'italic' }}>
-                                Password update is disabled for {userProfile?.provider} accounts.
+                                Password update not available for {userProfile?.provider} accounts.
                             </Text>
                         </View>
                     )}

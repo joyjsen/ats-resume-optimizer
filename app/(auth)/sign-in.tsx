@@ -1,9 +1,11 @@
-import React, { useState, useEffect } from 'react';
-import { View, StyleSheet, Alert, ScrollView } from 'react-native';
+import React, { useState, useEffect, useRef } from 'react';
+import { View, StyleSheet, Alert, ScrollView, Image } from 'react-native';
 import { Text, TextInput, Button, useTheme, Card } from 'react-native-paper';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { authService, UserInactiveError } from '../../src/services/firebase/authService';
 import { auth } from '../../src/services/firebase/config';
+import RecaptchaVerifierModal from '../../src/components/auth/RecaptchaVerifierModal';
+import { LinearGradient } from 'expo-linear-gradient';
 
 export default function SignIn() {
     const router = useRouter();
@@ -17,6 +19,9 @@ export default function SignIn() {
     const [verificationCode, setVerificationCode] = useState('');
     const [confirming, setConfirming] = useState(false);
     const params = useLocalSearchParams();
+
+    // Ref for reCAPTCHA
+    const recaptchaVerifier = useRef(null);
 
     // Anti-hang: Reset loading states whenever auth state changes to "signed out"
     useEffect(() => {
@@ -98,10 +103,12 @@ export default function SignIn() {
         }
         setLoading(true);
         try {
-            await authService.signInWithPhoneNumber(phoneNumber);
+            // Updated to pass the verifier
+            await authService.signInWithPhoneNumber(phoneNumber, recaptchaVerifier.current || undefined);
             setConfirming(true);
             Alert.alert("Success", "Verification code sent!");
         } catch (error: any) {
+            console.error("Phone Auth Error", error);
             Alert.alert("Error", error.message || "Failed to send code.");
             setConfirming(false);
         } finally {
@@ -128,161 +135,176 @@ export default function SignIn() {
     };
 
     return (
-        <ScrollView contentContainerStyle={[styles.container, { backgroundColor: theme.colors.background }]}>
-            {/* No Recaptcha Modal needed for Native SDK */}
+        <LinearGradient
+            colors={[theme.colors.elevation.level3, theme.colors.background]}
+            style={{ flex: 1 }}
+        >
+            <ScrollView contentContainerStyle={styles.container}>
+                <RecaptchaVerifierModal
+                    ref={recaptchaVerifier}
+                    firebaseConfig={auth.app.options}
+                    title="Verify you are human"
+                    cancelLabel="Close"
+                />
+                <View style={styles.header}>
+                    <Image
+                        source={require('../../assets/logo.png')}
+                        style={{ width: 100, height: 100, marginBottom: 16 }}
+                        resizeMode="contain"
+                    />
+                    <Text variant="headlineMedium" style={styles.title}>Welcome to RiResume</Text>
+                    <Text variant="titleMedium" style={[styles.title, { marginTop: 4, marginBottom: 8 }]}>Your Personalized ATS Resume Optimizer</Text>
+                    <Text variant="bodyLarge" style={styles.subtitle}>Sign in to optimize your career</Text>
+                </View>
 
-            <View style={styles.header}>
-                <Text variant="displaySmall" style={styles.title}>Welcome Back</Text>
-                <Text variant="bodyLarge" style={styles.subtitle}>Sign in to optimize your career</Text>
-            </View>
+                <Card style={styles.card}>
+                    <Card.Content>
+                        {!showPhoneLogin ? (
+                            <>
+                                <TextInput
+                                    label="Email"
+                                    value={email}
+                                    onChangeText={setEmail}
+                                    mode="outlined"
+                                    autoCapitalize="none"
+                                    keyboardType="email-address"
+                                    style={styles.input}
+                                />
+                                <TextInput
+                                    label="Password"
+                                    value={password}
+                                    onChangeText={setPassword}
+                                    mode="outlined"
+                                    secureTextEntry
+                                    style={styles.input}
+                                />
+                                <Button
+                                    mode="contained"
+                                    onPress={handleLogin}
+                                    loading={loading}
+                                    disabled={loading}
+                                    style={styles.button}
+                                >
+                                    Sign In
+                                </Button>
+                                <Button
+                                    mode="text"
+                                    compact
+                                    onPress={() => router.push('/(auth)/forgot-password' as any)}
+                                    style={{ alignSelf: 'flex-end', marginTop: 4 }}
+                                    labelStyle={{ fontSize: 12 }}
+                                >
+                                    Forgot Password?
+                                </Button>
+                                <Button
+                                    mode="text"
+                                    onPress={() => router.push('/(auth)/sign-up' as any)}
+                                    style={styles.button}
+                                >
+                                    Don't have an account? Sign Up
+                                </Button>
 
-            <Card style={styles.card}>
-                <Card.Content>
-                    {!showPhoneLogin ? (
-                        <>
-                            <TextInput
-                                label="Email"
-                                value={email}
-                                onChangeText={setEmail}
-                                mode="outlined"
-                                autoCapitalize="none"
-                                keyboardType="email-address"
-                                style={styles.input}
-                            />
-                            <TextInput
-                                label="Password"
-                                value={password}
-                                onChangeText={setPassword}
-                                mode="outlined"
-                                secureTextEntry
-                                style={styles.input}
-                            />
-                            <Button
-                                mode="contained"
-                                onPress={handleLogin}
-                                loading={loading}
-                                disabled={loading}
-                                style={styles.button}
-                            >
-                                Sign In
-                            </Button>
-                            <Button
-                                mode="text"
-                                compact
-                                onPress={() => router.push('/(auth)/forgot-password' as any)}
-                                style={{ alignSelf: 'flex-end', marginTop: 4 }}
-                                labelStyle={{ fontSize: 12 }}
-                            >
-                                Forgot Password?
-                            </Button>
-                            <Button
-                                mode="text"
-                                onPress={() => router.push('/(auth)/sign-up' as any)}
-                                style={styles.button}
-                            >
-                                Don't have an account? Sign Up
-                            </Button>
+                                <View style={styles.dividerContainer}>
+                                    <View style={styles.divider} />
+                                    <Text style={styles.dividerText}>OR</Text>
+                                    <View style={styles.divider} />
+                                </View>
 
-                            <View style={styles.dividerContainer}>
-                                <View style={styles.divider} />
-                                <Text style={styles.dividerText}>OR</Text>
-                                <View style={styles.divider} />
-                            </View>
+                                <Button
+                                    icon="google"
+                                    mode="outlined"
+                                    onPress={() => handleSocialLogin('google')}
+                                    loading={socialLoading === 'google'}
+                                    disabled={loading || !!socialLoading}
+                                    style={styles.socialButton}
+                                >
+                                    Continue with Google
+                                </Button>
+                                <Button
+                                    icon="apple"
+                                    mode="outlined"
+                                    onPress={() => handleSocialLogin('apple')}
+                                    loading={socialLoading === 'apple'}
+                                    disabled={loading || !!socialLoading}
+                                    style={styles.socialButton}
+                                >
+                                    Continue with Apple
+                                </Button>
 
-                            <Button
-                                icon="google"
-                                mode="outlined"
-                                onPress={() => handleSocialLogin('google')}
-                                loading={socialLoading === 'google'}
-                                disabled={loading || !!socialLoading}
-                                style={styles.socialButton}
-                            >
-                                Continue with Google
-                            </Button>
-                            <Button
-                                icon="apple"
-                                mode="outlined"
-                                onPress={() => handleSocialLogin('apple')}
-                                loading={socialLoading === 'apple'}
-                                disabled={loading || !!socialLoading}
-                                style={styles.socialButton}
-                            >
-                                Continue with Apple
-                            </Button>
-
-                            <Button
-                                icon="cellphone"
-                                mode="outlined"
-                                onPress={() => Alert.alert("Coming Soon", "Phone login will be available soon.")}
-                                style={styles.socialButton}
-                            >
-                                Continue with Phone
-                            </Button>
+                                <Button
+                                    icon="cellphone"
+                                    mode="outlined"
+                                    onPress={() => setShowPhoneLogin(true)}
+                                    style={styles.socialButton}
+                                >
+                                    Continue with Phone
+                                </Button>
 
 
-                        </>
-                    ) : (
-                        <>
-                            {/* PHONE LOGIN UI */}
-                            <Text variant="titleMedium" style={{ marginBottom: 16, textAlign: 'center' }}>
-                                {confirming ? "Enter Verification Code" : "Phone Log In"}
-                            </Text>
+                            </>
+                        ) : (
+                            <>
+                                {/* PHONE LOGIN UI */}
+                                <Text variant="titleMedium" style={{ marginBottom: 16, textAlign: 'center' }}>
+                                    {confirming ? "Enter Verification Code" : "Phone Log In"}
+                                </Text>
 
-                            {!confirming ? (
-                                <>
-                                    <TextInput
-                                        label="Phone Number (e.g. +15555555555)"
-                                        value={phoneNumber}
-                                        onChangeText={setPhoneNumber}
-                                        mode="outlined"
-                                        keyboardType="phone-pad"
-                                        autoComplete="tel"
-                                        style={styles.input}
-                                    />
-                                    <Button
-                                        mode="contained"
-                                        onPress={handleSendVerification}
-                                        loading={loading}
-                                        disabled={loading}
-                                        style={styles.button}
-                                    >
-                                        Send Code
-                                    </Button>
-                                </>
-                            ) : (
-                                <>
-                                    <TextInput
-                                        label="Verification Code"
-                                        value={verificationCode}
-                                        onChangeText={setVerificationCode}
-                                        mode="outlined"
-                                        keyboardType="number-pad"
-                                        style={styles.input}
-                                    />
-                                    <Button
-                                        mode="contained"
-                                        onPress={handleConfirmVerification}
-                                        loading={loading}
-                                        disabled={loading}
-                                        style={styles.button}
-                                    >
-                                        Verify & Sign In
-                                    </Button>
-                                </>
-                            )}
+                                {!confirming ? (
+                                    <>
+                                        <TextInput
+                                            label="Phone Number (e.g. +1...)"
+                                            value={phoneNumber}
+                                            onChangeText={setPhoneNumber}
+                                            mode="outlined"
+                                            keyboardType="phone-pad"
+                                            autoComplete="tel"
+                                            style={styles.input}
+                                        />
+                                        <Button
+                                            mode="contained"
+                                            onPress={handleSendVerification}
+                                            loading={loading}
+                                            disabled={loading}
+                                            style={styles.button}
+                                        >
+                                            Send Code
+                                        </Button>
+                                    </>
+                                ) : (
+                                    <>
+                                        <TextInput
+                                            label="Verification Code"
+                                            value={verificationCode}
+                                            onChangeText={setVerificationCode}
+                                            mode="outlined"
+                                            keyboardType="number-pad"
+                                            style={styles.input}
+                                        />
+                                        <Button
+                                            mode="contained"
+                                            onPress={handleConfirmVerification}
+                                            loading={loading}
+                                            disabled={loading}
+                                            style={styles.button}
+                                        >
+                                            Verify & Sign In
+                                        </Button>
+                                    </>
+                                )}
 
-                            <Button
-                                mode="text"
-                                onPress={() => { setShowPhoneLogin(false); setConfirming(false); setVerificationCode(''); }}
-                                style={[styles.button, { marginTop: 16 }]}
-                            >
-                                Back to Email Login
-                            </Button>
-                        </>
-                    )}
-                </Card.Content>
-            </Card>
-        </ScrollView>
+                                <Button
+                                    mode="text"
+                                    onPress={() => { setShowPhoneLogin(false); setConfirming(false); setVerificationCode(''); }}
+                                    style={[styles.button, { marginTop: 16 }]}
+                                >
+                                    Back to Email Login
+                                </Button>
+                            </>
+                        )}
+                    </Card.Content>
+                </Card>
+            </ScrollView>
+        </LinearGradient>
     );
 }
 
@@ -339,4 +361,3 @@ const styles = StyleSheet.create({
         marginBottom: 12,
     },
 });
-
