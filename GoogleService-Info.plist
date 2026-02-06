@@ -26,14 +26,9 @@
 	<true></true>
 	<key>GOOGLE_APP_ID</key>
 	<string>1:776583109504:ios:5a839780e5b2147841ff65</string>
-<<<<<<< HEAD
-    <key>REVERSED_CLIENT_ID</key>
-    <string>com.googleusercontent.apps.776583109504-j4tdkj2e7oiore61l1q8m61b8v5po7nl</string>
-    <key>CLIENT_ID</key>
-    <string>776583109504-j4tdkj2e7oiore61l1q8m61b8v5po7nl.apps.googleusercontent.com</string>
+	<key>REVERSED_CLIENT_ID</key>
+	<string>com.googleusercontent.apps.776583109504-j4tdkj2e7oiore61l1q8m61b8v5po7nl</string>
+	<key>CLIENT_ID</key>
+	<string>776583109504-j4tdkj2e7oiore61l1q8m61b8v5po7nl.apps.googleusercontent.com</string>
 </dict>
 </plist>
-=======
-</dict>
-</plist>
->>>>>>> 885f58f9edc7ffe3d241f7ce2a21e2081c159779

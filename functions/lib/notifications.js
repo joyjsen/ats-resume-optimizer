@@ -179,8 +179,12 @@ exports.onActivityCreated = functionsV1
         if (email) {
             await sendEmail(email, "Course Completed!", `Congratulations! You have completed the module: ${activity.resourceName}`);
         }
-        // Push - REMOVED (Local notification handled by app)
-        // await sendPush(uid, "Module Completed!", `You finished ${activity.resourceName}. Great job!`);
+        // Push
+        await sendPush(uid, "Module Completed!", `You finished ${activity.resourceName}. Great job!`, {
+            type: "learning_completion",
+            resourceId: activity.resourceId,
+            route: "/(tabs)/learning"
+        });
     }
 });
 // 3. Monitoring Analysis Tasks (Analyze Resume) -> Completion
@@ -207,7 +211,13 @@ exports.onTaskUpdated = functionsV1
         let emailSubject = "Resume Analysis Complete";
         let emailBody = `<p>Your resume has been analyzed.</p><a href="https://riresume.web.app/analysis-result?id=${after.resultId || ''}">View Results in App</a>`;
         // Push
-        await sendPush(uid, title, body, { taskId: context.params.taskId, type, resultId: after.resultId });
+        await sendPush(uid, title, body, {
+            taskId: context.params.taskId,
+            type,
+            resultId: after.resultId,
+            route: '/analysis-result',
+            params: { id: after.resultId }
+        });
         // Email
         if (email) {
             await sendEmail(email, emailSubject, emailBody);
@@ -253,6 +263,8 @@ exports.onBackgroundTaskUpdated = functionsV1
             emailSubject = "Resume Optimization Complete";
             emailBody = `<p>Your resume rewrite and optimization is complete.</p><a href="https://riresume.web.app/analysis-result?id=${payload.analysisTaskId || ''}">Review Optimized Resume</a>`;
             data.resultId = payload.analysisTaskId || payload.historyId;
+            data.route = '/analysis-result';
+            data.params = { id: data.resultId };
         }
         else if (type === "add_skill" || type === "skill_addition") {
             title = "Skill Added to Resume";
@@ -260,6 +272,8 @@ exports.onBackgroundTaskUpdated = functionsV1
             emailSubject = "Skill Addition Complete";
             emailBody = `<p>We've successfully added the new skill to your resume and updated your ATS score.</p>`;
             data.resultId = payload.analysisTaskId || payload.historyId;
+            data.route = '/analysis-result';
+            data.params = { id: data.resultId };
         }
         else if (type === "prep_guide" || type === "prep_guide_refresh") {
             title = "Interview Prep Guide Ready";

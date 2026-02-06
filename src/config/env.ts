@@ -9,4 +9,5 @@ export const ENV = {
     API_URL: process.env.EXPO_PUBLIC_API_URL || '',
     PERPLEXITY_API_KEY: process.env.EXPO_PUBLIC_PERPLEXITY_API_KEY || '',
     STRIPE_PUBLISHABLE_KEY: process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY || '',
+    ADMIN_EMAIL: process.env.EXPO_PUBLIC_ADMIN_EMAIL || 'pjmarket1316@gmail.com',
 };

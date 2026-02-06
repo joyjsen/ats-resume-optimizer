@@ -21,6 +21,8 @@ import { backgroundTaskService, BackgroundTask } from '../../src/services/fireba
 import { UserHeader } from '../../src/components/layout/UserHeader'; // Import UserHeader
 import { useTokenCheck } from '../../src/hooks/useTokenCheck';
 import { migrationService } from '../../src/services/firebase/migrationService';
+import { CoverLetterDialog } from '../../src/components/applications/CoverLetterDialog';
+import { PrepGuideDialogs } from '../../src/components/applications/PrepGuideDialogs';
 
 export default function ApplicationsScreen() {
     const router = useRouter();
@@ -194,6 +196,15 @@ export default function ApplicationsScreen() {
             unsubAnalyses();
         };
     }, [refreshTrigger]);
+
+    // Cleanup abort controllers on unmount
+    useEffect(() => {
+        return () => {
+            // eslint-disable-next-line react-hooks/exhaustive-deps
+            abortControllers.current.forEach(controller => controller.abort());
+            abortControllers.current.clear();
+        };
+    }, []);
 
     const filteredApplications = React.useMemo(() => {
         let result = mergedApplications.filter(app => {
@@ -887,128 +898,28 @@ export default function ApplicationsScreen() {
                 />
             )}
 
-            <Portal>
-                <Dialog visible={!!viewingCoverLetterApp} onDismiss={() => { setViewingCoverLetterApp(null); setIsEditingCoverLetter(false); }} style={{ maxHeight: '90%' }}>
-                    <Dialog.Title>
-                        {isEditingCoverLetter ? "Edit Cover Letter" : "Cover Letter"}
-                    </Dialog.Title>
-                    <Dialog.ScrollArea>
-                        <ScrollView
-                            contentContainerStyle={{ paddingVertical: 12 }}
-                            keyboardDismissMode="on-drag"
-                            keyboardShouldPersistTaps="handled"
-                        >
-                            {isEditingCoverLetter ? (
-                                <TextInput
-                                    mode="outlined"
-                                    multiline
-                                    value={editedCoverLetterContent}
-                                    onChangeText={setEditedCoverLetterContent}
-                                    style={{ height: 400, backgroundColor: theme.colors.surface }}
-                                    autoFocus
-                                />
-                            ) : (
-                                <Text variant="bodyMedium" style={{ lineHeight: 22 }}>
-                                    {viewingCoverLetterApp?.coverLetter?.content}
-                                </Text>
-                            )}
-                        </ScrollView>
-                    </Dialog.ScrollArea>
-                    <Dialog.Actions>
-                        {isEditingCoverLetter && (
-                            <Button onPress={handleCancelEdit}>Cancel</Button>
-                        )}
-                        {isEditingCoverLetter && (
-                            <Button mode="contained" onPress={handleSaveEdit}>Save</Button>
-                        )}
-                        {!isEditingCoverLetter && (
-                            <Button onPress={() => setViewingCoverLetterApp(null)}>Close</Button>
-                        )}
-                        {!isEditingCoverLetter && (
-                            <Button onPress={handleStartEdit}>Edit</Button>
-                        )}
-                        {!isEditingCoverLetter && (
-                            <Button onPress={() => {
-                                const app = viewingCoverLetterApp!;
-                                generateLetter(app, () => {
-                                    setViewingCoverLetterApp(null);
-                                    setIsEditingCoverLetter(false);
-                                });
-                            }} textColor={theme.colors.error}>Regenerate</Button>
-                        )}
-                        {!isEditingCoverLetter && (
-                            <Button mode="contained" onPress={handleDownloadCoverLetter} icon="download">
-                                Download
-                            </Button>
-                        )}
-                    </Dialog.Actions>
-                </Dialog>
-            </Portal>
+            <CoverLetterDialog
+                visible={!!viewingCoverLetterApp}
+                application={viewingCoverLetterApp}
+                onDismiss={() => setViewingCoverLetterApp(null)}
+                onSave={handleSaveEdit}
+                onRegenerate={() => {
+                    if (viewingCoverLetterApp) {
+                        generateLetter(viewingCoverLetterApp, () => setViewingCoverLetterApp(null));
+                    }
+                }}
+                onDownload={handleDownloadCoverLetter}
+            />
 
-            <Portal>
-                {/* 1. Confirmation Dialog (Starts Generation) */}
-                <Dialog visible={prepConfirmationVisible} onDismiss={() => setPrepConfirmationVisible(false)}>
-                    <Dialog.Title>Generate Interview Prep Guide</Dialog.Title>
-                    <Dialog.Content>
-                        <Text variant="bodyMedium" style={{ marginBottom: 12 }}>
-                            We will generate a comprehensive interview preparation document including:
-                        </Text>
-                        <Text variant="bodyMedium" style={{ marginLeft: 8 }}>• Company research & culture insights</Text>
-                        <Text variant="bodyMedium" style={{ marginLeft: 8 }}>• Technical topics tailored to you</Text>
-                        <Text variant="bodyMedium" style={{ marginLeft: 8 }}>• Behavioral questions with YOUR stories</Text>
-                        <Text variant="bodyMedium" style={{ marginLeft: 8 }}>• Strategic questions to ask</Text>
-                        <Text variant="bodyMedium" style={{ marginTop: 12, fontWeight: 'bold' }}>
-                            Generation time: about 20 mins
-                        </Text>
-                        <Text variant="bodySmall" style={{ marginTop: 8, color: theme.colors.outline }}>
-                            You can continue using the app while we generate this in the background.
-                        </Text>
-                    </Dialog.Content>
-                    <Dialog.Actions>
-                        <Button onPress={() => setPrepConfirmationVisible(false)}>Cancel</Button>
-                        <Button mode="contained" onPress={confirmGeneratePrep}>Generate</Button>
-                    </Dialog.Actions>
-                </Dialog>
-
-                {/* 2. View Guide Dialog (Completed) */}
-                <Dialog visible={viewDialogVisible} onDismiss={() => setViewDialogVisible(false)}>
-                    <Dialog.Title>Interview Prep Guide</Dialog.Title>
-                    <Dialog.Content>
-                        <View style={{ marginBottom: 20 }}>
-                            <Text variant="titleMedium" style={{ color: theme.colors.primary, fontWeight: 'bold' }}>
-                                {viewingPrepApp?.company} - {viewingPrepApp?.jobTitle}
-                            </Text>
-                            <Text variant="bodySmall" style={{ color: theme.colors.secondary, marginBottom: 12 }}>
-                                Generated {viewingPrepApp?.prepGuide?.startedAt ? new Date(viewingPrepApp.prepGuide.startedAt).toLocaleDateString() : 'Just now'}
-                            </Text>
-
-                            <Divider style={{ marginVertical: 12 }} />
-
-                            <Text variant="bodyMedium" style={{ fontWeight: 'bold', marginBottom: 8 }}>Guide includes:</Text>
-                            <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
-                                <Chip icon="check" style={{ margin: 4 }} textStyle={{ fontSize: 11 }}>Company Intel</Chip>
-                                <Chip icon="check" style={{ margin: 4 }} textStyle={{ fontSize: 11 }}>Role Deep Dive</Chip>
-                                <Chip icon="check" style={{ margin: 4 }} textStyle={{ fontSize: 11 }}>Tech Prep</Chip>
-                                <Chip icon="check" style={{ margin: 4 }} textStyle={{ fontSize: 11 }}>Behavioral STAR</Chip>
-                                <Chip icon="check" style={{ margin: 4 }} textStyle={{ fontSize: 11 }}>Questions to Ask</Chip>
-                            </View>
-                        </View>
-
-                        <Button
-                            mode="contained"
-                            icon="file-download-outline"
-                            onPress={handleDownloadPrep}
-                            contentStyle={{ height: 48 }}
-                        >
-                            Download PDF Guide
-                        </Button>
-                    </Dialog.Content>
-                    <Dialog.Actions>
-                        {/* Optional Regenerate flow could go here but hidden for simplicity per request */}
-                        <Button onPress={() => setViewDialogVisible(false)}>Close</Button>
-                    </Dialog.Actions>
-                </Dialog>
-            </Portal>
+            <PrepGuideDialogs
+                confirmationVisible={prepConfirmationVisible}
+                viewDialogVisible={viewDialogVisible}
+                application={applications.find(a => a.id === viewingPrepAppId) || null}
+                onDismissConfirmation={() => setPrepConfirmationVisible(false)}
+                onDismissView={() => setViewDialogVisible(false)}
+                onConfirmGenerate={confirmGeneratePrep}
+                onDownload={handleDownloadPrep}
+            />
 
             {/* Guidance Message for empty or new users */}
             {applications.length > 0 && viewMode === 'active' && (

@@ -119,7 +119,7 @@ const RecaptchaVerifierModal = forwardRef<RecaptchaVerifierRef, Props>(({ fireba
           </TouchableOpacity>
         </View>
         <WebView
-          source={{ html, baseUrl: 'http://localhost' }}
+          source={{ html, baseUrl: `https://${firebaseConfig.authDomain}` }}
           onMessage={handleMessage}
           style={{ flex: 1 }}
           javaScriptEnabled

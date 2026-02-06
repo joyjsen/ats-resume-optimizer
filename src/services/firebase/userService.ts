@@ -15,10 +15,12 @@ import {
     deleteDoc
 } from 'firebase/firestore';
 import { db, auth } from './config';
+import { ENV } from '../../config/env';
 import { UserProfile, AuthProvider } from '../../types/profile.types';
 
 export class UserService {
     private collectionName = 'users';
+    private WELCOME_BONUS = 110;
 
     private get usersCollection() {
         return collection(db, this.collectionName);
@@ -54,14 +56,14 @@ export class UserService {
                 photoURL: user.photoURL || '',
                 phoneNumber: user.phoneNumber || '',
                 provider: provider,
-                role: user.email === 'pjmarket1316@gmail.com' ? 'admin' : 'user',
+                role: user.email === ENV.ADMIN_EMAIL ? 'admin' : 'user',
                 emailVerified: user.emailVerified || false,
                 phoneVerified: !!user.phoneNumber,
                 accountStatus: 'active',
 
                 createdAt: now,
                 // Token System
-                tokenBalance: 110, // Welcome Bonus
+                tokenBalance: this.WELCOME_BONUS, // Welcome Bonus
                 totalTokensPurchased: 0,
                 totalTokensUsed: 0,
 
@@ -100,8 +102,7 @@ export class UserService {
             };
 
             // RECOVERY & ENFORCEMENT:
-            const primaryAdmin = 'pjmarket1316@gmail.com';
-            if (user.email === primaryAdmin) {
+            if (user.email === ENV.ADMIN_EMAIL) {
                 if (data.role !== 'admin') {
                     updates.role = 'admin';
                 }
@@ -433,7 +434,7 @@ export class UserService {
 
         usersSnapshot.forEach(docSnap => {
             const data = docSnap.data() as UserProfile;
-            totalTokensDistributed += (data.totalTokensPurchased || 0) + 50;
+            totalTokensDistributed += (data.totalTokensPurchased || 0) + this.WELCOME_BONUS;
             totalTokensUsed += (data.totalTokensUsed || 0);
 
             const lastLogin = (data.lastLoginAt as any)?.toDate ? (data.lastLoginAt as any).toDate() : new Date(0);
@@ -535,8 +536,8 @@ export class UserService {
             };
 
             // Reset tokens to initial amount if below
-            if (user.tokenBalance < 110) {
-                updates.tokenBalance = 110;
+            if (user.tokenBalance < this.WELCOME_BONUS) {
+                updates.tokenBalance = this.WELCOME_BONUS;
             }
 
             await this.updateProfile(user.uid, updates);

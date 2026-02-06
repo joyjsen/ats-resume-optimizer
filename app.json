@@ -3,7 +3,7 @@
     "name": "RiResume",
     "slug": "riresume",
     "scheme": "riresume",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -14,6 +14,7 @@
       "backgroundColor": "#ffffff"
     },
     "ios": {
+      "buildNumber": "1",
       "supportsTablet": true,
       "bundleIdentifier": "com.jsn22.riresume",
       "infoPlist": {
