@@ -28,18 +28,23 @@ export interface MatchAnalysis {
     missingSkills: SkillMatch[];
     keywordDensity: number;
     experienceMatch: {
-        required: string;
-        user: string;
         match: number;
+        requiredYears?: string;
+        candidateYears?: string;
+        seniorityAlignment?: string;
     };
+    readinessVerdict?: 'strong_match' | 'competitive' | 'stretch' | 'underqualified';
+    verdictSummary?: string;
 }
 
 export interface SkillMatch {
     skill: string;
     importance: 'critical' | 'high' | 'medium' | 'low';
-    userHas: boolean;
-    transferableFrom?: string;
     confidence: number;
+    evidence?: string; // For matched skills
+    candidateSkill?: string; // For partial matches
+    transferability?: string; // For partial matches
+    recommendation?: string; // Actionable suggestion
 }
 
 export interface GapAnalysis {
@@ -50,10 +55,9 @@ export interface GapAnalysis {
 
 export interface Gap {
     skill: string;
-    importance: 'critical' | 'high' | 'medium';
+    importance: 'critical' | 'high' | 'medium' | 'low';
     hasTransferable: boolean;
-    transferableSkill?: string;
-    estimatedLearningTime: string;
+    recommendation?: string;
 }
 
 export interface Recommendation {

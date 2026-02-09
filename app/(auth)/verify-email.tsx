@@ -63,7 +63,7 @@ export default function VerifyEmailScreen() {
     const handleLogout = async () => {
         try {
             await authService.logout();
-            router.replace('/(auth)/sign-in');
+            router.replace('/');
         } catch (error) {
             console.error(error);
         }

@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef, useState } from 'react'; // Root reload
 import { Alert, Platform, View } from 'react-native';
 import { useRouter, useSegments, Stack } from 'expo-router';
 import { PaperProvider, Avatar, Text } from 'react-native-paper';
@@ -7,126 +7,130 @@ import { userService } from '../src/services/firebase/userService';
 import { useProfileStore } from '../src/store/profileStore';
 import { TaskQueueProvider } from '../src/context/TaskQueueContext';
 import { UserHeader } from '../src/components/layout/UserHeader';
-import { auth } from '../src/services/firebase/config';
-import { notificationService } from '../src/services/firebase/notificationService';
-import { ThemeProvider, useAppTheme, LightTheme, DarkTheme } from '../src/context/ThemeContext';
 import { WebLandingPage } from '../src/components/web/WebLandingPage';
 import { WebAppLayout } from '../src/components/web/WebAppLayout';
 import { StripeProviderWrapper } from '../src/components/providers/StripeProviderWrapper';
+import { ShareIntentProvider } from "expo-share-intent";
+import { useResumeStore } from '../src/store/resumeStore';
+import { useShareIntentHandler } from '../src/hooks/useShareIntentHandler';
+import { auth } from '../src/services/firebase/config';
+import { ThemeProvider, useAppTheme } from '../src/context/ThemeContext';
 
 export default function RootLayout() {
     return (
-        <ThemeProvider>
-            <RootLayoutContent />
-        </ThemeProvider>
+        <ShareIntentProvider options={{ scheme: "riresume" }}>
+            <ThemeProvider>
+                <StripeProviderWrapper>
+                    <RootLayoutContent />
+                </StripeProviderWrapper>
+            </ThemeProvider>
+        </ShareIntentProvider>
     );
 }
 
 function RootLayoutContent() {
-    const { userProfile, setUserProfile, isInitialized, setInitialized } = useProfileStore();
     const segments = useSegments();
     const router = useRouter();
-    const { isDark } = useAppTheme();
-    const theme = isDark ? DarkTheme : LightTheme;
+    const { userProfile, setUserProfile, isInitialized, setInitialized } = useProfileStore();
+    const { setPendingSharedUrl, setPendingSharedText } = useResumeStore();
+    const { sharedUrl, sharedContent, clearSharedUrl } = useShareIntentHandler();
+    const { theme } = useAppTheme();
+    const isMounted = useRef(false);
 
     useEffect(() => {
-        let notificationCleanup: (() => void) | null = null;
-
+        isMounted.current = true;
         const unsubscribe = authService.subscribeToAuthChanges((profile, error) => {
-            if (error instanceof UserInactiveError || (error as any)?.name === 'UserInactiveError') {
-                Alert.alert("Account Inactive", "User Inactive: Please contact admin.");
-                setUserProfile(null);
-            } else {
-                setUserProfile(profile);
-                if (profile) {
-                    notificationService.registerForPushNotificationsAsync();
-                    notificationCleanup = notificationService.setupNotificationListeners();
+            if (isMounted.current) {
+                if (error) {
+                    console.error("Auth error in layout:", error);
+                    if (error instanceof UserInactiveError) {
+                        Alert.alert("Account Inactive", error.message);
+                    }
                 }
+                setUserProfile(profile);
+                setInitialized(true);
             }
-            if (!isInitialized) setInitialized(true);
         });
 
         return () => {
+            isMounted.current = false;
             unsubscribe();
-            if (notificationCleanup) notificationCleanup();
         };
     }, []);
 
-    const isMounted = React.useRef(false);
+    // Global Share Intent handling
+    useEffect(() => {
+        console.log("[Root] Global Share Intent Effect triggered. sharedUrl:", sharedUrl, "isMounted:", isMounted.current);
+        if (sharedUrl && isMounted.current) {
+            console.log("[Root] VALID Share Intent detected. Dispatching to store:", sharedUrl);
+            setPendingSharedUrl(sharedUrl);
+            if (sharedContent) {
+                console.log("[Root] ALSO Dispatching shared CONTENT to store. Length:", sharedContent.length);
+                setPendingSharedText(sharedContent);
+            }
+            console.log("[Root] Clearing sharedUrl from hook via clearSharedUrl()");
+            clearSharedUrl();
 
-    React.useEffect(() => {
-        isMounted.current = true;
-        return () => { isMounted.current = false; };
-    }, []);
+            // If logged in and profile complete, immediately redirect to Analyze
+            if (userProfile && isInitialized) {
+                const hasNameInfo = !!((userProfile.firstName && userProfile.lastName) || userProfile.displayName);
+                const isProfileComplete = !!(userProfile.profileCompleted || (hasNameInfo && userProfile.targetJobTitle && (userProfile.targetIndustry || userProfile.industry)));
 
-    React.useEffect(() => {
+                if (isProfileComplete) {
+                    // Only redirect if NOT already on the analyze screen
+                    const isAlreadyOnAnalyze = segments.some(s => s === 'analyze');
+                    console.log("[Root] isAlreadyOnAnalyze:", isAlreadyOnAnalyze, "segments:", segments);
+                    if (!isAlreadyOnAnalyze) {
+                        router.replace('/(tabs)/analyze' as any);
+                    } else {
+                        console.log("[Root] Already on Analyze screen, skipping navigation to preserve state.");
+                    }
+                }
+            }
+        }
+    }, [sharedUrl, userProfile, isInitialized]);
+
+    useEffect(() => {
         if (!isInitialized || !isMounted.current) return;
 
         const inAuthGroup = segments[0] === '(auth)';
         const currentRoute = (segments as any)[1];
+        const atRoot = segments.length < 1 || (segments.length === 1 && segments[0] === "");
 
-        if (!userProfile && !inAuthGroup) {
-            // On web, we don't redirect - the RootLayoutContent handles showing the landing page
-            if (Platform.OS !== 'web') {
-                router.replace('/(auth)/sign-in' as any);
+        if (!userProfile) {
+            if (!inAuthGroup && !atRoot) {
+                setTimeout(() => router.replace('/' as any), 0);
             }
-        } else if (userProfile) {
-            const nativeUser = auth.currentUser;
-            const isEmailUser = userProfile.provider === 'email';
-            const onVerifyScreen = currentRoute === 'verify-email';
+        } else {
+            const hasNameInfo = !!((userProfile.firstName && userProfile.lastName) || userProfile.displayName);
+            const isProfileComplete = !!(userProfile.profileCompleted || (hasNameInfo && userProfile.targetJobTitle && (userProfile.targetIndustry || userProfile.industry)));
 
-            if (isEmailUser && nativeUser && !nativeUser.emailVerified) {
-                if (!onVerifyScreen) {
-                    router.replace('/(auth)/verify-email' as any);
+            if (isProfileComplete) {
+                if (inAuthGroup || atRoot) {
+                    const pendingUrl = useResumeStore.getState().pendingSharedUrl;
+                    const isOnDeepScreen = segments.length > 1 && !segments.includes('(tabs)');
+
+                    setTimeout(() => {
+                        if (pendingUrl) {
+                            router.replace('/(tabs)/analyze' as any);
+                        } else if (!isOnDeepScreen) {
+                            router.replace('/(tabs)/home' as any);
+                        }
+                    }, 0);
                 }
-                return;
-            }
-
-            if (onVerifyScreen && (!isEmailUser || (nativeUser && nativeUser.emailVerified))) {
-                if (userProfile.profileCompleted) {
-                    router.replace('/(tabs)' as any);
-                } else {
-                    router.replace('/(auth)/onboarding' as any);
-                }
-                return;
-            }
-
-            const isExistingUser = !!(
-                (userProfile.totalTokensPurchased || 0) > 0 ||
-                (userProfile.totalTokensUsed || 0) > 0 ||
-                userProfile.role === 'admin'
-            );
-
-            const hasNameInfo = !!(
-                (userProfile.firstName && userProfile.lastName) ||
-                userProfile.displayName
-            );
-
-            const isProfileEssentiallyComplete = !!(
-                hasNameInfo &&
-                userProfile.targetJobTitle &&
-                (userProfile.targetIndustry || userProfile.industry)
-            );
-
-            if (userProfile.profileCompleted || isProfileEssentiallyComplete || isExistingUser) {
-                // If essentially complete or existing user, but flag is missing, update it silently
-                if (!userProfile.profileCompleted) {
-                    userService.updateProfile(userProfile.uid, {
-                        profileCompleted: true,
-                        profileCompletedAt: new Date()
-                    }).catch(console.error);
-                }
-
-                if (inAuthGroup) {
-                    router.replace('/(tabs)' as any);
-                }
-            } else {
-                if (currentRoute !== 'onboarding') {
-                    router.replace('/(auth)/onboarding' as any);
-                }
+            } else if (currentRoute !== 'onboarding') {
+                setTimeout(() => router.replace('/(auth)/onboarding' as any), 0);
             }
         }
     }, [userProfile, segments, isInitialized]);
+
+    if (!isInitialized) {
+        return (
+            <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+                <Text>Initializing...</Text>
+            </View>
+        );
+    }
 
     const headerOptions = {
         headerRight: () => userProfile ? <UserHeader /> : null,
@@ -135,11 +139,10 @@ function RootLayoutContent() {
         headerTitleStyle: { color: theme.colors.onSurface },
     };
 
-    // Web: Show landing page if not logged in (except for public routes like terms/privacy)
     const publicRoutes = ['settings/terms', 'settings/privacy'];
     const isPublicRoute = publicRoutes.some(route => segments.join('/').includes(route));
 
-    if (Platform.OS === 'web' && !userProfile && isInitialized && !isPublicRoute) {
+    if (Platform.OS === 'web' && !userProfile && !isPublicRoute) {
         return (
             <PaperProvider theme={theme}>
                 <WebLandingPage />
@@ -149,6 +152,7 @@ function RootLayoutContent() {
 
     const appContent = (
         <Stack screenOptions={headerOptions}>
+            <Stack.Screen name="index" options={{ headerShown: false }} />
             <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
             <Stack.Screen name="(auth)" options={{ headerShown: false }} />
             <Stack.Screen name="analysis-result" options={{ title: 'Analysis Result', presentation: 'card' }} />
@@ -164,7 +168,7 @@ function RootLayoutContent() {
         </Stack>
     );
 
-    const mainApp = (
+    return (
         <PaperProvider theme={theme}>
             <TaskQueueProvider>
                 {Platform.OS === 'web' && userProfile ? (
@@ -175,11 +179,4 @@ function RootLayoutContent() {
             </TaskQueueProvider>
         </PaperProvider>
     );
-
-    return (
-        <StripeProviderWrapper>
-            {mainApp}
-        </StripeProviderWrapper>
-    );
 }
-

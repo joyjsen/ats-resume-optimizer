@@ -3,14 +3,9 @@ export class LinkedInService {
      * Extracts the Job ID from a standard LinkedIn Job URL
      */
     extractJobId(url: string): string | null {
-        // Handle various formats:
-        // /jobs/view/12345/
-        // /jobs/view/12345
-        // currentJobId=12345 (search params)
-
         try {
-            // Priority 1: Direct /view/ ID
-            const viewMatch = url.match(/\/jobs\/view\/(\d+)/);
+            // Priority 1: /jobs/view/(optional-slug-)ID
+            const viewMatch = url.match(/\/jobs\/view\/(?:.*-)?(\d+)(?:\/|\?|$)/);
             if (viewMatch && viewMatch[1]) {
                 return viewMatch[1];
             }
@@ -24,10 +19,6 @@ export class LinkedInService {
             console.log("Error parsing URL params:", e);
         }
 
-        // Priority 3: Collections regex (sometimes links look different)
-        const digits = url.match(/(\d+)/g);
-        // This is risky as it might pick up other numbers, but usually the job ID is the longest or last significant one.
-        // Let's stick to strict patterns for reliability first.
         return null;
     }
 

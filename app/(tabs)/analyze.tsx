@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { View, ScrollView, StyleSheet, Alert, Image, KeyboardAvoidingView, Platform, TouchableWithoutFeedback, Keyboard } from 'react-native';
-import { Button, Text, ActivityIndicator, IconButton, Dialog, Portal, TextInput, useTheme } from 'react-native-paper';
+import { Button, Text, ActivityIndicator, IconButton, Dialog, Portal, TextInput, useTheme, List } from 'react-native-paper';
 import { useRouter, useNavigation } from 'expo-router'; // Add useNavigation
 import * as ImagePicker from 'expo-image-picker';
 import JobBrowser from '../../src/components/job/JobBrowser';
@@ -16,18 +16,31 @@ import { taskService } from '../../src/services/firebase/taskService';
 import { activityService } from '../../src/services/firebase/activityService';
 import { useTaskQueue } from '../../src/context/TaskQueueContext';
 import { linkedInService } from '../../src/services/external/linkedInService';
-import { UserHeader } from '../../src/components/layout/UserHeader'; // Import UserHeader
-
 import { useTokenCheck } from '../../src/hooks/useTokenCheck'; // Add import
 
 export default function AnalyzeScreen() {
     const theme = useTheme();
     // State management
     const router = useRouter();
-    const { setCurrentAnalysis } = useResumeStore();
-    const [jobUrl, setJobUrl] = useState('');
-    const [jobText, setJobText] = useState('');
+    const {
+        setCurrentAnalysis,
+        pendingSharedUrl,
+        setPendingSharedUrl,
+        jobUrl,
+        setJobUrl,
+        jobText,
+        setJobText,
+        jobTitle,
+        setJobTitle,
+        jobCompany,
+        setJobCompany,
+        pendingSharedText,
+        setPendingSharedText
+    } = useResumeStore();
+
+    // Local state for UI only
     const [inputMode, setInputMode] = useState<'url' | 'text'>('url');
+    console.log("[Analyze] Render. inputMode:", inputMode, "jobUrl length:", jobUrl.length, "jobText length:", jobText.length);
     const [screenshots, setScreenshots] = useState<string[]>([]);
     const [isExtractingJob, setIsExtractingJob] = useState(false);
     const [browserVisible, setBrowserVisible] = useState(false);
@@ -38,6 +51,68 @@ export default function AnalyzeScreen() {
     const [loading, setLoading] = useState(false);
     const [stage, setStage] = useState('');
     const [fallbackVisible, setFallbackVisible] = useState(false);
+
+    // New UI state for Job Details
+    const [isEditingJob, setIsEditingJob] = useState(false);
+    const [expandedSections, setExpandedSections] = React.useState<Record<string, boolean>>({
+        title: true,
+        company: true,
+        description: true
+    });
+
+    const toggleSection = (section: string) => {
+        setExpandedSections(prev => ({ ...prev, [section]: !prev[section] }));
+    };
+
+    // Auto-extract job when URL changes (debounced)
+    React.useEffect(() => {
+        if (jobUrl && jobUrl.length > 10 && jobUrl.startsWith('http') && !isExtractingJob && !jobText) {
+            const timer = setTimeout(() => {
+                handleExtractJob(jobUrl);
+            }, 1000);
+            return () => clearTimeout(timer);
+        }
+    }, [jobUrl]);
+
+    // Simplified effect: Always auto-replace content when a new share arrives
+    React.useEffect(() => {
+        if (pendingSharedUrl) {
+            console.log("[Analyze] Found pending shared URL in store:", pendingSharedUrl);
+            const urlToUse = pendingSharedUrl;
+
+            // CONSUME IMMEDIATELY: Clear it from the store so no other renders see it
+            setPendingSharedUrl(null);
+
+            // Auto-replace existing content
+            applyPendingUrl(urlToUse);
+        }
+    }, [pendingSharedUrl]);
+
+    const applyPendingUrl = (urlToUse: string) => {
+        console.log("[Analyze] Setting jobUrl to:", urlToUse);
+        setJobUrl(urlToUse);
+        setJobText(''); // Clear previous text so we don't have mixed state
+        setJobTitle('');
+        setJobCompany('');
+        console.log("[Analyze] Setting inputMode to: url");
+        setInputMode('url');
+        setPendingSharedUrl(null); // Clear it
+
+        // If we have shared text, set it immediately (don't wait for extraction)
+        if (pendingSharedText && pendingSharedText.length > 50) {
+            console.log("[Analyze] Using pre-fetched shared text. Length:", pendingSharedText.length);
+            setJobText(pendingSharedText);
+            setInputMode('text');
+            setPendingSharedText(null); // Consume it
+            return;
+        }
+
+        console.log("[Analyze] Clearing pendingSharedUrl in store, triggering redirection/render...");
+        setTimeout(() => {
+            console.log("[Analyze] Timeout triggered: calling handleExtractJob with:", urlToUse);
+            handleExtractJob(urlToUse);
+        }, 500);
+    };
 
     // Helper functions
     const pickScreenshot = async () => {
@@ -52,38 +127,49 @@ export default function AnalyzeScreen() {
         }
     };
 
-    const handleExtractJob = async () => {
-        if (!jobUrl) {
-            Alert.alert("Missing URL", "Please enter a valid job URL first.");
-            return;
-        }
+    const handleClearJob = () => {
+        setJobUrl('');
+        setJobText('');
+        setJobTitle('');
+        setJobCompany('');
+        setInputMode('url');
+        setIsEditingJob(false);
+    };
 
+    const handleExtractJob = async (passedUrl?: string) => {
+        const urlToParse = passedUrl || jobUrl;
+
+        if (!urlToParse) return;
+
+        // 2. Otherwise, use JobParserService to fetch (Perplexity or LinkedIn direct)
         setIsExtractingJob(true);
         try {
-            console.log(`Extracting job form URL: ${jobUrl}`);
-            // Use the fast-path text extraction
-            const extractedText = await jobParserService.fetchJobDescription(jobUrl);
+            console.log(`[Analyze] Extracting job from URL: ${urlToParse}`);
+            const { title, company, description } = await jobParserService.fetchJobDescription(urlToParse);
 
-            if (extractedText && extractedText.length > 50) {
-                setJobText(extractedText);
-                // Switch to text mode so user can see/edit the extracted text
-                if (inputMode === 'url') {
-                    setInputMode('text');
-                }
-                Alert.alert("Success", "Job description extracted successfully!");
+            if (description && description.length > 50) {
+                setJobTitle(title || '');
+                setJobCompany(company || '');
+                setJobText(description);
+                setInputMode('text');
+                setIsEditingJob(false); // Default to view mode
             } else {
-                Alert.alert("Warning", "Could not extract a clear description. Please paste it manually.");
+                console.warn("[Analyze] Extraction failed: Content too short.");
+                Alert.alert("Note", "We couldn't extract a clear description automatically. Would you like to open our browser to copy it manually?", [
+                    { text: "No", style: "cancel" },
+                    { text: "Open Browser", onPress: () => setBrowserVisible(true) }
+                ]);
             }
-
         } catch (e: any) {
             console.error("Job extraction failed:", e);
-            Alert.alert("Extraction Failed", e.message || "Could not parse job details. Please copy & paste the text.");
+            Alert.alert("Extraction Failed", "We couldn't fetch details from this site. Please try copying and pasting the job text instead.");
         } finally {
             setIsExtractingJob(false);
         }
     };
 
     const handleBrowserImport = (url: string, text: string) => {
+
         setJobUrl(url);
         setJobText(text);
         setBrowserVisible(false);
@@ -295,6 +381,8 @@ export default function AnalyzeScreen() {
             const payload = {
                 jobUrl,
                 jobText,
+                jobTitle,
+                jobCompany,
                 resumeText,
                 resumeFiles: cvUris,
                 screenshots: screenshots.length > 0 ? screenshots : undefined,
@@ -383,7 +471,6 @@ export default function AnalyzeScreen() {
                             onModeChange={setInputMode}
                             onUrlChange={setJobUrl}
                             onTextChange={setJobText}
-                            onExtract={handleExtractJob}
                             isExtracting={isExtractingJob}
                         />
 
@@ -398,6 +485,103 @@ export default function AnalyzeScreen() {
                             <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 8, padding: 8, backgroundColor: theme.colors.primaryContainer, borderRadius: 8 }}>
                                 <ActivityIndicator size="small" color={theme.colors.primary} />
                                 <Text style={{ marginLeft: 8, color: theme.colors.onPrimaryContainer }}>Extracting job details...</Text>
+                            </View>
+                        )}
+
+                        {inputMode === 'text' && (
+                            <View style={{ marginTop: 24 }}>
+                                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+                                    <Text variant="titleMedium">Job Details</Text>
+                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                                        <IconButton
+                                            icon="trash-can-outline"
+                                            iconColor={theme.colors.error}
+                                            size={24}
+                                            onPress={() => {
+                                                Alert.alert(
+                                                    "Clear Job Details",
+                                                    "Are you sure you want to remove all job info?",
+                                                    [
+                                                        { text: "Cancel", style: "cancel" },
+                                                        { text: "Delete", style: "destructive", onPress: handleClearJob }
+                                                    ]
+                                                );
+                                            }}
+                                        />
+                                        <Button
+                                            mode="outlined"
+                                            onPress={() => setIsEditingJob(!isEditingJob)}
+                                            icon={isEditingJob ? "check" : "pencil"}
+                                            style={{ minWidth: 80 }}
+                                        >
+                                            {isEditingJob ? "Done" : "Edit"}
+                                        </Button>
+                                    </View>
+                                </View>
+
+                                {isEditingJob ? (
+                                    <View style={{ gap: 12 }}>
+                                        <TextInput
+                                            label="Postion name"
+                                            mode="outlined"
+                                            value={jobTitle}
+                                            onChangeText={setJobTitle}
+                                            style={{ backgroundColor: theme.colors.surface }}
+                                        />
+                                        <TextInput
+                                            label="company name"
+                                            mode="outlined"
+                                            value={jobCompany}
+                                            onChangeText={setJobCompany}
+                                            style={{ backgroundColor: theme.colors.surface }}
+                                        />
+                                        <TextInput
+                                            label="Job Description"
+                                            mode="outlined"
+                                            value={jobText}
+                                            onChangeText={setJobText}
+                                            multiline
+                                            numberOfLines={10}
+                                            style={{ backgroundColor: theme.colors.surface }}
+                                        />
+                                    </View>
+                                ) : (
+                                    <View>
+                                        <List.Accordion
+                                            title="Postion name"
+                                            description={jobTitle || "Not specified"}
+                                            expanded={expandedSections.title}
+                                            onPress={() => toggleSection('title')}
+                                            left={(props: any) => <List.Icon {...props} icon="briefcase-outline" />}
+                                            style={{ backgroundColor: theme.colors.elevation.level1, borderRadius: 8, marginBottom: 8 }}
+                                        >
+                                            <List.Item title={jobTitle || "No title extracted"} titleNumberOfLines={0} />
+                                        </List.Accordion>
+
+                                        <List.Accordion
+                                            title="company name"
+                                            description={jobCompany || "Not specified"}
+                                            expanded={expandedSections.company}
+                                            onPress={() => toggleSection('company')}
+                                            left={(props: any) => <List.Icon {...props} icon="office-building-marker-outline" />}
+                                            style={{ backgroundColor: theme.colors.elevation.level1, borderRadius: 8, marginBottom: 8 }}
+                                        >
+                                            <List.Item title={jobCompany || "No company extracted"} titleNumberOfLines={0} />
+                                        </List.Accordion>
+
+                                        <List.Accordion
+                                            title="Job Description"
+                                            expanded={expandedSections.description}
+                                            onPress={() => toggleSection('description')}
+                                            left={(props: any) => <List.Icon {...props} icon="text-box-outline" />}
+                                            style={{ backgroundColor: theme.colors.elevation.level1, borderRadius: 8 }}
+                                        >
+                                            <View style={{ padding: 16, backgroundColor: theme.colors.elevation.level1 }}>
+                                                <Text variant="bodyMedium">{jobText || "No description provided."}</Text>
+                                            </View>
+                                        </List.Accordion>
+                                    </View>
+                                )}
                             </View>
                         )}
                     </View>

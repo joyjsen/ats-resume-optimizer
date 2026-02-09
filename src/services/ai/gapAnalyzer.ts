@@ -73,30 +73,105 @@ export class GapAnalyzerService {
     gaps: GapAnalysis;
   }> {
     const systemInstruction = `
-You are an expert career advisor and ATS specialist. Analyze if this candidate is ready to apply for this job.
-Perform a comprehensive analysis and return a JSON object with matchAnalysis and gaps.
-Review the following analysis guidelines:
-1. A "matched skill" means they clearly have it in their experience or skills section
-2. A "partial match" means they have a related/transferable skill
-3. A "missing skill" has no evidence in their resume
-4. Mark skills as "critical gap" if required/must-have
-5. totalGapScore should weigh critical gaps heavily
+You are an expert career advisor, ATS (Applicant Tracking System) specialist, and hiring consultant with deep knowledge of resume screening algorithms and recruitment practices across industries.
 
-Return JSON with this EXACT structure:
+## YOUR TASK
+Analyze the candidate's resume against the provided job posting to determine application readiness. Perform a rigorous, evidence-based skill matching analysis and return a structured JSON assessment.
+
+## ANALYSIS METHODOLOGY
+
+### Skill Classification Rules
+1. **Matched Skill**: The candidate explicitly demonstrates this skill through listed experience, projects, certifications, or their skills section. Evidence must be clear and direct — not assumed.
+2. **Partial Match**: The candidate possesses a related, transferable, or adjacent skill that could reasonably bridge to the required skill with minimal ramp-up. Example: "PostgreSQL experience" partially matches a "MySQL" requirement.
+3. **Missing Skill**: No evidence whatsoever in the resume — neither direct nor transferable.
+
+### Importance Classification
+- **critical**: Explicitly stated as "required," "must-have," or listed in minimum qualifications. The candidate will likely be auto-rejected without this.
+- **high**: Strongly emphasized in the posting (mentioned multiple times, listed early, or central to the role's core function).
+- **medium**: Listed as "preferred," "nice-to-have," or mentioned once without emphasis.
+- **low**: Implied by the role context or industry norms but not explicitly stated in the posting.
+
+### Confidence Scoring (0-100)
+Rate how confident you are in each classification:
+- **90-100**: Explicit, unambiguous evidence (e.g., skill listed verbatim, years of experience stated)
+- **70-89**: Strong evidence through context (e.g., job titles, project descriptions that clearly involve the skill)
+- **50-69**: Moderate/indirect evidence (e.g., related tools or frameworks used)
+- **30-49**: Weak evidence, largely inferred
+- **0-29**: Near-zero evidence, speculative at best
+
+### Scoring Formulas
+- **keywordDensity** (0-100): Percentage of important keywords/phrases from the job posting that appear (exactly or semantically) in the resume. Weight critical keywords 3x, high keywords 2x, medium 1x, low 0.5x.
+- **experienceMatch** (0-100): How well the candidate's years of experience, seniority level, industry background, and scope of responsibilities align with the job's requirements.
+- **totalGapScore** (0-100): Overall gap severity. 0 = no gaps (perfect match), 100 = completely unqualified. Weight critical gaps at 40% each (capped at 100), high gaps at 15% each, medium at 5% each, low at 2% each. Reduce gap weight by 30% if hasTransferable is true.
+
+## OUTPUT FORMAT
+Return ONLY valid JSON — no markdown fencing, no commentary, no text before or after the JSON object.
+
 {
   "matchAnalysis": {
-    "matchedSkills": [{ "skill": "name", "importance": "critical|high|medium|low", "confidence": 0-100 }],
-    "partialMatches": [{ "skill": "name", "importance": "critical|high", "confidence": 0-100 }],
-    "missingSkills": [{ "skill": "name", "importance": "critical|high|medium|low", "confidence": 0-100 }],
-    "keywordDensity": 0-100,
-    "experienceMatch": { "match": 0-100 }
+    "matchedSkills": [
+      {
+        "skill": "string — the skill name as referenced in the job posting",
+        "importance": "critical | high | medium | low",
+        "confidence": "number 0-100",
+        "evidence": "string — brief quote or reference from the resume proving this match",
+        "recommendation": "string — brief actionable tip to optimize how this skill is presented"
+      }
+    ],
+    "partialMatches": [
+      {
+        "skill": "string — the required skill from the job posting",
+        "importance": "critical | high | medium | low",
+        "confidence": "number 0-100",
+        "candidateSkill": "string — the related skill the candidate actually has",
+        "transferability": "string — brief explanation of how the existing skill transfers",
+        "recommendation": "string — brief actionable tip to bridge this partial gap"
+      }
+    ],
+    "missingSkills": [
+      {
+        "skill": "string — the skill name as referenced in the job posting",
+        "importance": "critical | high | medium | low",
+        "confidence": "number 0-100",
+        "recommendation": "string — brief actionable tip to acquire/demonstrate this missing skill"
+      }
+    ],
+    "keywordDensity": "number 0-100",
+    "experienceMatch": {
+      "match": "number 0-100",
+      "requiredYears": "string — what the job asks for",
+      "candidateYears": "string — what the resume shows",
+      "seniorityAlignment": "string — e.g., 'Candidate is mid-level, role requires senior'"
+    }
   },
   "gaps": {
-    "criticalGaps": [{ "skill": "name", "importance": "critical", "hasTransferable": boolean }],
-    "minorGaps": [{ "skill": "name", "importance": "medium", "hasTransferable": boolean }],
-    "totalGapScore": 0-100
+    "criticalGaps": [
+      {
+        "skill": "string",
+        "importance": "critical",
+        "hasTransferable": "boolean",
+        "recommendation": "string — actionable suggestion to close this gap (e.g., certification, project, course)"
+      }
+    ],
+    "minorGaps": [
+      {
+        "skill": "string",
+        "importance": "medium | low",
+        "hasTransferable": "boolean",
+        "recommendation": "string — actionable suggestion to close this gap"
+      }
+    ],
+    "totalGapScore": "number 0-100",
+    "readinessVerdict": "strong_match | competitive | stretch | underqualified",
+    "verdictSummary": "string — 1-2 sentence plain-English assessment of application readiness"
   }
 }
+
+## IMPORTANT RULES
+- Be honest and precise. Do not inflate matches to be encouraging — candidates rely on this to make real decisions.
+- Every skill in the job posting must appear in exactly ONE category: matchedSkills, partialMatches, or missingSkills. No skill should be omitted or duplicated.
+- If the job posting is vague or lacks explicit requirements, infer reasonable requirements from the job title, industry, and seniority level, and note inferred requirements with lower confidence scores.
+- Return ONLY the JSON object. No preamble, no explanation, no markdown code blocks.
     `.trim();
 
     const userContent = `
@@ -118,7 +193,7 @@ Provide the analysis JSON.
         { role: 'user', content: userContent }
       ],
       response_format: { type: 'json_object' },
-      max_tokens: 2000,
+      max_tokens: 2500,
     };
 
     const response = await safeOpenAICall(
@@ -144,6 +219,8 @@ Provide the analysis JSON.
         missingSkills: Array.isArray(parsed.matchAnalysis?.missingSkills) ? parsed.matchAnalysis.missingSkills : [],
         keywordDensity: parsed.matchAnalysis?.keywordDensity || 0,
         experienceMatch: parsed.matchAnalysis?.experienceMatch || { match: 0 },
+        readinessVerdict: parsed.gaps?.readinessVerdict,
+        verdictSummary: parsed.gaps?.verdictSummary
       },
       gaps: {
         criticalGaps: Array.isArray(parsed.gaps?.criticalGaps) ? parsed.gaps.criticalGaps : [],
@@ -179,7 +256,7 @@ Provide the analysis JSON.
     const importantMissing = missingSkills.filter(s => s.importance === 'critical' || s.importance === 'high').length;
 
     const totalImportant = importantMatched + importantPartial + importantMissing;
-    
+
     // Formula: (Matched + 0.5 * Partial) / Total
     const skillMatchScore = totalImportant > 0
       ? ((importantMatched * 1.0 + importantPartial * 0.5) / totalImportant) * 100

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, StyleSheet, Alert, ScrollView, Image } from 'react-native';
-import { Text, TextInput, Button, useTheme, Card } from 'react-native-paper';
+import { View, StyleSheet, Alert, ScrollView, Image, Platform } from 'react-native';
+import { Text, TextInput, Button, useTheme, Card, Appbar, IconButton } from 'react-native-paper';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { authService, UserInactiveError } from '../../src/services/firebase/authService';
 import { auth } from '../../src/services/firebase/config';
@@ -139,6 +139,9 @@ export default function SignIn() {
             colors={[theme.colors.elevation.level3, theme.colors.background]}
             style={{ flex: 1 }}
         >
+            <Appbar.Header style={{ backgroundColor: 'transparent', elevation: 0 }}>
+                <Appbar.BackAction onPress={() => router.replace('/')} />
+            </Appbar.Header>
             <ScrollView contentContainerStyle={styles.container}>
                 <RecaptchaVerifierModal
                     ref={recaptchaVerifier}

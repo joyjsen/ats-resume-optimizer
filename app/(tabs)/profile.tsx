@@ -87,7 +87,7 @@ export default function ProfileScreen() {
         try {
             await authService.logout();
             setUserProfile(null);
-            router.replace('/(auth)/sign-in' as any);
+            router.replace('/' as any);
         } catch (error) {
             Alert.alert("Error", "Failed to logout.");
         }
@@ -111,7 +111,7 @@ export default function ProfileScreen() {
             }
             setDeleteDialogVisible(false);
             setUserProfile(null);
-            router.replace('/(auth)/sign-in' as any);
+            router.replace('/' as any);
         } catch (error: any) {
             console.error("Deletion error:", error);
             const errorCode = error.code || '';
@@ -222,7 +222,24 @@ export default function ProfileScreen() {
                     right={() => (
                         <Switch
                             value={isDark}
-                            onValueChange={toggleTheme}
+                            onValueChange={async () => {
+                                const nextDark = !isDark;
+                                // Update local context first for immediate UI response
+                                toggleTheme();
+
+                                // Persist to Firebase
+                                if (userProfile?.uid) {
+                                    try {
+                                        await userService.updateProfile(userProfile.uid, {
+                                            theme: nextDark ? 'dark' : 'light'
+                                        });
+                                        // No need to refresh as the subscription in ThemeContext handles it
+                                    } catch (error) {
+                                        console.error("Failed to persist theme preference:", error);
+                                        // Optional: Revert on failure? Usually better to just log.
+                                    }
+                                }
+                            }}
                         />
                     )}
                 />

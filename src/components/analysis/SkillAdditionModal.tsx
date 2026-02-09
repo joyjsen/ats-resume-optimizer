@@ -5,29 +5,47 @@ import { DatePickerModal, registerTranslation, en } from 'react-native-paper-dat
 import { format } from 'date-fns';
 
 registerTranslation('en', en);
-import { ParsedResume } from '../../types/resume.types';
-import { learningService } from '../../services/firebase/learningService';
 import { auth } from '../../services/firebase/config';
 import { useRouter } from 'expo-router';
 import { LearningEntry } from '../../types/learning.types';
 import { activityService } from '../../services/firebase/activityService';
+import { useTokenCheck } from '../../hooks/useTokenCheck';
+import { ParsedResume } from '../../types/resume.types';
+import { SkillMatch } from '../../types/analysis.types';
+import { learningService } from '../../services/firebase/learningService';
 
 interface Props {
     visible: boolean;
     skill: string | null;
+    skillMatch?: SkillMatch | null;
     resume: ParsedResume;
     onDismiss: () => void;
     onConfirm: (skill: string, sections: string[]) => void;
+    onOptimize?: () => void;
+    isOptimized?: boolean;
     jobTitle?: string;
     companyName?: string;
 }
 
-import { useTokenCheck } from '../../hooks/useTokenCheck';
-
-export const SkillAdditionModal = ({ visible, skill, resume, onDismiss, onConfirm, jobTitle: propsJobTitle, companyName: propsCompanyName }: Props) => {
+export const SkillAdditionModal = ({
+    visible,
+    skill: propsSkill,
+    skillMatch,
+    resume,
+    onDismiss,
+    onConfirm,
+    onOptimize,
+    isOptimized = true, // Default to true for backward compatibility
+    jobTitle: propsJobTitle,
+    companyName: propsCompanyName
+}: Props) => {
     const theme = useTheme();
+    // Use either propsSkill (legacy) or skillMatch.skill
+    const skill = skillMatch?.skill || propsSkill;
+
     const [selectedSections, setSelectedSections] = useState<string[]>([]);
     const [step, setStep] = useState<'confirm' | 'warning' | 'path_selection' | 'self_date' | 'already_saved' | 'training_in_progress' | 'select'>('confirm');
+    // ... rest of state ...
     const [disclaimerAccepted, setDisclaimerAccepted] = useState(false);
     const [selectedDate, setSelectedDate] = useState(new Date());
     const [showDatePicker, setShowDatePicker] = useState(false);
@@ -82,26 +100,83 @@ export const SkillAdditionModal = ({ visible, skill, resume, onDismiss, onConfir
         onConfirm(skill, selectedSections);
     };
 
+    const renderSkillDetails = () => {
+        if (!skillMatch) return null;
+
+        return (
+            <ScrollView style={{ backgroundColor: theme.colors.elevation.level1, padding: 12, borderRadius: 8, marginBottom: 16, maxHeight: 200 }}>
+                {skillMatch.evidence && (
+                    <View style={{ marginBottom: 12 }}>
+                        <Text variant="labelMedium" style={{ color: theme.colors.primary, fontWeight: 'bold', marginBottom: 4 }}>Evidence from Resume:</Text>
+                        <Text variant="bodySmall" style={{ fontStyle: 'italic', color: theme.colors.onSurface }}>
+                            "{skillMatch.evidence}"
+                        </Text>
+                    </View>
+                )}
+
+                {skillMatch.transferability && (
+                    <View style={{ marginBottom: 12 }}>
+                        <Text variant="labelMedium" style={{ color: '#FF9800', fontWeight: 'bold', marginBottom: 4 }}>Transferable From:</Text>
+                        <Text variant="bodySmall" style={{ color: theme.colors.onSurface, marginBottom: 4 }}>
+                            <Text style={{ fontWeight: 'bold' }}>{skillMatch.candidateSkill}</Text>
+                        </Text>
+                        <Text variant="bodySmall" style={{ fontStyle: 'italic', color: '#666' }}>
+                            {skillMatch.transferability}
+                        </Text>
+                    </View>
+                )}
+
+                {skillMatch.recommendation && (
+                    <View style={{ marginBottom: 12 }}>
+                        <Text variant="labelMedium" style={{ color: theme.colors.secondary, fontWeight: 'bold', marginBottom: 4 }}>Actionable Recommendation:</Text>
+                        <Text variant="bodySmall" style={{ color: theme.colors.onSurface }}>
+                            {skillMatch.recommendation}
+                        </Text>
+                    </View>
+                )}
+
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 4, borderTopWidth: 1, borderTopColor: theme.colors.outlineVariant, paddingTop: 8 }}>
+                    <Text variant="labelSmall" style={{ color: '#666' }}>Importance: {skillMatch.importance.toUpperCase()}</Text>
+                    <Text variant="labelSmall" style={{ color: '#666' }}>Confidence: {skillMatch.confidence}%</Text>
+                </View>
+            </ScrollView>
+        );
+    };
+
     const renderContent = () => {
         switch (step) {
             case 'confirm':
+                const isMatched = !!skillMatch?.evidence;
+
                 return (
                     <View>
-                        <Text variant="headlineSmall" style={styles.title}>Add Skill to Resume?</Text>
-                        <Text variant="bodyMedium" style={{ marginBottom: 24 }}>
-                            Would you like to add <Text style={{ fontWeight: 'bold', color: theme.colors.primary }}>{skill}</Text> to your resume?
+                        <Text variant="headlineSmall" style={styles.title}>
+                            {isMatched ? "Skill Evidence" : (isOptimized ? "Add Skill to Resume?" : "Optimize Resume First")}
                         </Text>
-                        <Text variant="bodySmall" style={{ color: '#666', marginBottom: 24 }}>
-                            This will trigger a targeted optimization to strictly integrate this skill into relevant sections.
+
+                        {renderSkillDetails()}
+
+                        <Text variant="bodyMedium" style={{ marginBottom: 24 }}>
+                            {isMatched
+                                ? `We found evidence of ${skill} in your resume.`
+                                : (isOptimized
+                                    ? `Would you like to add ${skill} to your resume?`
+                                    : `Please optimize your existing resume first before attempting to add any missing skills.`)}
                         </Text>
 
                         <View style={styles.actions}>
                             <Button mode="outlined" onPress={onDismiss} style={{ flex: 1, marginRight: 8 }}>
-                                Cancel
+                                {isMatched ? "Close" : "Cancel"}
                             </Button>
-                            <Button mode="contained" onPress={() => setStep('warning')} style={{ flex: 1 }}>
-                                Yes, Continue
-                            </Button>
+                            {!isMatched && (
+                                <Button
+                                    mode="contained"
+                                    onPress={() => isOptimized ? setStep('warning') : (onOptimize?.(), onDismiss())}
+                                    style={{ flex: 1 }}
+                                >
+                                    {isOptimized ? "Yes, Continue" : "Optimize Now"}
+                                </Button>
+                            )}
                         </View>
                     </View>
                 );

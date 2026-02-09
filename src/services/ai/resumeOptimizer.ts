@@ -3,8 +3,6 @@ import { JobPosting } from '../../types/job.types';
 import { AnalysisResult } from '../../types/analysis.types';
 import { openai, safeOpenAICall } from '../../config/ai';
 
-// Removed local OpenAI instantiation
-
 export class ResumeOptimizerService {
     /**
      * Optimize resume for job (only called when readyToApply = true)
@@ -44,8 +42,6 @@ Aim for an ATS score of 85-95%.
 
             if (choice.finish_reason === 'length') {
                 console.warn("Optimization response truncated due to length limits.");
-                // We might try to parse what we have, but for JSON it will fail.
-                // Thowing a specific error helps debugging.
                 throw new Error("Resume too long: Optimization response was truncated.");
             }
 
@@ -63,7 +59,6 @@ Aim for an ATS score of 85-95%.
             }
         } catch (error: any) {
             console.error('Error optimizing resume:', error);
-            // Pass through specific errors, wrap unknown ones
             if (error.message.includes("Resume too long") || error.message.includes("AI Assistant failed")) {
                 throw error;
             }
@@ -118,21 +113,14 @@ Return JSON:
   "optimizedResume": { ... },
   "changes": [
     {
-      "type": "summary_rewrite",
-      "reason": "Rewrote summary to position candidate as a [Job Title] expert."
-    },
-    {
-      "type": "experience_improvement",
-      "reason": "Enhanced [Company] bullets to highlight [Skill] and [Metric]."
+      "type": "string (STRICTLY use snake_case, e.g., 'professional_summary_rewrite', 'keyword_integration')",
+      "reason": "string"
     }
   ]
 }
     `.trim();
     }
 
-    /**
-     * Contextually add a specific skill to selected sections
-     */
     async addSkillToResume(
         resume: ParsedResume,
         skill: string,
@@ -164,9 +152,9 @@ OUTPUT JSON:
   "optimizedResume": { ... },
   "changes": [
     { 
-      "type": "skill_addition", 
+      "type": "skill_integration", 
       "skill": "${skill}",
-      "reason": "Added '${skill}' to [Section Name]..." 
+      "reason": "Successfully integrated '${skill}' into the [Section Name] to demonstrate proficiency." 
     }
   ]
 }
@@ -198,6 +186,54 @@ OUTPUT JSON:
 
         } catch (error) {
             console.error('Error adding skill:', error);
+            throw error;
+        }
+    }
+
+    async enhanceText(
+        text: string,
+        job: { title: string; company: string; requirements: any },
+        section: string
+    ): Promise<string> {
+        try {
+            const systemInstruction = `
+You are an expert Executive Resume Writer and ATS specialist. Your task is to polish and enhance a specific piece of resume text to make it more impactful, professional, and optimized for a target job.
+
+STRICT RULES:
+1. **Contextual Excellence**: Use the target job information to highlight relevant keywords and achievements.
+2. **Impactful Language**: Use strong action verbs and quantify achievements where possible.
+3. **Tone**: Maintain a sophisticated, executive tone.
+4. **Length**: Keep the enhanced version similar in length to the original, but significantly more professional.
+5. **Output**: Return ONLY the enhanced text. No commentary, no quotes, no labels.
+
+TARGET JOB:
+${JSON.stringify(job, null, 2)}
+
+SECTION: ${section}
+`.trim();
+
+            const options = {
+                model: 'gpt-4o-mini',
+                messages: [
+                    { role: 'system', content: systemInstruction },
+                    { role: 'user', content: `Original Text: "${text}"\n\nProvide the enhanced version:` }
+                ],
+                max_tokens: 1000,
+            };
+
+            const response = await safeOpenAICall(
+                () => openai.chat.completions.create(options as any),
+                'Text Enhancement',
+                options
+            );
+
+            const content = response.choices[0].message.content;
+            if (!content) throw new Error('No content from OpenAI');
+
+            return content.trim().replace(/^"|"$/g, '');
+
+        } catch (error) {
+            console.error('Error enhancing text:', error);
             throw error;
         }
     }

@@ -115,6 +115,7 @@ export type ActivityType =
     | 'interview_prep_generation'
     | 'training_slideshow_generation'
     | 'concept_explanation'
+    | 'ai_updated_section'
     | 'skill_marked_learned'
     | 'token_purchase'
     | 'pdf_export'
@@ -184,6 +185,7 @@ export const ACTIVITY_COSTS: Record<ActivityType, number> = {
     interview_prep_generation: 40,
     training_slideshow_generation: 30,
     concept_explanation: 8,
+    ai_updated_section: 2,
     skill_marked_learned: 0,
     token_purchase: 0,
     pdf_export: 0,

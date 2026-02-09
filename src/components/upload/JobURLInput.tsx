@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, StyleSheet } from 'react-native';
-import { TextInput, Text, SegmentedButtons, Button } from 'react-native-paper';
+import { TextInput, Text, SegmentedButtons } from 'react-native-paper';
 
 interface Props {
     urlValue: string;
@@ -21,63 +21,32 @@ export const JobURLInput = ({ urlValue, textValue, mode, onModeChange, onUrlChan
                 onValueChange={(val) => onModeChange(val as 'url' | 'text')}
                 buttons={[
                     { value: 'url', label: 'Job URL' },
-                    { value: 'text', label: 'Paste Text' },
+                    { value: 'text', label: 'Job Details' },
                 ]}
                 style={styles.toggle}
             />
 
             {mode === 'url' ? (
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                    <TextInput
-                        mode="outlined"
-                        label="Job Posting URL"
-                        placeholder="https://linkedin.com/jobs/..."
-                        value={urlValue}
-                        onChangeText={onUrlChange}
-                        autoCapitalize="none"
-                        keyboardType="url"
-                        style={{ flex: 1 }}
-                        right={
-                            urlValue ? (
-                                <TextInput.Icon
-                                    icon="close-circle-outline"
-                                    onPress={() => onUrlChange('')}
-                                    forceTextInputFocus={false}
-                                />
-                            ) : null
-                        }
-                    />
-                    <Button
-                        mode="contained"
-                        onPress={onExtract}
-                        disabled={!urlValue || isExtracting}
-                        loading={isExtracting}
-                        style={{ marginTop: 6 }}
-                    >
-                        Go
-                    </Button>
-                </View>
-            ) : (
                 <TextInput
                     mode="outlined"
-                    label="Job Description Text"
-                    placeholder="Paste the full job description here..."
-                    value={textValue}
-                    onChangeText={onTextChange}
-                    multiline
-                    numberOfLines={6}
-                    style={styles.textArea}
+                    label="Job Posting URL"
+                    placeholder="https://linkedin.com/jobs/..."
+                    value={urlValue}
+                    onChangeText={onUrlChange}
+                    autoCapitalize="none"
+                    keyboardType="url"
                     right={
-                        textValue ? (
+                        urlValue ? (
                             <TextInput.Icon
-                                icon="delete-outline"
-                                onPress={() => onTextChange('')}
+                                icon="close-circle-outline"
+                                onPress={() => onUrlChange('')}
                                 forceTextInputFocus={false}
                             />
                         ) : null
                     }
                 />
-            )}
+            ) : null}
+
 
             <Text variant="bodySmall" style={styles.helper}>
                 {mode === 'url'

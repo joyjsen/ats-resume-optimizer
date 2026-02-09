@@ -159,6 +159,8 @@ Use RECENT, credible sources from 2024-2026. Include specific dates when mention
             throw new Error(error.response?.data?.error?.message || "Failed to generate company research.");
         }
     }
+
+
     /**
      * Generic Chat Completion for fallback or general use
      */

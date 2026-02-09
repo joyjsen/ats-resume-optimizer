@@ -51,10 +51,10 @@ export default function OnboardingScreen() {
         try {
             await authService.logout();
             setUserProfile(null);
-            router.replace('/(auth)/sign-in' as any);
+            router.replace('/' as any);
         } catch (error) {
             console.error(error);
-            router.replace('/(auth)/sign-in' as any);
+            router.replace('/' as any);
         }
     };
 

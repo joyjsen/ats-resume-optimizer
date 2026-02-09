@@ -99,7 +99,7 @@ export const SkillsComparison = ({ matchAnalysis, originalMatchAnalysis, changes
             key={`${match.skill}-${index}`}
             style={[styles.chip, { backgroundColor: color, borderColor: isNew ? '#4CAF50' : 'transparent', borderWidth: isNew ? 2 : 0 }]} // Solid background
             textStyle={{ color: 'white', fontWeight: 'bold' }} // White text for contrast
-            icon={isNew ? 'star' : (match.userHas ? 'check' : match.transferableFrom ? 'swap-horizontal' : 'alert-circle-outline')}
+            icon={isNew ? 'star' : (match.evidence ? 'check' : match.transferability ? 'swap-horizontal' : 'alert-circle-outline')}
             onPress={interactive && onSkillPress ? () => onSkillPress(match) : undefined}
             showSelectedOverlay={true}
         >
@@ -124,7 +124,7 @@ export const SkillsComparison = ({ matchAnalysis, originalMatchAnalysis, changes
                 <View style={styles.section}>
                     <Text variant="bodyMedium" style={{ color: theme.colors.primary }}>Matched Skills</Text>
                     <View style={styles.chipRow}>
-                        {displayedMatched.map((s, idx) => renderSkillChip(s, theme.colors.primary, false, false, idx))}
+                        {displayedMatched.map((s, idx) => renderSkillChip(s, theme.colors.primary, true, false, idx))}
                         {displayedMatched.length === 0 && newSkills.length === 0 && <Text variant="bodySmall">None</Text>}
                     </View>
                 </View>

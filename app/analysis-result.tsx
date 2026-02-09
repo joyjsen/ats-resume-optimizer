@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, ScrollView, StyleSheet } from 'react-native';
-import { Button, Text, Card, ProgressBar, useTheme, Portal, Dialog, Paragraph } from 'react-native-paper';
+import { Button, Text, Card, ProgressBar, useTheme, Portal, Dialog, Paragraph, IconButton, Chip } from 'react-native-paper';
 import { useRouter, useLocalSearchParams, useNavigation } from 'expo-router';
 import { useResumeStore } from '../src/store/resumeStore';
 import { useTaskQueue } from '../src/context/TaskQueueContext';
@@ -57,6 +57,7 @@ export default function AnalysisResultScreen() {
     // --- Misplaced Hooks (Moved from below) ---
     const [skillModalVisible, setSkillModalVisible] = React.useState(false);
     const [selectedSkillToAdd, setSelectedSkillToAdd] = React.useState<string | null>(null);
+    const [selectedSkillMatch, setSelectedSkillMatch] = React.useState<SkillMatch | null>(null);
 
     // Keep ref updated for the listener
     React.useEffect(() => {
@@ -151,21 +152,26 @@ export default function AnalysisResultScreen() {
         }
     }, [activeTasks, currentTaskId, optimizing]);
 
-    // CRITICAL FIX: Ensure navigation gestures remain enabled after updates
-    React.useEffect(() => {
-        // Force enable back button and gestures after any state change
+    // CRITICAL FIX: Ensure navigation gestures remain enabled and provide explicit back button
+    React.useLayoutEffect(() => {
         navigation.setOptions({
             gestureEnabled: true,
-            headerBackVisible: true,
+            headerBackVisible: false, // Hide default to use our explicit one
+            headerLeft: () => (
+                <IconButton
+                    icon="arrow-left"
+                    onPress={() => {
+                        console.log("[AnalysisResult] Explicit Back Press");
+                        if (router.canGoBack()) {
+                            router.back();
+                        } else {
+                            router.replace('/(tabs)/optimize' as any);
+                        }
+                    }}
+                />
+            ),
         });
-
-        // Cleanup function to ensure we don't leave any navigation blockers
-        return () => {
-            navigation.setOptions({
-                gestureEnabled: true,
-            });
-        };
-    }, [navigation, currentAnalysis?.id, optimizing, isUnsaved]); // Re-run when key states change
+    }, [navigation, currentAnalysis?.id, optimizing, isUnsaved]);
 
     const theme = useTheme();
 
@@ -256,25 +262,8 @@ export default function AnalysisResultScreen() {
             return;
         }
 
-        // Gating: Require optimized resume before adding skills
-        if (!optimizedResume) {
-            const { Alert } = require('react-native');
-            Alert.alert(
-                "Optimize Resume First",
-                "Please optimize your existing resume first before attempting to add any missing skills.",
-                [
-                    { text: "Cancel", style: "cancel" },
-                    {
-                        text: "Optimize Now",
-                        onPress: () => handleOptimize()
-                    }
-                ]
-            );
-            return;
-        }
-
-        // Only allow adding if it's missing or partial (though the UI component filters clickability)
         setSelectedSkillToAdd(skillMatch.skill);
+        setSelectedSkillMatch(skillMatch);
         setSkillModalVisible(true);
     };
 
@@ -484,6 +473,55 @@ export default function AnalysisResultScreen() {
 
                 <ATSScoreCard score={atsScore} originalScore={originalScore} />
 
+                {matchAnalysis.verdictSummary && (
+                    <Card style={[styles.card, { backgroundColor: theme.colors.elevation.level2, borderColor: theme.colors.primary, borderWidth: 1 }]}>
+                        <Card.Content>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
+                                <Text style={{ fontSize: 20, marginRight: 8 }}>📋</Text>
+                                <Text variant="titleMedium" style={{ fontWeight: 'bold', color: theme.colors.primary }}>Appraisal Assessment</Text>
+                            </View>
+                            <Text variant="bodyMedium" style={{ fontStyle: 'italic', lineHeight: 22 }}>
+                                "{matchAnalysis.verdictSummary}"
+                            </Text>
+
+                            {matchAnalysis.readinessVerdict && (
+                                <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 12, flexWrap: 'wrap', gap: 8 }}>
+                                    <Chip
+                                        style={{ backgroundColor: theme.colors.primaryContainer }}
+                                        textStyle={{ color: theme.colors.onPrimaryContainer, fontWeight: 'bold', fontSize: 11 }}
+                                    >
+                                        VERDICT: {matchAnalysis.readinessVerdict.replace('_', ' ').toUpperCase()}
+                                    </Chip>
+                                    <View style={{ backgroundColor: theme.colors.surfaceVariant, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12 }}>
+                                        <Text variant="labelSmall" style={{ color: theme.colors.onSurfaceVariant }}>
+                                            ATS Score: {atsScore}%
+                                        </Text>
+                                    </View>
+                                </View>
+                            )}
+
+                            {matchAnalysis.experienceMatch && (
+                                <View style={{ marginTop: 16, backgroundColor: theme.colors.elevation.level3, padding: 12, borderRadius: 8 }}>
+                                    <Text variant="labelMedium" style={{ fontWeight: 'bold', marginBottom: 8, color: theme.colors.primary }}>Experience Alignment</Text>
+                                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
+                                        <Text variant="bodySmall">Job Requirement:</Text>
+                                        <Text variant="bodySmall" style={{ fontWeight: 'bold' }}>{matchAnalysis.experienceMatch.requiredYears || 'Not specified'}</Text>
+                                    </View>
+                                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 }}>
+                                        <Text variant="bodySmall">Your Profile:</Text>
+                                        <Text variant="bodySmall" style={{ fontWeight: 'bold' }}>{matchAnalysis.experienceMatch.candidateYears || 'Calculated'}</Text>
+                                    </View>
+                                    {matchAnalysis.experienceMatch.seniorityAlignment && (
+                                        <Text variant="labelSmall" style={{ fontStyle: 'italic', color: '#666' }}>
+                                            💡 {matchAnalysis.experienceMatch.seniorityAlignment}
+                                        </Text>
+                                    )}
+                                </View>
+                            )}
+                        </Card.Content>
+                    </Card>
+                )}
+
                 {/* Show "New" skills if we have a draft match analysis that differs from original */}
                 <SkillsComparison
                     matchAnalysis={matchAnalysis}
@@ -493,16 +531,6 @@ export default function AnalysisResultScreen() {
                         if (currentAnalysis.isLocked) {
                             const { Alert } = require('react-native');
                             Alert.alert("Resume Locked", "You cannot add skills after submitting your application.");
-                            return;
-                        }
-                        // Block skill addition if there's unsaved optimization
-                        const hasUnsavedOptimization = currentAnalysis.draftOptimizedResumeData && !currentAnalysis.optimizedResume;
-                        if (hasUnsavedOptimization) {
-                            const { Alert } = require('react-native');
-                            Alert.alert(
-                                "Unsaved Optimization",
-                                "Please validate and save your optimized resume before adding skills. This ensures the baseline ATS score is properly set for accurate skill addition calculations."
-                            );
                             return;
                         }
                         handleSkillPress(skill);
@@ -580,7 +608,16 @@ export default function AnalysisResultScreen() {
                                         <View key={index} style={{ marginBottom: 12, paddingLeft: 8, borderLeftWidth: 2, borderLeftColor: '#4CAF50' }}>
                                             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
                                                 <Text variant="labelLarge" style={{ color: '#2E7D32' }}>
-                                                    {change.type ? change.type.replace(/_/g, ' ').toUpperCase() : 'CHANGE'}
+                                                    {change.type
+                                                        ? change.type
+                                                            .replace(/_/g, ' ')
+                                                            .replace(/([a-z])([A-Z])/g, '$1 $2')
+                                                            .replace(/([A-Z])([A-Z][a-z])/g, '$1 $2')
+                                                            // Handle smashed caps for common keywords
+                                                            .replace(/(REWRITE|ADDITION|IMPROVEMENT|REMOVAL|UPDATE|INTEGRATION)$/i, ' $1')
+                                                            .trim()
+                                                            .toUpperCase()
+                                                        : 'CHANGE'}
                                                 </Text>
                                                 {change.section && (
                                                     <Text variant="labelSmall" style={{ color: '#666', backgroundColor: '#f0f0f0', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
@@ -666,9 +703,15 @@ export default function AnalysisResultScreen() {
             <SkillAdditionModal
                 visible={skillModalVisible}
                 skill={selectedSkillToAdd}
+                skillMatch={selectedSkillMatch}
                 resume={optimizedResume || resume} // Pass current visible resume for section selection context
-                onDismiss={() => setSkillModalVisible(false)}
+                onDismiss={() => {
+                    setSkillModalVisible(false);
+                    setSelectedSkillMatch(null);
+                }}
                 onConfirm={handleConfirmAddSkill}
+                onOptimize={handleOptimize}
+                isOptimized={!!optimizedResume}
                 jobTitle={currentAnalysis.job.title}
                 companyName={currentAnalysis.job.company}
             />

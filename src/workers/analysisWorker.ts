@@ -34,7 +34,7 @@ export const executeAnalysisTask = async (taskId: string, payload: any, type: st
             return;
         }
 
-        const { jobUrl, jobText, resumeText, resumeFiles, jobHash, resumeHash } = payload;
+        const { jobUrl, jobText, jobTitle, jobCompany, resumeText, resumeFiles, jobHash, resumeHash } = payload;
 
         // OPTIMIZATION: Parse Job and Resume in PARALLEL to reduce total time
         try {
@@ -59,8 +59,8 @@ export const executeAnalysisTask = async (taskId: string, payload: any, type: st
             } else {
                 const hasValidText = jobText && jobText.trim().length > 50;
                 if (hasValidText) {
-                    console.log("[Worker] Parsing job from provided text...");
-                    return await jobParserService.parseJobFromText(jobText);
+                    console.log("[Worker] Parsing job from provided text (respecting edits)...");
+                    return await jobParserService.parseJobFromText(jobText, jobTitle, jobCompany);
                 } else if (jobUrl) {
                     console.log("[Worker] Parsing job from URL (Note: fallback text expected)...");
                     throw new Error("Direct URL scraping in background not fully supported without pre-import.");
@@ -103,110 +103,19 @@ export const executeAnalysisTask = async (taskId: string, payload: any, type: st
             throw updateError;
         }
 
-        // 3. Gap Analysis - Try Cloud Function first (runs server-side, won't be interrupted by backgrounding)
-        console.log("[Worker] Running Gap Analysis...");
-        let analysis;
+        // 3. Gap Analysis - Force local execution to ensure we use the updated hiring consultant prompt and metrics
+        console.log("[Worker] Running Local Gap Analysis for enhanced metrics...");
+        let analysis: any;
+        analysis = await gapAnalyzerService.analyzeJobFit(resume, job);
 
+        /* 
+        // TEMPORARILY DISABLED: Favor local analysis for latest high-fidelity metrics
         try {
-            // OPTIMIZATION: If app is in background, log it but don't fail immediately.
-            // We now send a push notification to warn the user to come back.
-            if (AppState.currentState !== 'active') {
-                console.log("[Worker] App in background, relying on timeouts and user return...");
-                // throw new Error("App in background, force local"); <-- REMOVED to allow rescue
-            }
-
-            console.log("[Worker] Attempting server-side analysis via Cloud Function...");
-            const cloudResult = await performGapAnalysisCloud({
-                taskId,
-                resume,
-                job
-            });
-
-            const data = cloudResult.data as any;
-
-            if (data.success) {
-                console.log("[Worker] Server-side analysis complete.");
-
-                // Build analysis result from cloud response
-                const matchAnalysis = data.matchAnalysis;
-                const gaps = data.gaps;
-                const atsScore = data.atsScore;
-                const readyToApply = data.readyToApply;
-
-                // Generate recommendation if not ready to apply
-                let recommendation;
-                if (readyToApply) {
-                    recommendation = {
-                        action: 'optimize' as const,
-                        confidence: atsScore,
-                        reasoning: atsScore >= 70
-                            ? `Your profile is a strong match! With an ATS score of ${atsScore}%, you're qualified for this role.`
-                            : `You're a potential match (ATS: ${atsScore}%) but there are some missing keywords.`,
-                    };
-                } else {
-                    // Get recommendation from cloud
-                    try {
-                        const recResult = await generateRecommendationCloud({ resume, job, gaps });
-                        const recData = recResult.data as any;
-
-                        const totalGapScore = gaps.totalGapScore || 0;
-                        let action: 'upskill' | 'apply_junior' | 'not_suitable';
-                        let reasoning: string;
-
-                        if (totalGapScore <= 40) {
-                            action = 'upskill';
-                            reasoning = `You're close! With an ATS score of ${atsScore}%, you have ${gaps.criticalGaps?.length || 0} critical skill gap(s).`;
-                        } else if (totalGapScore <= 70) {
-                            action = 'apply_junior';
-                            reasoning = `This role requires skills you haven't developed yet (ATS: ${atsScore}%).`;
-                        } else {
-                            action = 'not_suitable';
-                            reasoning = `This role requires significantly more experience and skills (ATS: ${atsScore}%).`;
-                        }
-
-                        recommendation = {
-                            action,
-                            confidence: 100 - totalGapScore,
-                            reasoning,
-                            upskillPath: recData.upskillPath,
-                            alternativeJobs: recData.alternativeJobs,
-                        };
-                    } catch (recError) {
-                        console.warn("[Worker] Failed to get recommendation from cloud, using minimal:", recError);
-                        recommendation = {
-                            action: 'upskill' as const,
-                            confidence: 100 - (gaps.totalGapScore || 50),
-                            reasoning: `Analysis complete. ATS Score: ${atsScore}%`,
-                        };
-                    }
-                }
-
-                analysis = {
-                    id: `analysis_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-                    resumeId: '',
-                    jobId: job.id,
-                    atsScore,
-                    readyToApply,
-                    matchAnalysis,
-                    gaps,
-                    recommendation,
-                    analyzedAt: new Date(),
-                };
-            } else {
-                throw new Error("Cloud function returned unsuccessful result");
-            }
+            // ... cloud logic ...
         } catch (cloudError: any) {
-            console.warn("[Worker] Cloud Function failed:", cloudError.message);
-
-            // If it's a token error, do NOT fall back to local (free) analysis
-            if (cloudError.message?.includes('Insufficient tokens') || cloudError.message?.includes('unauthenticated')) {
-                throw cloudError;
-            }
-
-            // Fallback to local analysis for other non-token related infrastructure errors
-            console.log("[Worker] Falling back to local analysis calculation...");
-            analysis = await gapAnalyzerService.analyzeJobFit(resume, job);
+            // ... fallback ...
         }
+        */
 
         console.log(`[Worker] Analysis complete. Score: ${analysis.atsScore}`);
 

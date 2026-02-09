@@ -1,10 +1,12 @@
-import React, { createContext, useContext, useState, useMemo } from 'react';
+import React, { createContext, useContext, useState, useMemo, useEffect } from 'react';
 import { useColorScheme } from 'react-native';
 import { MD3LightTheme, MD3DarkTheme } from 'react-native-paper';
+import { useProfileStore } from '../store/profileStore';
 
 export const ThemeContext = createContext({
     isDark: false,
-    toggleTheme: () => { }
+    toggleTheme: () => { },
+    theme: MD3LightTheme // Add theme to context for easier access
 });
 
 export const useAppTheme = () => useContext(ThemeContext);
@@ -31,13 +33,28 @@ const DarkTheme = {
 
 export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     const systemScheme = useColorScheme();
-    const [isDark, setIsDark] = useState(systemScheme === 'dark');
+    const { userProfile } = useProfileStore();
+
+    // Initialize from profile if available, otherwise fallback to system
+    const [isDark, setIsDark] = useState(() => {
+        if (userProfile?.theme) {
+            return userProfile.theme === 'dark';
+        }
+        return systemScheme === 'dark';
+    });
+
+    // Update isDark if profile theme changes (e.g. from another device)
+    useEffect(() => {
+        if (userProfile?.theme) {
+            setIsDark(userProfile.theme === 'dark');
+        }
+    }, [userProfile?.theme]);
 
     const theme = useMemo(() => isDark ? DarkTheme : LightTheme, [isDark]);
     const toggleTheme = () => setIsDark(!isDark);
 
     return (
-        <ThemeContext.Provider value={{ isDark, toggleTheme }}>
+        <ThemeContext.Provider value={{ isDark, toggleTheme, theme }}>
             {children}
         </ThemeContext.Provider>
     );

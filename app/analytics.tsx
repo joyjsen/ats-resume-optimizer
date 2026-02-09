@@ -101,6 +101,7 @@ export default function AnalyticsScreen() {
             'interview_prep_generation': '#673AB7',
             'training_slideshow_generation': '#607D8B',
             'concept_explanation': '#009688',
+            'ai_updated_section': '#009688',
             'token_purchase': '#4CAF50',
         };
         return colors[type] || '#757575';
@@ -121,6 +122,7 @@ export default function AnalyticsScreen() {
             'interview_prep_generation': 'account-question',
             'training_slideshow_generation': 'presentation',
             'concept_explanation': 'lightbulb-outline',
+            'ai_updated_section': 'auto-fix',
             'skill_marked_learned': 'school-outline',
             'token_purchase': 'credit-card-outline',
             'pdf_export': 'file-pdf-box',

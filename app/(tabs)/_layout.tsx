@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import React, { useEffect } from 'react';
 import { Tabs } from 'expo-router';
 import { Platform } from 'react-native';
 import { useTheme, Icon } from 'react-native-paper';
@@ -10,13 +10,16 @@ export default function TabsLayout() {
     const theme = useTheme();
     const { userProfile, subscribeToProfile } = useProfileStore();
 
-    // Set up global profile subscription for real-time updates (token balance, etc.)
     useEffect(() => {
         if (userProfile?.uid) {
             const unsubscribe = subscribeToProfile(userProfile.uid);
             return () => unsubscribe();
         }
     }, [userProfile?.uid, subscribeToProfile]);
+
+    if (!userProfile) {
+        return null;
+    }
 
     return (
         <Tabs
@@ -40,60 +43,42 @@ export default function TabsLayout() {
                 name="home"
                 options={{
                     title: 'Home',
-                    tabBarIcon: ({ color, size }) => (
-                        <Icon source="home" size={size} color={color} />
-                    ),
-                }}
-            />
-            <Tabs.Screen
-                name="index"
-                options={{
-                    href: null,
+                    tabBarIcon: ({ color, size }) => <Icon source="home" size={size} color={color} />,
                 }}
             />
             <Tabs.Screen
                 name="optimize"
                 options={{
                     title: 'Optimize',
-                    tabBarIcon: ({ color, size }) => (
-                        <Icon source="shimmer" size={size} color={color} />
-                    ),
+                    tabBarIcon: ({ color, size }) => <Icon source="shimmer" size={size} color={color} />,
                 }}
             />
             <Tabs.Screen
                 name="analyze"
                 options={{
                     title: 'Analyze',
-                    tabBarIcon: ({ color, size }) => (
-                        <Icon source="file-document-edit" size={size} color={color} />
-                    ),
+                    tabBarIcon: ({ color, size }) => <Icon source="file-document-edit" size={size} color={color} />,
                 }}
             />
             <Tabs.Screen
                 name="applications"
                 options={{
                     title: 'Applications',
-                    tabBarIcon: ({ color, size }) => (
-                        <Icon source="briefcase" size={size} color={color} />
-                    ),
+                    tabBarIcon: ({ color, size }) => <Icon source="briefcase" size={size} color={color} />,
                 }}
             />
             <Tabs.Screen
                 name="learning"
                 options={{
                     title: 'Learning',
-                    tabBarIcon: ({ color, size }) => (
-                        <Icon source="school" size={size} color={color} />
-                    ),
+                    tabBarIcon: ({ color, size }) => <Icon source="school" size={size} color={color} />,
                 }}
             />
             <Tabs.Screen
                 name="profile"
                 options={{
                     title: 'Profile',
-                    tabBarIcon: ({ color, size }) => (
-                        <Icon source="account" size={size} color={color} />
-                    ),
+                    tabBarIcon: ({ color, size }) => <Icon source="account" size={size} color={color} />,
                 }}
             />
         </Tabs>
