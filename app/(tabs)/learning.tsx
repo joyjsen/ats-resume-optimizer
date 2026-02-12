@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, StyleSheet, FlatList, TouchableOpacity, Alert } from 'react-native';
+import { View, StyleSheet, FlatList, TouchableOpacity, Alert, Platform } from 'react-native';
 import { Text, Card, Chip, useTheme, ActivityIndicator, Button, IconButton } from 'react-native-paper';
 import { learningService } from '../../src/services/firebase/learningService';
 import { auth } from '../../src/services/firebase/config';
@@ -13,6 +13,8 @@ import { notificationService } from '../../src/services/firebase/notificationSer
 import { useNavigation } from 'expo-router'; // Add useNavigation
 import { UserHeader } from '../../src/components/layout/UserHeader'; // Add UserHeader import
 import { useTokenCheck } from '../../src/hooks/useTokenCheck';
+
+const isAndroid = Platform.OS === 'android';
 
 export default function LearningScreen() {
     const theme = useTheme();
@@ -245,16 +247,25 @@ export default function LearningScreen() {
                 <Card.Content>
                     <View style={styles.header}>
                         <View style={{ flex: 1 }}>
-                            <Text variant="titleMedium" style={{ fontWeight: 'bold' }}>{item.skillName}</Text>
-                            <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
+                            <Text variant={isAndroid ? "titleSmall" : "titleMedium"} style={{ fontWeight: 'bold' }}>{item.skillName}</Text>
+                            <Text variant="bodySmall" style={[{ color: theme.colors.onSurfaceVariant }, isAndroid && { fontSize: 11 }]}>
                                 For: {item.jobTitle} at {item.companyName}
                             </Text>
                         </View>
                         <View style={{ alignItems: 'flex-end' }}>
                             <Chip
                                 mode="flat"
-                                style={{ backgroundColor: item.status === 'completed' ? theme.colors.primaryContainer : theme.colors.surfaceVariant, marginBottom: 4 }}
-                                textStyle={{ color: item.status === 'completed' ? theme.colors.onPrimaryContainer : theme.colors.onSurfaceVariant, fontSize: 10 }}
+                                style={{
+                                    backgroundColor: item.status === 'completed' ? theme.colors.primaryContainer : theme.colors.surfaceVariant,
+                                    marginBottom: 4,
+                                    height: isAndroid ? 30 : 30,
+                                    justifyContent: 'center'
+                                }}
+                                textStyle={{
+                                    color: item.status === 'completed' ? theme.colors.onPrimaryContainer : theme.colors.onSurfaceVariant,
+                                    fontSize: isAndroid ? 10 : 10,
+                                    textAlign: 'center'
+                                }}
                             >
                                 {item.status === 'completed' ? 'ACHIEVED' : 'LEARNING'}
                             </Chip>
@@ -277,13 +288,14 @@ export default function LearningScreen() {
                                     {item.path === 'ai' && (
                                         <Button
                                             mode={isFinished ? "contained" : "outlined"}
-                                            compact
+                                            compact={isAndroid}
                                             loading={isGeneratingThis}
                                             disabled={isGeneratingThis}
                                             onPress={() => isFinished ? handleCompleteTraining(item.id) : handleStartTraining(item)}
-                                            style={{ marginRight: 8 }}
+                                            style={[{ marginRight: 8 }, isAndroid && { paddingHorizontal: 2 }]}
+                                            labelStyle={isAndroid ? { fontSize: 11 } : undefined}
                                         >
-                                            {isFinished ? "Complete" : (isStarted ? "Continue Learning" : "Start Training")}
+                                            {isFinished ? "Complete" : (isStarted ? "Continue" : "Start")}
                                         </Button>
                                     )}
                                     <IconButton
@@ -300,10 +312,11 @@ export default function LearningScreen() {
                                     {item.path === 'ai' && hasSlides && (
                                         <Button
                                             mode="outlined"
-                                            compact
+                                            compact={isAndroid}
                                             onPress={() => handleReviewTraining(item)}
                                             icon="book-open-variant"
-                                            style={{ marginRight: 8 }}
+                                            style={[{ marginRight: 8 }, isAndroid && { paddingHorizontal: 2 }]}
+                                            labelStyle={isAndroid ? { fontSize: 11 } : undefined}
                                         >
                                             Review
                                         </Button>
@@ -370,7 +383,7 @@ export default function LearningScreen() {
     return (
         <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
             <View style={[styles.summaryHeader, { backgroundColor: theme.colors.background, borderBottomColor: theme.colors.outlineVariant }]}>
-                <Text variant="headlineMedium" style={styles.title}>Learning Hub</Text>
+                <Text variant={isAndroid ? "headlineSmall" : "headlineMedium"} style={styles.title}>Learning Hub</Text>
                 <Text variant="bodySmall">Track your skill acquisition and professional growth.</Text>
 
                 <View style={styles.tabContainer}>
@@ -454,9 +467,8 @@ const styles = StyleSheet.create({
     summaryHeader: {
         padding: 24,
         paddingBottom: 12,
-        // backgroundColor: '#fff', // Handled inline
         borderBottomWidth: 1,
-        borderBottomColor: '#e0e0e030', // More subtle
+        borderBottomColor: '#e0e0e030',
     },
     title: {
         fontWeight: 'bold',
@@ -468,8 +480,8 @@ const styles = StyleSheet.create({
     },
     tab: {
         paddingVertical: 8,
-        paddingHorizontal: 16,
-        marginRight: 16,
+        paddingHorizontal: isAndroid ? 12 : 16,
+        marginRight: isAndroid ? 8 : 16,
         borderBottomWidth: 2,
         borderBottomColor: 'transparent',
     },
@@ -487,8 +499,7 @@ const styles = StyleSheet.create({
         padding: 16,
     },
     card: {
-        marginBottom: 12,
-        // backgroundColor: '#fff', // Handled inline
+        marginBottom: isAndroid ? 8 : 12,
     },
     header: {
         flexDirection: 'row',

@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, StyleSheet, TouchableOpacity, Platform } from 'react-native';
 import { Avatar, Text, IconButton, useTheme, Chip } from 'react-native-paper';
 import { UserProfile } from '../../types/profile.types';
 
@@ -7,6 +7,8 @@ interface ProfileHeaderProps {
     profile: UserProfile;
     onEdit: () => void;
 }
+
+const isAndroid = Platform.OS === 'android';
 
 export const ProfileHeader: React.FC<ProfileHeaderProps> = ({ profile, onEdit }) => {
     const theme = useTheme();
@@ -24,17 +26,17 @@ export const ProfileHeader: React.FC<ProfileHeaderProps> = ({ profile, onEdit })
         <View style={styles.container}>
             <View style={styles.avatarContainer}>
                 {profile.photoURL ? (
-                    <Avatar.Image size={100} source={{ uri: profile.photoURL }} />
+                    <Avatar.Image size={isAndroid ? 80 : 100} source={{ uri: profile.photoURL }} />
                 ) : (
-                    <Avatar.Text size={100} label={initials} />
+                    <Avatar.Text size={isAndroid ? 80 : 100} label={initials} />
                 )}
                 <TouchableOpacity style={styles.editButton} onPress={onEdit}>
                     <IconButton icon="pencil" size={20} iconColor="white" style={{ backgroundColor: theme.colors.primary }} />
                 </TouchableOpacity>
             </View>
 
-            <Text variant="headlineSmall" style={styles.name}>{profile.displayName}</Text>
-            <Text variant="bodyMedium" style={[styles.email, { color: theme.colors.onSurfaceVariant }]}>{profile.email}</Text>
+            <Text variant={isAndroid ? "titleLarge" : "headlineSmall"} style={styles.name}>{profile.displayName}</Text>
+            <Text variant={isAndroid ? "bodySmall" : "bodyMedium"} style={[styles.email, { color: theme.colors.onSurfaceVariant }]}>{profile.email}</Text>
 
             <Chip icon="account-clock" style={[styles.badge, { backgroundColor: theme.colors.elevation.level1 }]}>
                 Member since {memberSince}
@@ -46,7 +48,7 @@ export const ProfileHeader: React.FC<ProfileHeaderProps> = ({ profile, onEdit })
 const styles = StyleSheet.create({
     container: {
         alignItems: 'center',
-        paddingVertical: 24,
+        paddingVertical: isAndroid ? 16 : 24,
     },
     avatarContainer: {
         position: 'relative',

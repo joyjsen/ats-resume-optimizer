@@ -44,6 +44,46 @@ export const TrainingSlideshow = ({ visible, slides, initialSlide, onDismiss, on
     if (!slides || slides.length === 0) return null;
 
     const currentSlide = slides[currentIndex];
+    if (!currentSlide) return null;
+
+    // Robust normalizer: extract title+description from any point shape
+    const normalizePoint = (p: any): { title: string; description: string } => {
+        if (typeof p === 'string') return { title: p, description: '' };
+        if (!p || typeof p !== 'object') return { title: '', description: '' };
+
+        // Try common title field names
+        const titleVal = p.title || p.heading || p.name || p.text || p.topic || p.point || p.key || p.concept || '';
+        // Try common description field names
+        const descVal = p.description || p.details || p.detail || p.explanation || p.content || p.body || p.summary || p.info || p.notes || '';
+
+        // If we got nothing from known keys, grab the first two string values from the object
+        if (!titleVal && !descVal) {
+            const stringVals = Object.values(p).filter((v): v is string => typeof v === 'string');
+            return { title: stringVals[0] || '', description: stringVals[1] || '' };
+        }
+
+        return { title: String(titleVal), description: String(descVal) };
+    };
+
+    // Get the raw points-like array from various possible field names
+    const rawItems: any[] = (currentSlide as any).points
+        || (currentSlide as any).bullets
+        || (currentSlide as any).key_points
+        || (currentSlide as any).content
+        || (currentSlide as any).items
+        || (currentSlide as any).topics
+        || [];
+
+    const points = (Array.isArray(rawItems) ? rawItems : []).map(normalizePoint);
+
+    // Debug: log first slide structure to help diagnose issues
+    if (currentIndex === 0) {
+        console.log('[Slideshow] Slide 0 raw keys:', Object.keys(currentSlide));
+        const firstRawItem = Array.isArray(rawItems) && rawItems[0];
+        if (firstRawItem && typeof firstRawItem === 'object') {
+            console.log('[Slideshow] Point 0 keys:', Object.keys(firstRawItem));
+        }
+    }
 
     return (
         <Portal>
@@ -64,19 +104,25 @@ export const TrainingSlideshow = ({ visible, slides, initialSlide, onDismiss, on
                 </Text>
 
                 <ScrollView style={styles.content}>
-                    <Text variant="headlineSmall" style={[styles.slideTitle, { color: theme.colors.onSurface }]}>{currentSlide.title}</Text>
+                    <Text variant="headlineSmall" style={[styles.slideTitle, { color: theme.colors.onSurface }]}>{currentSlide.title || `Slide ${currentIndex + 1}`}</Text>
 
-                    {currentSlide.points.map((item, idx) => (
+                    {points.length > 0 ? points.map((item, idx) => (
                         <View key={idx} style={styles.pointContainer}>
                             <View style={styles.bulletRow}>
                                 <Text style={[styles.bullet, { color: theme.colors.primary }]}>•</Text>
                                 <Text variant="titleSmall" style={[styles.pointTitle, { color: theme.colors.onSurface }]}>{item.title}</Text>
                             </View>
-                            <Text variant="bodyMedium" style={[styles.descriptionText, { color: theme.colors.onSurfaceVariant }]}>
-                                {item.description}
-                            </Text>
+                            {item.description ? (
+                                <Text variant="bodyMedium" style={[styles.descriptionText, { color: theme.colors.onSurfaceVariant }]}>
+                                    {item.description}
+                                </Text>
+                            ) : null}
                         </View>
-                    ))}
+                    )) : (
+                        <Text variant="bodyMedium" style={{ color: theme.colors.onSurfaceVariant }}>
+                            No content available for this slide.
+                        </Text>
+                    )}
                 </ScrollView>
 
                 <View style={styles.footer}>

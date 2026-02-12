@@ -11,7 +11,11 @@ const firebaseConfig = {
     projectId: ENV.FIREBASE_PROJECT_ID,
     storageBucket: ENV.FIREBASE_STORAGE_BUCKET,
     messagingSenderId: ENV.FIREBASE_MESSAGING_SENDER_ID,
-    appId: ENV.FIREBASE_APP_ID,
+    appId: Platform.select({
+        ios: ENV.FIREBASE_APP_ID_IOS,
+        android: ENV.FIREBASE_APP_ID_ANDROID,
+        default: ENV.FIREBASE_APP_ID_IOS, // Fallback
+    }),
 };
 
 // Initialize Firebase app (or get existing)

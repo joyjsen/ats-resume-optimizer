@@ -14,9 +14,12 @@ import { useResumeStore } from '../../src/store/resumeStore';
 import { generateHash } from '../../src/utils/hashUtils';
 import { taskService } from '../../src/services/firebase/taskService';
 import { activityService } from '../../src/services/firebase/activityService';
+import { ResumeTipsCarousel } from '../../src/components/analysis/ResumeTipsCarousel';
 import { useTaskQueue } from '../../src/context/TaskQueueContext';
 import { linkedInService } from '../../src/services/external/linkedInService';
-import { useTokenCheck } from '../../src/hooks/useTokenCheck'; // Add import
+import { useTokenCheck } from '../../src/hooks/useTokenCheck';
+import { horizontalScale, verticalScale, moderateScale, scaleFont } from '../../src/utils/responsive';
+const isAndroid = Platform.OS === 'android';
 
 export default function AnalyzeScreen() {
     const theme = useTheme();
@@ -449,11 +452,11 @@ export default function AnalyzeScreen() {
                         </Dialog>
                     </Portal>
 
-                    <Text variant="headlineMedium" style={styles.title}>
+                    <Text variant={isAndroid ? "headlineSmall" : "headlineMedium"} style={[styles.title, isAndroid && { fontSize: scaleFont(20) }]}>
                         Analyze Your Resume
                     </Text>
 
-                    <Text variant="bodyMedium" style={styles.subtitle}>
+                    <Text variant={isAndroid ? "bodySmall" : "bodyMedium"} style={styles.subtitle}>
                         Get honest feedback on your job readiness and optimize your resume for ATS systems.
                     </Text>
 
@@ -643,20 +646,29 @@ export default function AnalyzeScreen() {
                     </View>
 
 
-                    <Button
-                        mode="contained"
-                        onPress={() => handleAnalyze()}
-                        disabled={loading || !!currentTaskId || extractingResume || (!jobUrl && !jobText && screenshots.length === 0) || (cvUris.length === 0 && !resumeText)}
-                        style={styles.button}
-                    >
-                        {!!currentTaskId ? 'Analyzing...' : loading ? 'Checking...' : 'Analyze Resume'}
-                    </Button>
+                    {(() => {
+                        const isJobPopulated = !!(jobTitle?.trim() && jobCompany?.trim() && (jobText?.trim() || screenshots.length > 0));
+                        const isResumePopulated = !!(cvUris.length > 0 || resumeText?.trim());
+
+                        return (
+                            <Button
+                                mode="contained"
+                                onPress={() => handleAnalyze()}
+                                disabled={loading || !!currentTaskId || extractingResume || !isJobPopulated || !isResumePopulated}
+                                style={[styles.button, { paddingVertical: moderateScale(isAndroid ? 2 : 4) }]}
+                                compact={isAndroid}
+                            >
+                                {!!currentTaskId ? 'Analyzing...' : loading ? 'Checking...' : 'Analyze Resume'}
+                            </Button>
+                        );
+                    })()}
 
                     {
                         (loading || !!currentTaskId) && (
                             <View style={styles.loadingContainer}>
                                 <ActivityIndicator size="large" />
                                 <Text style={styles.loadingText}>{stage || 'Preparing...'}</Text>
+                                <ResumeTipsCarousel />
                             </View>
                         )
                     }
@@ -669,49 +681,53 @@ export default function AnalyzeScreen() {
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        padding: 16,
+        padding: horizontalScale(16),
     },
     title: {
-        marginBottom: 8,
+        fontSize: scaleFont(24),
+        marginBottom: verticalScale(8),
     },
     subtitle: {
-        marginBottom: 24,
+        fontSize: scaleFont(14),
+        marginBottom: verticalScale(24),
         opacity: 0.7,
     },
     section: {
-        marginBottom: 24,
+        marginBottom: verticalScale(isAndroid ? 16 : 24),
     },
     sectionTitle: {
-        marginBottom: 12,
+        fontSize: scaleFont(16),
+        marginBottom: verticalScale(12),
     },
     button: {
-        marginTop: 16,
-        marginBottom: 40,
+        marginTop: verticalScale(16),
+        marginBottom: verticalScale(40),
     },
     loadingContainer: {
-        marginTop: 24,
+        marginTop: verticalScale(24),
         alignItems: 'center',
-        marginBottom: 40,
+        marginBottom: verticalScale(40),
+        width: '100%',
     },
     loadingText: {
-        marginTop: 8,
+        marginTop: verticalScale(8),
         opacity: 0.7,
     },
     screenshotPreview: {
         flexDirection: 'row',
         alignItems: 'center',
-        marginTop: 8,
-        padding: 8,
-        borderRadius: 8,
+        marginTop: verticalScale(8),
+        padding: horizontalScale(8),
+        borderRadius: moderateScale(8),
     },
     extractingContainer: {
         flexDirection: 'row',
         alignItems: 'center',
-        padding: 12,
-        borderRadius: 8,
-        marginTop: 8,
+        padding: moderateScale(12),
+        borderRadius: moderateScale(8),
+        marginTop: verticalScale(8),
     },
     previewContainer: {
-        marginTop: 12,
+        marginTop: verticalScale(12),
     }
 });

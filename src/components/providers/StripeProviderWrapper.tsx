@@ -7,10 +7,15 @@ interface Props {
 }
 
 export const StripeProviderWrapper: React.FC<Props> = ({ children }) => {
+    const publishableKey = (ENV.STRIPE_PUBLISHABLE_KEY || 'pk_test_sample').trim();
+
+    // Diagnostic log (safe)
+    console.log(`[Stripe] Initializing with key: ${publishableKey.substring(0, 12)}...${publishableKey.slice(-4)} (Length: ${publishableKey.length})`);
+
     return (
         <StripeProvider
-            publishableKey={ENV.STRIPE_PUBLISHABLE_KEY || 'pk_test_sample'}
-            merchantIdentifier="merchant.com.atsresumeoptimizer"
+            publishableKey={publishableKey}
+            merchantIdentifier="merchant.com.jsn22.atsresumeoptimizer"
         >
             {children}
         </StripeProvider>

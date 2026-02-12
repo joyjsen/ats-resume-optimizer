@@ -44,5 +44,5 @@ env
 env.local
 
 # Firebase config (if secret scanning blocks it)
-GoogleService-Info.plist
-google-services.json
+# GoogleService-Info.plist
+# google-services.json

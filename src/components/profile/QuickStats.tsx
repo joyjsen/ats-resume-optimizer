@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, StyleSheet } from 'react-native';
+import { View, StyleSheet, Platform } from 'react-native';
 import { Card, Text, useTheme } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { UserActivity } from '../../types/profile.types';
@@ -17,6 +17,8 @@ interface QuickStatsProps {
     onStatPress?: (statType: string) => void;
 }
 
+const isAndroid = Platform.OS === 'android';
+
 export const QuickStats: React.FC<QuickStatsProps> = ({ activities, stats: passedStats, onStatPress }) => {
     const theme = useTheme();
 
@@ -32,10 +34,10 @@ export const QuickStats: React.FC<QuickStatsProps> = ({ activities, stats: passe
 
     const StatItem = ({ label, value, icon, color, onPress }: { label: string, value: number, icon: string, color: string, onPress: () => void }) => (
         <Card style={styles.statCard} onPress={onPress}>
-            <View style={styles.statContent}>
-                <MaterialCommunityIcons name={icon as any} size={28} color={color} />
-                <Text variant="headlineSmall" style={styles.statValue}>{value}</Text>
-                <Text variant="labelSmall" style={[styles.statLabel, { color: theme.colors.onSurfaceVariant }]}>{label}</Text>
+            <View style={[styles.statContent, isAndroid && { padding: 8 }]}>
+                <MaterialCommunityIcons name={icon as any} size={isAndroid ? 24 : 28} color={color} />
+                <Text variant={isAndroid ? "titleMedium" : "headlineSmall"} style={styles.statValue}>{value}</Text>
+                <Text variant="labelSmall" style={[styles.statLabel, { color: theme.colors.onSurfaceVariant }, isAndroid && { fontSize: 9 }]}>{label}</Text>
             </View>
         </Card>
     );
@@ -104,8 +106,7 @@ const styles = StyleSheet.create({
     },
     statCard: {
         flex: 1,
-        margin: 8,
-        // backgroundColor: '#fff', -- Handled by Card default
+        margin: isAndroid ? 4 : 8,
     },
     statContent: {
         padding: 16,

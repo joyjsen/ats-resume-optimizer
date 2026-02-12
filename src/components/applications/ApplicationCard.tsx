@@ -1,5 +1,5 @@
 ﻿import React, { useState } from 'react';
-import { View, StyleSheet, TouchableOpacity, Alert } from 'react-native';
+import { View, StyleSheet, TouchableOpacity, Alert, Platform } from 'react-native';
 import { Card, Text, Chip, Button, IconButton, Menu, Divider, useTheme, ProgressBar, Portal, Dialog, TextInput } from 'react-native-paper';
 import { Application, ApplicationStage, TimelineEvent } from '../../types/application.types';
 import { format } from 'date-fns';
@@ -17,6 +17,8 @@ interface Props {
     onCompleteOptimization?: (analysisId: string) => void; // For read-only mode - navigate to complete optimization
     onRestore?: (id: string) => void;
 }
+
+const isAndroid = Platform.OS === 'android';
 
 export const ApplicationCardComponent = ({
     application,
@@ -53,6 +55,7 @@ export const ApplicationCardComponent = ({
         }
     };
 
+    console.log(`[AppCard:${application.company}] CL Status: ${application.coverLetter?.status}, HasContent: ${!!application.coverLetter?.content}, ContentLen: ${application.coverLetter?.content?.length}`);
 
     const renderStatusOption = (stage: ApplicationStage, label: string) => (
         <Menu.Item
@@ -82,18 +85,28 @@ export const ApplicationCardComponent = ({
                 <TouchableOpacity onPress={() => setExpanded(!expanded)} activeOpacity={0.7}>
                     <View style={styles.header}>
                         <View style={{ flex: 1 }}>
-                            <Text variant="titleMedium" numberOfLines={1} style={{ fontWeight: 'bold' }}>
+                            <Text variant={isAndroid ? "titleSmall" : "titleMedium"} numberOfLines={1} style={{ fontWeight: 'bold' }}>
                                 {application.jobTitle}
                             </Text>
-                            <Text variant="bodyMedium" style={{ color: theme.colors.secondary }}>
+                            <Text variant={isAndroid ? "bodySmall" : "bodyMedium"} style={{ color: theme.colors.secondary }}>
                                 {application.company}
                             </Text>
                         </View>
                         <View style={styles.badges}>
                             {isReadOnly && (
                                 <Chip
-                                    style={{ backgroundColor: theme.colors.surfaceVariant, height: 30, marginBottom: 4 }}
-                                    textStyle={{ fontSize: 10, color: theme.colors.onSurfaceVariant, fontWeight: 'bold' }}
+                                    style={{
+                                        backgroundColor: theme.colors.surfaceVariant,
+                                        height: isAndroid ? 30 : 30,
+                                        marginBottom: 4,
+                                        justifyContent: 'center'
+                                    }}
+                                    textStyle={{
+                                        fontSize: isAndroid ? 10 : 10,
+                                        color: theme.colors.onSurfaceVariant,
+                                        fontWeight: 'bold',
+                                        textAlign: 'center'
+                                    }}
                                     icon={application.analysisStatus === 'pending_skill_update' ? 'plus-circle-outline' : 'clock-outline'}
                                 >
                                     {application.analysisStatus === 'pending_skill_update'
@@ -104,8 +117,18 @@ export const ApplicationCardComponent = ({
                                 </Chip>
                             )}
                             <Chip
-                                style={{ backgroundColor: getATSScoreColor(application.atsScore) + '20', height: 28 }}
-                                textStyle={{ fontSize: 11, color: getATSScoreColor(application.atsScore), fontWeight: 'bold' }}
+                                style={{
+                                    backgroundColor: getATSScoreColor(application.atsScore) + '20',
+                                    height: isAndroid ? 30 : 28,
+                                    minWidth: isAndroid ? 55 : undefined,
+                                    justifyContent: 'center'
+                                }}
+                                textStyle={{
+                                    fontSize: isAndroid ? 11 : 11,
+                                    color: getATSScoreColor(application.atsScore),
+                                    fontWeight: 'bold',
+                                    textAlign: 'center'
+                                }}
                             >
                                 {application.atsScore}%
                             </Chip>
@@ -205,45 +228,49 @@ export const ApplicationCardComponent = ({
                                 icon="file-download-outline"
                                 onPress={() => !isReadOnly && onDownloadResume(application.id)}
                                 style={[styles.actionBtn, isReadOnly && styles.disabledBtn]}
-                                labelStyle={{ fontSize: 12 }}
+                                labelStyle={{ fontSize: isAndroid ? 11 : 12 }}
                                 disabled={isReadOnly}
+                                compact={isAndroid}
                             >
                                 Resume
                             </Button>
                             <Button
-                                mode={!isReadOnly && application.coverLetter?.status === 'completed' ? "contained-tonal" : "outlined"}
-                                icon={application.coverLetter?.status === 'completed' ? "text-box-check-outline" : "text-box-outline"}
+                                mode={!isReadOnly && (application.coverLetter?.status === 'completed' || !!application.coverLetter?.content) ? "contained-tonal" : "outlined"}
+                                icon={(application.coverLetter?.status === 'completed' || !!application.coverLetter?.content) ? "text-box-check-outline" : "text-box-outline"}
                                 onPress={() => !isReadOnly && application.coverLetter?.status !== 'generating' && onGenerateCoverLetter(application.id)}
                                 style={[styles.actionBtn, isReadOnly && styles.disabledBtn]}
-                                labelStyle={{ fontSize: 12 }}
-                                textColor={!isReadOnly && application.coverLetter?.status === 'completed' ? theme.colors.primary : undefined}
+                                labelStyle={{ fontSize: isAndroid ? 11 : 12 }}
+                                textColor={!isReadOnly && (application.coverLetter?.status === 'completed' || !!application.coverLetter?.content) ? theme.colors.primary : undefined}
                                 loading={!isReadOnly && application.coverLetter?.status === 'generating'}
                                 disabled={isReadOnly || application.coverLetter?.status === 'generating'}
+                                compact={isAndroid}
                             >
                                 {application.coverLetter?.status === 'generating' ? 'Generating...' :
-                                    application.coverLetter?.status === 'completed' ? 'View Cover Letter' : 'Cover Letter'}
+                                    (application.coverLetter?.status === 'completed' || application.coverLetter?.content) ? 'View Cover Letter' : 'Cover Letter'}
                             </Button>
                             <Button
-                                mode={!isReadOnly && application.prepGuide?.status === 'completed' ? "contained-tonal" : "outlined"}
-                                icon={application.prepGuide?.status === 'completed' && application.prepGuide.sections ? "book-open-variant" : "school-outline"}
+                                mode={!isReadOnly && (application.prepGuide?.status === 'completed' && application.prepGuide.sections) ? "contained-tonal" : "outlined"}
+                                icon={(application.prepGuide?.status === 'completed' && application.prepGuide.sections) ? "book-open-variant" : "school-outline"}
                                 onPress={() => !isReadOnly && onGeneratePrep(application.id)}
                                 style={[styles.actionBtn, isReadOnly && styles.disabledBtn]}
-                                labelStyle={{ fontSize: 12 }}
+                                labelStyle={{ fontSize: isAndroid ? 11 : 12 }}
                                 loading={!isReadOnly && application.prepGuide?.status === 'generating'}
                                 disabled={isReadOnly || application.prepGuide?.status === 'generating'}
+                                compact={isAndroid}
                             >
-                                {application.prepGuide?.status === 'completed' && application.prepGuide.sections ? 'View Guide' : 'Prep Guide'}
+                                {application.prepGuide?.status === 'completed' && application.prepGuide.sections ? 'View Prep Guide' : 'Prep Guide'}
                             </Button>
                             <Button
                                 mode="text"
                                 icon="refresh"
                                 onPress={() => !isReadOnly && onRegeneratePrep(application.id)}
                                 style={[styles.actionBtn, isReadOnly && styles.disabledBtn]}
-                                labelStyle={{ fontSize: 11 }}
+                                labelStyle={{ fontSize: isAndroid ? 10 : 11 }}
                                 disabled={isReadOnly || application.prepGuide?.status !== 'completed' || !isResumeUpdated || (application.prepGuide?.status as any) === 'generating'}
                                 textColor={!isReadOnly && isResumeUpdated && application.prepGuide?.status === 'completed' ? theme.colors.primary : theme.colors.outline}
+                                compact={isAndroid}
                             >
-                                Re-Generate Prep Guide
+                                Re-Gen Prep Guide
                             </Button>
                         </View>
 
@@ -449,8 +476,8 @@ export const ApplicationCard = React.memo(ApplicationCardComponent, (prev, next)
 
 const styles = StyleSheet.create({
     card: {
-        marginBottom: 12,
-        marginHorizontal: 16,
+        marginBottom: isAndroid ? 8 : 12,
+        marginHorizontal: isAndroid ? 12 : 16,
         elevation: 2
     },
     header: {
@@ -476,8 +503,8 @@ const styles = StyleSheet.create({
         opacity: 0.5,
     },
     actions: {
-        paddingHorizontal: 8,
-        paddingBottom: 8
+        paddingHorizontal: isAndroid ? 4 : 8,
+        paddingBottom: isAndroid ? 4 : 8
     },
     actionGrid: {
         flexDirection: 'row',

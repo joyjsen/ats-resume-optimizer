@@ -4,6 +4,7 @@ import Stripe from "stripe";
 import { defineSecret } from "firebase-functions/params";
 
 admin.initializeApp();
+admin.firestore().settings({ ignoreUndefinedProperties: true });
 
 import { stripeSecretKey } from "./secrets";
 

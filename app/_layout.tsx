@@ -1,9 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react'; // Root reload
-import { Alert, Platform, View } from 'react-native';
+import { Alert, Platform, View, Text as RNText } from 'react-native';
 import { useRouter, useSegments, Stack } from 'expo-router';
 import { PaperProvider, Avatar, Text } from 'react-native-paper';
 import { authService, UserInactiveError } from '../src/services/firebase/authService';
 import { userService } from '../src/services/firebase/userService';
+import { notificationService } from '../src/services/firebase/notificationService';
 import { useProfileStore } from '../src/store/profileStore';
 import { TaskQueueProvider } from '../src/context/TaskQueueContext';
 import { UserHeader } from '../src/components/layout/UserHeader';
@@ -15,15 +16,18 @@ import { useResumeStore } from '../src/store/resumeStore';
 import { useShareIntentHandler } from '../src/hooks/useShareIntentHandler';
 import { auth } from '../src/services/firebase/config';
 import { ThemeProvider, useAppTheme } from '../src/context/ThemeContext';
+import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 
 export default function RootLayout() {
     return (
         <ShareIntentProvider options={{ scheme: "riresume" }}>
-            <ThemeProvider>
-                <StripeProviderWrapper>
-                    <RootLayoutContent />
-                </StripeProviderWrapper>
-            </ThemeProvider>
+            <SafeAreaProvider>
+                <ThemeProvider>
+                    <StripeProviderWrapper>
+                        <RootLayoutContent />
+                    </StripeProviderWrapper>
+                </ThemeProvider>
+            </SafeAreaProvider>
         </ShareIntentProvider>
     );
 }
@@ -57,6 +61,23 @@ function RootLayoutContent() {
             unsubscribe();
         };
     }, []);
+
+    // Notification initialization
+    useEffect(() => {
+        notificationService.initHandler();
+    }, []);
+
+    // Notification registration and listeners
+    useEffect(() => {
+        if (userProfile && isInitialized) {
+            const cleanupListeners = notificationService.setupNotificationListeners();
+            notificationService.registerForPushNotificationsAsync().catch(console.error);
+
+            return () => {
+                cleanupListeners();
+            };
+        }
+    }, [userProfile, isInitialized]);
 
     // Global Share Intent handling
     useEffect(() => {
@@ -139,6 +160,16 @@ function RootLayoutContent() {
         headerTitleStyle: { color: theme.colors.onSurface },
     };
 
+    // Override Text default props on native platforms to prevent font scaling issues
+    if (Platform.OS !== 'web') {
+        const TextComponent = RNText as any;
+        if (TextComponent.defaultProps) {
+            TextComponent.defaultProps.maxFontSizeMultiplier = 1.3;
+        } else {
+            TextComponent.defaultProps = { maxFontSizeMultiplier: 1.3 };
+        }
+    }
+
     const publicRoutes = ['settings/terms', 'settings/privacy'];
     const isPublicRoute = publicRoutes.some(route => segments.join('/').includes(route));
 
@@ -168,13 +199,23 @@ function RootLayoutContent() {
         </Stack>
     );
 
+    const isTabRoute = segments[0] === '(tabs)';
+
     return (
         <PaperProvider theme={theme}>
             <TaskQueueProvider>
                 {Platform.OS === 'web' && userProfile ? (
                     <WebAppLayout>{appContent}</WebAppLayout>
                 ) : (
-                    appContent
+                    <View style={{ flex: 1 }}>
+                        {isTabRoute ? (
+                            appContent
+                        ) : (
+                            <SafeAreaView style={{ flex: 1 }} edges={['bottom']}>
+                                {appContent}
+                            </SafeAreaView>
+                        )}
+                    </View>
                 )}
             </TaskQueueProvider>
         </PaperProvider>

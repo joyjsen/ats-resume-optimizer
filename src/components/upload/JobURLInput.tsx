@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, StyleSheet } from 'react-native';
+import { View, StyleSheet, Platform } from 'react-native';
 import { TextInput, Text, SegmentedButtons } from 'react-native-paper';
 
 interface Props {
@@ -13,6 +13,8 @@ interface Props {
     isExtracting?: boolean;
 }
 
+const isAndroid = Platform.OS === 'android';
+
 export const JobURLInput = ({ urlValue, textValue, mode, onModeChange, onUrlChange, onTextChange, onExtract, isExtracting }: Props) => {
     return (
         <View style={styles.container}>
@@ -24,6 +26,7 @@ export const JobURLInput = ({ urlValue, textValue, mode, onModeChange, onUrlChan
                     { value: 'text', label: 'Job Details' },
                 ]}
                 style={styles.toggle}
+                density={isAndroid ? 'medium' : 'regular'}
             />
 
             {mode === 'url' ? (
@@ -35,6 +38,7 @@ export const JobURLInput = ({ urlValue, textValue, mode, onModeChange, onUrlChan
                     onChangeText={onUrlChange}
                     autoCapitalize="none"
                     keyboardType="url"
+                    dense={isAndroid}
                     right={
                         urlValue ? (
                             <TextInput.Icon
@@ -59,15 +63,16 @@ export const JobURLInput = ({ urlValue, textValue, mode, onModeChange, onUrlChan
 
 const styles = StyleSheet.create({
     container: {
-        gap: 12,
+        gap: isAndroid ? 8 : 12,
     },
     toggle: {
-        marginBottom: 8,
+        marginBottom: isAndroid ? 4 : 8,
     },
     textArea: {
-        minHeight: 120,
+        minHeight: isAndroid ? 100 : 120,
     },
     helper: {
         opacity: 0.6,
     },
 });
+

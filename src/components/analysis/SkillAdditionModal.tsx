@@ -104,7 +104,24 @@ export const SkillAdditionModal = ({
         if (!skillMatch) return null;
 
         return (
-            <ScrollView style={{ backgroundColor: theme.colors.elevation.level1, padding: 12, borderRadius: 8, marginBottom: 16, maxHeight: 200 }}>
+            <ScrollView style={{ backgroundColor: theme.colors.elevation.level1, padding: 12, borderRadius: 8, marginBottom: 16, maxHeight: 250 }}>
+                {/* Stats Header - High Visibility */}
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 16, paddingBottom: 8, borderBottomWidth: 1, borderBottomColor: theme.colors.outlineVariant }}>
+                    <View>
+                        <Text variant="labelSmall" style={{ color: theme.colors.onSurfaceVariant, textTransform: 'uppercase', fontSize: 10 }}>Importance</Text>
+                        <Text variant="titleSmall" style={{
+                            fontWeight: 'bold',
+                            color: skillMatch.importance === 'critical' ? theme.colors.error : (skillMatch.importance === 'high' ? '#E65100' : theme.colors.primary)
+                        }}>
+                            {skillMatch.importance.toUpperCase()}
+                        </Text>
+                    </View>
+                    <View style={{ alignItems: 'flex-end' }}>
+                        <Text variant="labelSmall" style={{ color: theme.colors.onSurfaceVariant, textTransform: 'uppercase', fontSize: 10 }}>Match Confidence</Text>
+                        <Text variant="titleSmall" style={{ fontWeight: 'bold', color: theme.colors.secondary }}>{skillMatch.confidence}%</Text>
+                    </View>
+                </View>
+
                 {skillMatch.evidence && (
                     <View style={{ marginBottom: 12 }}>
                         <Text variant="labelMedium" style={{ color: theme.colors.primary, fontWeight: 'bold', marginBottom: 4 }}>Evidence from Resume:</Text>
@@ -117,28 +134,28 @@ export const SkillAdditionModal = ({
                 {skillMatch.transferability && (
                     <View style={{ marginBottom: 12 }}>
                         <Text variant="labelMedium" style={{ color: '#FF9800', fontWeight: 'bold', marginBottom: 4 }}>Transferable From:</Text>
-                        <Text variant="bodySmall" style={{ color: theme.colors.onSurface, marginBottom: 4 }}>
-                            <Text style={{ fontWeight: 'bold' }}>{skillMatch.candidateSkill}</Text>
-                        </Text>
-                        <Text variant="bodySmall" style={{ fontStyle: 'italic', color: '#666' }}>
+                        <View style={{ backgroundColor: theme.colors.surfaceVariant, padding: 6, borderRadius: 4, marginBottom: 4 }}>
+                            <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant, fontWeight: 'bold' }}>
+                                {skillMatch.candidateSkill}
+                            </Text>
+                        </View>
+                        <Text variant="bodySmall" style={{ fontStyle: 'italic', color: theme.colors.onSurfaceVariant }}>
                             {skillMatch.transferability}
                         </Text>
                     </View>
                 )}
 
                 {skillMatch.recommendation && (
-                    <View style={{ marginBottom: 12 }}>
+                    <View style={{ marginBottom: 16 }}>
                         <Text variant="labelMedium" style={{ color: theme.colors.secondary, fontWeight: 'bold', marginBottom: 4 }}>Actionable Recommendation:</Text>
-                        <Text variant="bodySmall" style={{ color: theme.colors.onSurface }}>
-                            {skillMatch.recommendation}
-                        </Text>
+                        <View style={{ borderLeftWidth: 3, borderLeftColor: theme.colors.secondary, paddingLeft: 8 }}>
+                            <Text variant="bodySmall" style={{ color: theme.colors.onSurface }}>
+                                {skillMatch.recommendation}
+                            </Text>
+                        </View>
                     </View>
                 )}
-
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 4, borderTopWidth: 1, borderTopColor: theme.colors.outlineVariant, paddingTop: 8 }}>
-                    <Text variant="labelSmall" style={{ color: '#666' }}>Importance: {skillMatch.importance.toUpperCase()}</Text>
-                    <Text variant="labelSmall" style={{ color: '#666' }}>Confidence: {skillMatch.confidence}%</Text>
-                </View>
+                <View style={{ height: 16 }} />
             </ScrollView>
         );
     };

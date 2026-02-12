@@ -7,11 +7,12 @@ import { IconButton } from 'react-native-paper';
 import { FontAwesome6 } from '@expo/vector-icons';
 import { useProfileStore } from '../src/store/profileStore';
 import { useResumeStore } from '../src/store/resumeStore';
+import { horizontalScale, verticalScale, moderateScale, scaleFont } from '../src/utils/responsive';
 
 const TruthSocialIcon = ({ color }: { color: string }) => {
     const grayColor = '#A0A0A0'; // Matching the gray from the image
     return (
-        <View style={{ width: 18, height: 18 }}>
+        <View style={{ width: moderateScale(18), height: moderateScale(18) }}>
             {/* Top Left Square */}
             <View style={{
                 position: 'absolute',
@@ -164,22 +165,22 @@ export default function LandingPage() {
 
                             <View style={styles.socialContainer}>
                                 <TouchableOpacity onPress={() => { }} style={styles.socialIcon}>
-                                    <FontAwesome6 name="facebook" size={18} color={theme.colors.onSurface} />
+                                    <FontAwesome6 name="facebook" size={moderateScale(18)} color={theme.colors.onSurface} />
                                 </TouchableOpacity>
                                 <TouchableOpacity onPress={() => { }} style={styles.socialIcon}>
-                                    <FontAwesome6 name="instagram" size={18} color={theme.colors.onSurface} />
+                                    <FontAwesome6 name="instagram" size={moderateScale(18)} color={theme.colors.onSurface} />
                                 </TouchableOpacity>
                                 <TouchableOpacity onPress={() => { }} style={styles.socialIcon}>
-                                    <FontAwesome6 name="x-twitter" size={18} color={theme.colors.onSurface} />
+                                    <FontAwesome6 name="x-twitter" size={moderateScale(18)} color={theme.colors.onSurface} />
                                 </TouchableOpacity>
                                 <TouchableOpacity onPress={() => { }} style={styles.socialIcon}>
-                                    <FontAwesome6 name="threads" size={18} color={theme.colors.onSurface} />
+                                    <FontAwesome6 name="threads" size={moderateScale(18)} color={theme.colors.onSurface} />
                                 </TouchableOpacity>
                                 <TouchableOpacity onPress={() => { }} style={styles.socialIcon}>
-                                    <FontAwesome6 name="tiktok" size={18} color={theme.colors.onSurface} />
+                                    <FontAwesome6 name="tiktok" size={moderateScale(18)} color={theme.colors.onSurface} />
                                 </TouchableOpacity>
                                 <TouchableOpacity onPress={() => { }} style={styles.socialIcon}>
-                                    <FontAwesome6 name="linkedin" size={18} color={theme.colors.onSurface} />
+                                    <FontAwesome6 name="linkedin" size={moderateScale(18)} color={theme.colors.onSurface} />
                                 </TouchableOpacity>
                                 <TouchableOpacity onPress={() => { }} style={styles.socialIcon}>
                                     <TruthSocialIcon color={theme.colors.onSurface} />
@@ -206,43 +207,46 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
-        paddingHorizontal: 16,
+        paddingHorizontal: horizontalScale(16),
     },
     logoContainer: {
         flexDirection: 'row',
         alignItems: 'center',
     },
     logo: {
-        width: 32,
-        height: 32,
-        marginRight: 8,
+        width: moderateScale(32),
+        height: moderateScale(32),
+        marginRight: horizontalScale(8),
     },
     logoText: {
         fontWeight: 'bold',
+        fontSize: scaleFont(20),
     },
     scrollContent: {
-        padding: 24,
-        paddingTop: 40,
-        paddingBottom: 60,
+        padding: horizontalScale(24),
+        paddingTop: verticalScale(40),
+        paddingBottom: verticalScale(60),
     },
     heroSection: {
-        marginBottom: 40,
+        marginBottom: verticalScale(40),
     },
     heroTitle: {
         fontWeight: 'bold',
-        marginBottom: 16,
+        fontSize: scaleFont(32),
+        marginBottom: verticalScale(16),
         textAlign: 'center',
-        lineHeight: 44,
+        lineHeight: scaleFont(44),
     },
     heroSubtext: {
         textAlign: 'center',
+        fontSize: scaleFont(16),
         opacity: 0.8,
-        lineHeight: 24,
+        lineHeight: scaleFont(24),
     },
     inputCard: {
-        padding: 24,
-        borderRadius: 16,
-        gap: 16,
+        padding: horizontalScale(24),
+        borderRadius: moderateScale(16),
+        gap: verticalScale(16),
         elevation: 2,
         shadowColor: '#000',
         shadowOffset: { width: 0, height: 2 },
@@ -252,32 +256,34 @@ const styles = StyleSheet.create({
     inputLabel: {
         textAlign: 'center',
         fontWeight: '600',
+        fontSize: scaleFont(16),
     },
     textArea: {
-        minHeight: 80,
+        minHeight: verticalScale(80),
     },
     startButton: {
-        marginTop: 8,
-        borderRadius: 8,
+        marginTop: verticalScale(8),
+        borderRadius: moderateScale(8),
     },
     startButtonContent: {
-        height: 48,
+        height: verticalScale(48),
     },
     footer: {
-        marginTop: 48,
+        marginTop: verticalScale(48),
         alignItems: 'center',
-        gap: 16,
+        gap: verticalScale(16),
     },
     footerLinks: {
         flexDirection: 'row',
         flexWrap: 'wrap',
         justifyContent: 'center',
         alignItems: 'center',
-        gap: 8,
+        gap: horizontalScale(8),
     },
     footerLink: {
         opacity: 0.6,
         textDecorationLine: 'underline',
+        fontSize: scaleFont(12),
     },
     footerDivider: {
         opacity: 0.3,
@@ -287,16 +293,17 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
         alignItems: 'center',
         opacity: 0.7,
-        gap: 4,
+        gap: horizontalScale(4),
     },
     socialIcon: {
-        padding: 10,
+        padding: moderateScale(10),
         justifyContent: 'center',
         alignItems: 'center',
     },
     copyright: {
         opacity: 0.5,
         textAlign: 'center',
-        marginTop: 8,
+        fontSize: scaleFont(10),
+        marginTop: verticalScale(8),
     },
 });

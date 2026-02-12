@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { View, StyleSheet, FlatList, RefreshControl, Alert, ScrollView, Keyboard } from 'react-native';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { View, StyleSheet, FlatList, RefreshControl, Alert, ScrollView, Keyboard, Platform, AppState } from 'react-native';
 import { Text, Button, Searchbar, SegmentedButtons, FAB, useTheme, ActivityIndicator, Portal, Dialog, TextInput, ProgressBar, Card, Chip, Divider, IconButton } from 'react-native-paper';
 import { useRouter, useNavigation } from 'expo-router';
 import { applicationService } from '../../src/services/firebase/applicationService';
@@ -23,6 +23,8 @@ import { useTokenCheck } from '../../src/hooks/useTokenCheck';
 import { migrationService } from '../../src/services/firebase/migrationService';
 import { CoverLetterDialog } from '../../src/components/applications/CoverLetterDialog';
 import { PrepGuideDialogs } from '../../src/components/applications/PrepGuideDialogs';
+
+const isAndroid = Platform.OS === 'android';
 
 export default function ApplicationsScreen() {
     const router = useRouter();
@@ -182,6 +184,12 @@ export default function ApplicationsScreen() {
         setLoading(true);
         // Subscribe to applications
         const unsubApps = applicationService.subscribeToApplications((apps) => {
+            // Diagnostic: log cover letter status changes
+            apps.forEach(app => {
+                if (app.coverLetter) {
+                    console.log(`[Subscription] ${app.company} CL status: ${app.coverLetter.status}, content: ${!!app.coverLetter.content}`);
+                }
+            });
             setApplications(apps);
             setLoading(false);
         });
@@ -196,6 +204,21 @@ export default function ApplicationsScreen() {
             unsubAnalyses();
         };
     }, [refreshTrigger]);
+
+    // Force refresh when app returns to foreground
+    // This handles cases where onSnapshot misses updates while backgrounded
+    useEffect(() => {
+        const appStateSubscription = AppState.addEventListener('change', (nextAppState) => {
+            if (nextAppState === 'active') {
+                console.log('[Applications] App foregrounded - triggering refresh');
+                setRefreshTrigger(prev => prev + 1);
+            }
+        });
+
+        return () => {
+            appStateSubscription.remove();
+        };
+    }, []);
 
     // Cleanup abort controllers on unmount
     useEffect(() => {
@@ -305,9 +328,42 @@ export default function ApplicationsScreen() {
             const app = applications.find(a => a.id === id);
             if (!app) return;
 
-            // If cover letter exists and is completed with content, view it
-            if (app.coverLetter?.status === 'completed' && app.coverLetter?.content) {
+            // If cover letter exists with content, view it
+            if (app.coverLetter?.content && app.coverLetter.content.length > 0) {
                 setViewingCoverLetterApp(app);
+                return;
+            }
+
+            // Detect stuck "generating" state (over 60 seconds)
+            if (app.coverLetter?.status === 'generating') {
+                const startedAt = app.coverLetter.startedAt;
+                const isStuck = startedAt && (Date.now() - new Date(startedAt).getTime() > 60000);
+
+                if (isStuck) {
+                    Alert.alert(
+                        "Generation may have stalled",
+                        "The cover letter has been generating for a while. Would you like to try again?",
+                        [
+                            { text: "Wait", style: "cancel" },
+                            { text: "Retry", onPress: () => generateLetter(app) }
+                        ]
+                    );
+                } else {
+                    Alert.alert("Please wait", "Your cover letter is still being generated. You'll be notified when it's ready.");
+                }
+                return;
+            }
+
+            // Handle failed status - offer to retry
+            if (app.coverLetter?.status === 'failed') {
+                Alert.alert(
+                    "Generation Failed",
+                    "The cover letter generation failed. Would you like to try again?",
+                    [
+                        { text: "Cancel", style: "cancel" },
+                        { text: "Retry", onPress: () => generateLetter(app) }
+                    ]
+                );
                 return;
             }
 
@@ -398,6 +454,25 @@ export default function ApplicationsScreen() {
                 return;
             }
 
+            // Optimistic Update: Immediately set status to generating locally
+            // This ensures instant feedback even if network/backend is slow to respond
+            console.log("[CoverLetter] Applying optimistic update: generating");
+            setApplications(prev => prev.map(a => {
+                if (a.id === application.id) {
+                    return {
+                        ...a,
+                        coverLetter: {
+                            ...a.coverLetter,
+                            status: 'generating',
+                            content: '', // Clear old content if any, or keep it? decided to clear to show regeneration
+                            generatedAt: new Date(),
+                            startedAt: new Date()
+                        }
+                    };
+                }
+                return a;
+            }));
+
             // Use fire-and-forget pattern: create a background task
             // The Cloud Function processes it automatically and updates Firestore
             // We listen via Firestore for completion - works even when app is backgrounded
@@ -411,34 +486,6 @@ export default function ApplicationsScreen() {
                     jobTitle: application.jobTitle,
                     company: application.company,
                     jobDescription: jobDescription
-                },
-                // onComplete - called when Firestore updates with completion
-                async (bgTask: BackgroundTask) => {
-                    console.log("[CoverLetter] Background task completed");
-
-                    // Log activity (tokens already deducted by Cloud Function)
-                    await activityService.logActivity({
-                        type: 'cover_letter_generation',
-                        description: `Generated Cover Letter for ${application.company}`,
-                        resourceId: application.id,
-                        resourceName: application.company,
-                        aiProvider: 'perplexity-sonar-pro',
-                        platform: 'ios',
-                        skipTokenDeduction: true,
-                        tokensUsed: 15
-                    });
-
-                    // Note: Push notification is now handled by Cloud Function only
-                    // to prevent duplicates. No client-side notification calls needed.
-
-                    // Local notifications removed to prevent duplicates (backend handles this)
-
-                    Alert.alert("Success", "Cover Letter generated successfully!");
-                },
-                // onError
-                (bgTask: BackgroundTask) => {
-                    console.error("[CoverLetter] Background task failed:", bgTask.error);
-                    Alert.alert("Error", bgTask.error || "Failed to generate cover letter.");
                 }
             );
 
@@ -450,6 +497,16 @@ export default function ApplicationsScreen() {
 
         } catch (error) {
             console.error("Cover Letter generation failed:", error);
+            // Revert optimistic update on failure (optional, but good practice)
+            setApplications(prev => prev.map(a => {
+                if (a.id === application.id && a.coverLetter?.status === 'generating') {
+                    // Revert to undefined or previous state if possible.
+                    // For now, just removing the generating status so user can try again.
+                    const { coverLetter, ...rest } = a;
+                    return rest;
+                }
+                return a;
+            }));
             Alert.alert("Error", "Failed to start cover letter generation. Please try again.");
         } finally {
             setLoading(false);
@@ -638,23 +695,64 @@ export default function ApplicationsScreen() {
     };
 
     const handleDownloadPrep = async () => {
-        if (!viewingPrepApp?.prepGuide?.downloadUrl && !viewingPrepApp?.prepGuide?.sections) return;
+        console.log('[PrepGuide] Download requested. App:', viewingPrepApp?.company, 'ID:', viewingPrepApp?.id);
+        console.log('[PrepGuide] Has sections:', !!viewingPrepApp?.prepGuide?.sections);
+        console.log('[PrepGuide] Section keys:', viewingPrepApp?.prepGuide?.sections ? Object.keys(viewingPrepApp.prepGuide.sections) : 'none');
+
+        if (!viewingPrepApp?.prepGuide) {
+            Alert.alert("Error", "No prep guide data available.");
+            return;
+        }
+
+        let sections = viewingPrepApp.prepGuide.sections;
+
+        // Fallback: fetch sections directly from Firestore if missing from local state
+        if (!sections || Object.keys(sections).length === 0) {
+            console.log('[PrepGuide] No sections in local state, fetching from Firestore...');
+            try {
+                setLoading(true);
+                const freshApp = await applicationService.getApplicationById(viewingPrepApp.id);
+                if (freshApp?.prepGuide?.sections && Object.keys(freshApp.prepGuide.sections).length > 0) {
+                    sections = freshApp.prepGuide.sections;
+                    console.log('[PrepGuide] Fetched sections from Firestore:', Object.keys(sections!));
+                } else {
+                    console.log('[PrepGuide] No sections found in Firestore either.');
+                    Alert.alert(
+                        "Sections Not Available",
+                        "The prep guide sections are missing. This may happen if the guide was generated with an older version. Would you like to regenerate it?",
+                        [
+                            { text: "Cancel", style: "cancel" },
+                            {
+                                text: "Regenerate",
+                                onPress: () => {
+                                    setViewDialogVisible(false);
+                                    runBackgroundGeneration(viewingPrepApp.id);
+                                }
+                            }
+                        ]
+                    );
+                    setLoading(false);
+                    return;
+                }
+            } catch (err) {
+                console.error('[PrepGuide] Firestore fallback fetch failed:', err);
+                Alert.alert("Error", "Could not retrieve prep guide data.");
+                setLoading(false);
+                return;
+            }
+        }
 
         try {
-            // If strictly just view/download, we should rely on the PDF we generated.
-            // If downloadUrl is local file uri and exists, share it.
-            // For robustness, if we have sections, regenerate PDF to be sure (cheap operation vs network).
-            if (viewingPrepApp.prepGuide.sections) {
-                await prepGuidePdfGenerator.generateAndShare(viewingPrepApp.prepGuide.sections as any, {
-                    companyName: viewingPrepApp.company,
-                    jobTitle: viewingPrepApp.jobTitle
-                });
-            } else if (viewingPrepApp.prepGuide.downloadUrl) {
-                // Try sharing existing url (if we trust it exists)
-                // await Sharing.shareAsync(viewingPrepApp.prepGuide.downloadUrl);
-            }
-        } catch (error) {
-            Alert.alert("Error", "Failed to download/share PDF.");
+            setLoading(true);
+            await prepGuidePdfGenerator.generateAndShare(sections as any, {
+                companyName: viewingPrepApp.company,
+                jobTitle: viewingPrepApp.jobTitle
+            });
+        } catch (error: any) {
+            console.error('[PrepGuide] PDF download failed:', error);
+            Alert.alert("Error", `Failed to download PDF: ${error.message || 'Unknown error'}`);
+        } finally {
+            setLoading(false);
         }
     };
 
@@ -815,7 +913,7 @@ export default function ApplicationsScreen() {
         <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
             {/* Header Content */}
             <View style={styles.header}>
-                <Text variant="headlineMedium" style={{ fontWeight: 'bold', marginBottom: 8 }}>My Applications</Text>
+                <Text variant={isAndroid ? "headlineSmall" : "headlineMedium"} style={{ fontWeight: 'bold', marginBottom: 8 }}>My Applications</Text>
 
                 <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
                     <SegmentedButtons
@@ -833,7 +931,7 @@ export default function ApplicationsScreen() {
                     placeholder="Search roles or companies"
                     onChangeText={setSearchQuery}
                     value={searchQuery}
-                    style={{ marginBottom: 16, backgroundColor: theme.colors.elevation.level1 }}
+                    style={{ marginBottom: isAndroid ? 8 : 16, backgroundColor: theme.colors.elevation.level1 }}
                     elevation={0}
                 />
 

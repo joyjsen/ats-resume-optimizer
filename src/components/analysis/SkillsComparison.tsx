@@ -2,6 +2,7 @@ import React from 'react';
 import { View, StyleSheet } from 'react-native';
 import { Card, Text, Chip, useTheme } from 'react-native-paper';
 import { MatchAnalysis, SkillMatch } from '../../types/analysis.types';
+import { horizontalScale, verticalScale, moderateScale, scaleFont } from '../../utils/responsive';
 
 interface Props {
     matchAnalysis: MatchAnalysis;
@@ -139,14 +140,11 @@ export const SkillsComparison = ({ matchAnalysis, originalMatchAnalysis, changes
                 </View>
 
                 <View style={styles.section}>
-                    <Text variant="bodyMedium" style={{ color: theme.colors.error }}>Missing Critical Skills</Text>
+                    <Text variant="bodyMedium" style={{ color: theme.colors.error }}>Missing Skills & Gaps</Text>
                     <Text variant="labelSmall" style={{ color: '#666', marginBottom: 4 }}>Tap to add to resume</Text>
                     <View style={styles.chipRow}>
-                        {displayedMissing
-                            .filter(s => s.importance === 'critical' || s.importance === 'high')
-                            .map((s, idx) => renderSkillChip(s, theme.colors.error, true, false, idx))}
-                        {displayedMissing
-                            .filter(s => s.importance === 'critical' || s.importance === 'high').length === 0 && <Text variant="bodySmall">None</Text>}
+                        {displayedMissing.map((s, idx) => renderSkillChip(s, theme.colors.error, true, false, idx))}
+                        {displayedMissing.length === 0 && <Text variant="bodySmall">None</Text>}
                     </View>
                 </View>
             </Card.Content>
@@ -156,21 +154,24 @@ export const SkillsComparison = ({ matchAnalysis, originalMatchAnalysis, changes
 
 const styles = StyleSheet.create({
     card: {
-        marginBottom: 16,
+        marginBottom: verticalScale(16),
+        borderRadius: moderateScale(12),
     },
     title: {
-        marginBottom: 16,
+        fontSize: scaleFont(16),
+        marginBottom: verticalScale(16),
     },
     section: {
-        marginBottom: 16,
+        marginBottom: verticalScale(16),
     },
     chipRow: {
         flexDirection: 'row',
         flexWrap: 'wrap',
-        gap: 8,
-        marginTop: 4,
+        gap: horizontalScale(8),
+        marginTop: verticalScale(4),
     },
     chip: {
-        marginVertical: 4,
+        marginVertical: verticalScale(4),
+        height: verticalScale(32),
     },
 });

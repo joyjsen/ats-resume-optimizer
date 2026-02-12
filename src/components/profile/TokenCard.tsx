@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, StyleSheet } from 'react-native';
+import { View, StyleSheet, Platform } from 'react-native';
 import { Card, Text, Button, IconButton, useTheme } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 
@@ -11,6 +11,8 @@ interface TokenCardProps {
     onViewAnalytics: () => void;
 }
 
+const isAndroid = Platform.OS === 'android';
+
 export const TokenCard: React.FC<TokenCardProps> = ({ balance, totalPurchased, totalUsed, onPurchase, onViewAnalytics }) => {
     const theme = useTheme();
 
@@ -19,9 +21,9 @@ export const TokenCard: React.FC<TokenCardProps> = ({ balance, totalPurchased, t
             <Card.Content>
                 <View style={styles.header}>
                     <View style={styles.balanceContainer}>
-                        <MaterialCommunityIcons name="database" size={24} color="#FFD700" />
-                        <Text variant="headlineMedium" style={styles.balanceText}>{balance}</Text>
-                        <Text variant="bodySmall" style={[styles.label, { color: theme.colors.onSurfaceVariant }]}>Tokens Available</Text>
+                        <MaterialCommunityIcons name="database" size={isAndroid ? 20 : 24} color="#FFD700" />
+                        <Text variant={isAndroid ? "headlineSmall" : "headlineMedium"} style={styles.balanceText}>{balance}</Text>
+                        <Text variant="bodySmall" style={[styles.label, { color: theme.colors.onSurfaceVariant }, isAndroid && { fontSize: 10 }]}>Tokens Available</Text>
                     </View>
                     <IconButton icon="chevron-right" onPress={onViewAnalytics} />
                 </View>
@@ -32,6 +34,7 @@ export const TokenCard: React.FC<TokenCardProps> = ({ balance, totalPurchased, t
                         onPress={onPurchase}
                         style={styles.button}
                         icon="plus-circle"
+                        compact={isAndroid}
                     >
                         Purchase Tokens
                     </Button>
@@ -53,7 +56,7 @@ export const TokenCard: React.FC<TokenCardProps> = ({ balance, totalPurchased, t
 
 const styles = StyleSheet.create({
     card: {
-        margin: 16,
+        margin: isAndroid ? 12 : 16,
         elevation: 4,
     },
     header: {

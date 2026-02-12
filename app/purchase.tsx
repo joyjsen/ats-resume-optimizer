@@ -84,15 +84,19 @@ export default function PurchaseScreen() {
                     <Card key={pkg.id} style={[styles.card, { backgroundColor: theme.colors.elevation.level1 }]}>
                         <Card.Content>
                             <View style={styles.cardHeader}>
-                                <View>
-                                    <Text variant="titleLarge" style={{ fontWeight: 'bold', color: theme.colors.onSurface }}>{pkg.name}</Text>
-                                    <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>{pkg.description}</Text>
-                                </View>
-                                {pkg.bonusPercent && (
-                                    <View style={[styles.bonusTag, { backgroundColor: theme.colors.primaryContainer }]}>
-                                        <Text variant="labelSmall" style={{ color: theme.colors.onPrimaryContainer }}>+{pkg.bonusPercent}% Bonus</Text>
+                                <View style={{ flex: 1 }}>
+                                    <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap' }}>
+                                        <Text variant="titleLarge" style={{ fontWeight: 'bold', color: theme.colors.onSurface, marginRight: 8 }}>{pkg.name}</Text>
+                                        {pkg.bonusPercent && (
+                                            <View style={[styles.bonusTag, { backgroundColor: theme.colors.primaryContainer }]}>
+                                                <Text variant="labelSmall" style={{ color: theme.colors.onPrimaryContainer }}>+{pkg.bonusPercent}% Bonus</Text>
+                                            </View>
+                                        )}
                                     </View>
-                                )}
+                                    <View style={{ marginTop: 4 }}>
+                                        <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>{pkg.description}</Text>
+                                    </View>
+                                </View>
                             </View>
 
                             <View style={styles.priceRow}>
@@ -155,7 +159,6 @@ const styles = StyleSheet.create({
     },
     cardHeader: {
         flexDirection: 'row',
-        justifyContent: 'space-between',
         alignItems: 'flex-start',
         marginBottom: 16,
     },

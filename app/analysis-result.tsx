@@ -59,6 +59,34 @@ export default function AnalysisResultScreen() {
     const [selectedSkillToAdd, setSelectedSkillToAdd] = React.useState<string | null>(null);
     const [selectedSkillMatch, setSelectedSkillMatch] = React.useState<SkillMatch | null>(null);
 
+    // Derived state: is there an active task for this analysis? (survives navigation)
+    const isActivelyProcessing = React.useMemo(() => {
+        if (!currentAnalysis?.id || activeTasks.length === 0) return false;
+        return activeTasks.some(t =>
+            (t.type === 'optimize_resume' || t.type === 'add_skill') &&
+            t.payload?.currentAnalysis?.id === currentAnalysis.id &&
+            (t.status === 'queued' || t.status === 'processing')
+        );
+    }, [currentAnalysis?.id, activeTasks]);
+
+    // Detect in-progress optimization task on mount/remount
+    // This prevents the button from resetting to active when navigating away and back
+    React.useEffect(() => {
+        if (!currentAnalysis?.id || activeTasks.length === 0) return;
+
+        const existingTask = activeTasks.find(t =>
+            (t.type === 'optimize_resume' || t.type === 'add_skill') &&
+            t.payload?.currentAnalysis?.id === currentAnalysis.id &&
+            (t.status === 'queued' || t.status === 'processing')
+        );
+
+        if (existingTask && !optimizing) {
+            console.log(`[AnalysisResult] Found in-progress task ${existingTask.id} on mount. Restoring optimizing state.`);
+            setOptimizing(true);
+            setCurrentTaskId(existingTask.id);
+        }
+    }, [currentAnalysis?.id, activeTasks]);
+
     // Keep ref updated for the listener
     React.useEffect(() => {
         analysisRef.current = currentAnalysis;
@@ -503,18 +531,20 @@ export default function AnalysisResultScreen() {
                             {matchAnalysis.experienceMatch && (
                                 <View style={{ marginTop: 16, backgroundColor: theme.colors.elevation.level3, padding: 12, borderRadius: 8 }}>
                                     <Text variant="labelMedium" style={{ fontWeight: 'bold', marginBottom: 8, color: theme.colors.primary }}>Experience Alignment</Text>
-                                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
-                                        <Text variant="bodySmall">Job Requirement:</Text>
-                                        <Text variant="bodySmall" style={{ fontWeight: 'bold' }}>{matchAnalysis.experienceMatch.requiredYears || 'Not specified'}</Text>
+                                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6, alignItems: 'center' }}>
+                                        <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>Job Requirement:</Text>
+                                        <Text variant="bodySmall" style={{ fontWeight: 'bold', color: theme.colors.onSurface }}>{matchAnalysis.experienceMatch.requiredYears || 'Not specified'}</Text>
                                     </View>
-                                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 }}>
-                                        <Text variant="bodySmall">Your Profile:</Text>
-                                        <Text variant="bodySmall" style={{ fontWeight: 'bold' }}>{matchAnalysis.experienceMatch.candidateYears || 'Calculated'}</Text>
+                                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10, alignItems: 'center' }}>
+                                        <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>Your Profile:</Text>
+                                        <Text variant="bodySmall" style={{ fontWeight: 'bold', color: theme.colors.onSurface }}>{matchAnalysis.experienceMatch.candidateYears || 'Calculated'}</Text>
                                     </View>
                                     {matchAnalysis.experienceMatch.seniorityAlignment && (
-                                        <Text variant="labelSmall" style={{ fontStyle: 'italic', color: '#666' }}>
-                                            💡 {matchAnalysis.experienceMatch.seniorityAlignment}
-                                        </Text>
+                                        <View style={{ marginTop: 4, paddingTop: 8, borderTopWidth: 1, borderTopColor: theme.colors.outlineVariant }}>
+                                            <Text variant="labelSmall" style={{ color: theme.colors.secondary, lineHeight: 16 }}>
+                                                💡 <Text style={{ fontWeight: 'bold' }}>Seniority Check:</Text> {matchAnalysis.experienceMatch.seniorityAlignment}
+                                            </Text>
+                                        </View>
                                     )}
                                 </View>
                             )}
@@ -551,7 +581,7 @@ export default function AnalysisResultScreen() {
                                         mode="contained"
                                         onPress={handleOptimize}
                                         style={{ marginTop: 16 }}
-                                        disabled={currentAnalysis.isLocked}
+                                        disabled={currentAnalysis.isLocked || optimizing}
                                     >
                                         {currentAnalysis.isLocked ? "Optimizer Locked" : "✨ Rewrite & Optimize Resume"}
                                     </Button>
@@ -567,84 +597,92 @@ export default function AnalysisResultScreen() {
                                     )}
                                 </>
                             ) : (
-                                <View style={{ marginTop: 16 }}>
-                                    <Text variant="bodySmall" style={{ marginBottom: 8, textAlign: 'center', color: theme.colors.primary }}>
-                                        {activeTasks.find(t => t.id === currentTaskId)?.stage || 'Optimizing...'}
-                                    </Text>
-                                    <ProgressBar
-                                        progress={(activeTasks.find(t => t.id === currentTaskId)?.progress || 0) / 100}
-                                        style={{ height: 8, borderRadius: 4 }}
-                                    />
-                                </View>
+                                <>
+                                    <Button
+                                        mode="contained"
+                                        disabled={true}
+                                        loading={true}
+                                        style={{ marginTop: 16 }}
+                                    >
+                                        Optimizing...
+                                    </Button>
+                                    <View style={{ marginTop: 8 }}>
+                                        <Text variant="bodySmall" style={{ textAlign: 'center', color: theme.colors.primary }}>
+                                            {activeTasks.find(t => t.id === currentTaskId)?.stage || 'Processing in background...'}
+                                        </Text>
+                                    </View>
+                                </>
                             )}
                         </Card.Content>
                     </Card>
                 )}
 
-                {optimizedResume && changes && (
-                    <>
-                        {changes && changes.length > 0 && (
-                            <Card style={styles.card}>
-                                <Card.Content>
-                                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                                        <Text variant="titleMedium">What We Optimized</Text>
-                                        <Text variant="bodySmall" style={{ color: '#666' }}>
-                                            {(currentAnalysis as any).updatedAt
-                                                ? new Date((currentAnalysis as any).updatedAt).toLocaleString('en-US', {
-                                                    month: 'short',
-                                                    day: 'numeric',
-                                                    hour: 'numeric',
-                                                    minute: '2-digit',
-                                                    hour12: true
-                                                })
-                                                : ''}
-                                        </Text>
-                                    </View>
-                                    <Text variant="bodyMedium" style={{ marginBottom: 16 }}>
-                                        We've enhanced your resume with {changes.length} improvement{changes.length !== 1 ? 's' : ''} to boost your ATS score to {atsScore}%.
-                                    </Text>
-
-                                    {changes.map((change, index) => (
-                                        <View key={index} style={{ marginBottom: 12, paddingLeft: 8, borderLeftWidth: 2, borderLeftColor: '#4CAF50' }}>
-                                            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                                                <Text variant="labelLarge" style={{ color: '#2E7D32' }}>
-                                                    {change.type
-                                                        ? change.type
-                                                            .replace(/_/g, ' ')
-                                                            .replace(/([a-z])([A-Z])/g, '$1 $2')
-                                                            .replace(/([A-Z])([A-Z][a-z])/g, '$1 $2')
-                                                            // Handle smashed caps for common keywords
-                                                            .replace(/(REWRITE|ADDITION|IMPROVEMENT|REMOVAL|UPDATE|INTEGRATION)$/i, ' $1')
-                                                            .trim()
-                                                            .toUpperCase()
-                                                        : 'CHANGE'}
-                                                </Text>
-                                                {change.section && (
-                                                    <Text variant="labelSmall" style={{ color: '#666', backgroundColor: '#f0f0f0', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
-                                                        {change.section}
-                                                    </Text>
-                                                )}
-                                            </View>
-                                            <Text variant="bodySmall">{change.reason}</Text>
+                {
+                    optimizedResume && changes && (
+                        <>
+                            {changes && changes.length > 0 && (
+                                <Card style={styles.card}>
+                                    <Card.Content>
+                                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                                            <Text variant="titleMedium">What We Optimized</Text>
+                                            <Text variant="bodySmall" style={{ color: '#666' }}>
+                                                {(currentAnalysis as any).updatedAt
+                                                    ? new Date((currentAnalysis as any).updatedAt).toLocaleString('en-US', {
+                                                        month: 'short',
+                                                        day: 'numeric',
+                                                        hour: 'numeric',
+                                                        minute: '2-digit',
+                                                        hour12: true
+                                                    })
+                                                    : ''}
+                                            </Text>
                                         </View>
-                                    ))}
-                                </Card.Content>
-                            </Card>
-                        )}
+                                        <Text variant="bodyMedium" style={{ marginBottom: 16 }}>
+                                            We've enhanced your resume with {changes.length} improvement{changes.length !== 1 ? 's' : ''} to boost your ATS score to {atsScore}%.
+                                        </Text>
 
-                        {/* Comparison Baseline Logic:
+                                        {changes.map((change, index) => (
+                                            <View key={index} style={{ marginBottom: 12, paddingLeft: 8, borderLeftWidth: 2, borderLeftColor: '#4CAF50' }}>
+                                                <View>
+                                                    <Text variant="labelLarge" style={{ color: '#2E7D32' }}>
+                                                        {change.type
+                                                            ? change.type
+                                                                .replace(/_/g, ' ')
+                                                                .replace(/([a-z])([A-Z])/g, '$1 $2')
+                                                                .replace(/([A-Z])([A-Z][a-z])/g, '$1 $2')
+                                                                // Handle smashed caps for common keywords
+                                                                .replace(/(REWRITE|ADDITION|IMPROVEMENT|REMOVAL|UPDATE|INTEGRATION)$/i, ' $1')
+                                                                .trim()
+                                                                .toUpperCase()
+                                                            : 'CHANGE'}
+                                                    </Text>
+                                                    {change.section && (
+                                                        <Text variant="labelSmall" style={{ color: '#666', backgroundColor: '#f0f0f0', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, alignSelf: 'flex-start', marginTop: 4 }}>
+                                                            {change.section}
+                                                        </Text>
+                                                    )}
+                                                </View>
+                                                <Text variant="bodySmall" style={{ marginTop: 4 }}>{change.reason}</Text>
+                                            </View>
+                                        ))}
+                                    </Card.Content>
+                                </Card>
+                            )}
+
+                            {/* Comparison Baseline Logic:
                         - Compare against the previously SAVED resume version.
                         - If there's a saved optimizedResume, use that as baseline (shows only new changes).
                         - Otherwise fall back to original resume (shows all changes since start).
                         This ensures the preview shows ONLY what changed in the current operation.
                     */}
-                        <BeforeAfterComparison
-                            original={currentAnalysis.optimizedResume || currentAnalysis.resume || resume}
-                            optimized={optimizedResume}
-                            changes={changes}
-                        />
-                    </>
-                )}
+                            <BeforeAfterComparison
+                                original={currentAnalysis.optimizedResume || currentAnalysis.resume || resume}
+                                optimized={optimizedResume}
+                                changes={changes}
+                            />
+                        </>
+                    )
+                }
 
                 <View style={styles.actions}>
                     {optimizedResume && (
@@ -674,7 +712,7 @@ export default function AnalysisResultScreen() {
                                         mode="outlined"
                                         onPress={() => setRevertDialogVisible(true)}
                                         loading={saving}
-                                        disabled={saving || optimizing}
+                                        disabled={saving || optimizing || isActivelyProcessing}
                                         style={[styles.button, { marginTop: 12, borderColor: '#D32F2F', marginBottom: 8 }]}
                                         textColor="#D32F2F"
                                         icon="undo"
@@ -687,7 +725,7 @@ export default function AnalysisResultScreen() {
                                         mode="contained"
                                         onPress={handleSave}
                                         loading={saving}
-                                        disabled={saving || optimizing}
+                                        disabled={saving || optimizing || isActivelyProcessing}
                                         style={[styles.button, { backgroundColor: '#4CAF50' }]}
                                         icon="check"
                                     >
@@ -699,7 +737,7 @@ export default function AnalysisResultScreen() {
                     )}
                 </View>
 
-            </ScrollView>
+            </ScrollView >
             <SkillAdditionModal
                 visible={skillModalVisible}
                 skill={selectedSkillToAdd}

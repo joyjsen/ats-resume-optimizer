@@ -227,6 +227,7 @@ export class ApplicationService {
             await updateDoc(doc(db, this.collectionName, applicationId), {
                 coverLetter: {
                     content,
+                    status: 'completed',
                     generatedAt: serverTimestamp(),
                     lastEditedAt: serverTimestamp()
                 },
@@ -290,6 +291,17 @@ export class ApplicationService {
         }
     }
 
+    async getApplicationById(applicationId: string): Promise<Application | null> {
+        try {
+            const docSnap = await getDoc(doc(this.applicationsCollection, applicationId));
+            if (!docSnap.exists()) return null;
+            return this.mapDocToApplication(docSnap);
+        } catch (error) {
+            console.error('Error fetching application by ID:', error);
+            return null;
+        }
+    }
+
     async getApplications(): Promise<Application[]> {
         try {
             const user = auth.currentUser;
@@ -332,19 +344,36 @@ export class ApplicationService {
 
             submittedResumeData: data.submittedResumeData ? JSON.parse(data.submittedResumeData) : undefined,
             lastResumeUpdateAt: (data.lastResumeUpdateAt as any)?.toDate?.(),
-            coverLetter: data.coverLetter ? {
-                status: data.coverLetter.status,
-                content: data.coverLetter.content || '',
-                generatedAt: (data.coverLetter.generatedAt as any)?.toDate?.(),
-                lastEditedAt: (data.coverLetter.lastEditedAt as any)?.toDate?.(),
-                startedAt: (data.coverLetter.startedAt as any)?.toDate?.(),
-                completedAt: (data.coverLetter.completedAt as any)?.toDate?.()
-            } : undefined,
-            prepGuide: data.prepGuide ? {
-                ...data.prepGuide,
-                startedAt: (data.prepGuide.startedAt as any)?.toDate?.(),
-                generatedAt: (data.prepGuide.generatedAt as any)?.toDate?.()
-            } : undefined,
+            coverLetter: data.coverLetter ? (() => {
+                const status = data.coverLetter.status || (data.coverLetter.content ? 'completed' : 'failed');
+                if (!data.coverLetter.status || data.coverLetter.status === 'generating') {
+                    // Log ONLY if it looks stuck or suspicious (generating but maybe has content? or stuck generating)
+                    if (data.coverLetter.status === 'generating') {
+                        console.log(`[AppService] RAW DATA for ${docSnap.id} (${data.company}): Status=${data.coverLetter.status}, ContentLen=${data.coverLetter.content?.length || 0}`);
+                    }
+                }
+                return {
+                    status: status,
+                    content: data.coverLetter.content || data.coverLetter.text || '',
+                    generatedAt: (data.coverLetter.generatedAt as any)?.toDate?.(),
+                    lastEditedAt: (data.coverLetter.lastEditedAt as any)?.toDate?.(),
+                    startedAt: (data.coverLetter.startedAt as any)?.toDate?.(),
+                    completedAt: (data.coverLetter.completedAt as any)?.toDate?.()
+                };
+            })() : undefined,
+            prepGuide: data.prepGuide ? (() => {
+                console.log(`[AppService] PrepGuide raw for ${data.company}: status=${data.prepGuide.status}, sectionKeys=${data.prepGuide.sections ? Object.keys(data.prepGuide.sections) : 'NONE'}`);
+                return {
+                    status: data.prepGuide.status,
+                    progress: data.prepGuide.progress,
+                    currentStep: data.prepGuide.currentStep,
+                    sections: data.prepGuide.sections || undefined,
+                    downloadUrl: data.prepGuide.downloadUrl,
+                    storagePath: data.prepGuide.storagePath,
+                    startedAt: (data.prepGuide.startedAt as any)?.toDate?.(),
+                    generatedAt: (data.prepGuide.generatedAt as any)?.toDate?.()
+                };
+            })() : undefined,
             prepGuideHistory: data.prepGuideHistory ? data.prepGuideHistory.map((h: any) => ({
                 ...h,
                 startedAt: (h.startedAt as any)?.toDate?.(),

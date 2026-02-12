@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { View, StyleSheet, ScrollView } from 'react-native';
+import { View, StyleSheet, ScrollView, Platform } from 'react-native';
 import { Text, Chip, Menu, Button, IconButton, Divider, Checkbox, TextInput, useTheme, Surface } from 'react-native-paper';
 import { SavedAnalysis } from '../../types/history.types';
 
@@ -106,7 +106,7 @@ export const DashboardFilters: React.FC<DashboardFiltersProps> = ({
     };
 
     return (
-        <Surface style={styles.container} elevation={1}>
+        <Surface style={[styles.container, Platform.OS === 'android' && { marginBottom: 8 }]} elevation={1}>
             <View style={styles.contentContainer}>
                 {/* Top Bar: Sort & Toggle */}
                 <View style={styles.topBar}>
@@ -119,6 +119,8 @@ export const DashboardFilters: React.FC<DashboardFiltersProps> = ({
                                 onPress={() => setSortMenuVisible(true)}
                                 icon="sort"
                                 style={styles.sortButton}
+                                compact={Platform.OS === 'android'}
+                                labelStyle={Platform.OS === 'android' && { fontSize: 12 }}
                             >
                                 {getSortLabel(currentSort)}
                             </Button>
@@ -137,6 +139,8 @@ export const DashboardFilters: React.FC<DashboardFiltersProps> = ({
                         mode={isExpanded ? "contained-tonal" : "text"}
                         onPress={() => setIsExpanded(!isExpanded)}
                         icon={isExpanded ? "chevron-up" : "filter-variant"}
+                        compact={Platform.OS === 'android'}
+                        labelStyle={Platform.OS === 'android' && { fontSize: 12 }}
                     >
                         Filters
                     </Button>
@@ -144,7 +148,11 @@ export const DashboardFilters: React.FC<DashboardFiltersProps> = ({
 
                 {/* Collapsible Filters */}
                 {isExpanded && (
-                    <View style={[styles.filtersContent, { backgroundColor: theme.colors.elevation.level2 }]}>
+                    <View style={[
+                        styles.filtersContent,
+                        { backgroundColor: theme.colors.elevation.level2 },
+                        Platform.OS === 'android' && { padding: 12, paddingTop: 0 }
+                    ]}>
 
                         {/* Date Range */}
                         <Text variant="titleSmall" style={styles.filterTitle}>Date Range</Text>
@@ -258,7 +266,7 @@ const styles = StyleSheet.create({
     topBar: {
         flexDirection: 'row',
         justifyContent: 'space-between',
-        padding: 8,
+        padding: Platform.OS === 'android' ? 4 : 8,
         alignItems: 'center'
     },
     sortButton: {

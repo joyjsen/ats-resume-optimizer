@@ -43,7 +43,22 @@ export const generateTrainingSlideshow = (openaiApiKey: any) => onCall(
             await deductTokens(request.auth.uid, 30, "training_slideshow_generation", `Generated AI Training for "${skill}"`, entryId, db, 'openai');
 
             const openai = new OpenAI({ apiKey: openaiApiKey.value() });
-            const prompt = `Create a 10-15 slide technical training JSON for ${skill} at ${company}.`;
+            const prompt = `Create a 10-15 slide technical training for "${skill}" relevant to a ${position} role at ${company}.
+
+Return JSON with this EXACT structure:
+{
+  "slides": [
+    {
+      "title": "Slide title here",
+      "points": [
+        { "title": "Key point title", "description": "Detailed explanation of this point" },
+        { "title": "Another point", "description": "Its explanation" }
+      ]
+    }
+  ]
+}
+
+Each slide MUST have a "title" (string) and "points" (array of objects with "title" and "description" strings). Include 3-5 points per slide. Cover fundamentals, practical examples, best practices, and interview-relevant aspects.`;
 
             const response = await openai.chat.completions.create({
                 model: "gpt-4o-mini",

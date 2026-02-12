@@ -43,13 +43,26 @@ const performGapAnalysis = (openaiApiKey, perplexityApiKey) => (0, https_1.onCal
         });
         const systemInstruction = `
 You are an expert career advisor and ATS specialist. Analyze if this candidate is ready to apply for this job.
-Perform a comprehensive analysis and return a JSON object with matchAnalysis and gaps.
+Perform a comprehensive, exhaustive analysis and return a JSON object with matchAnalysis and gaps.
+
+IMPORTANT RULES:
+- Read the FULL job description, not just structured requirements. Identify ALL skills, tools, technologies, frameworks, methodologies, certifications, and soft skills mentioned anywhere.
+- Every identified requirement MUST be categorized into exactly one of: matchedSkills, partialMatches, or missingSkills.
+- For partialMatches, identify transferable/adjacent skills the candidate has.
+- Do NOT stop listing skills early. Include ALL skills even if the list is long.
+- The total count across matchedSkills + partialMatches + missingSkills MUST account for EVERY requirement in the JD.
+
+Importance Classification:
+- critical: Explicitly "required" or "must-have" or in minimum qualifications
+- high: Strongly emphasized, mentioned multiple times
+- medium: "preferred", "nice-to-have", mentioned once
+- low: Implied by role context
 
 Return JSON with this EXACT structure:
 {
   "matchAnalysis": {
     "matchedSkills": [{ "skill": "name", "importance": "critical|high|medium|low", "confidence": 0-100 }],
-    "partialMatches": [{ "skill": "name", "importance": "critical|high", "confidence": 0-100 }],
+    "partialMatches": [{ "skill": "name", "importance": "critical|high|medium|low", "confidence": 0-100, "candidateSkill": "what they have", "transferability": "how it transfers" }],
     "missingSkills": [{ "skill": "name", "importance": "critical|high|medium|low", "confidence": 0-100 }],
     "keywordDensity": 0-100,
     "experienceMatch": { "match": 0-100 }
@@ -67,10 +80,15 @@ ${JSON.stringify(resume, null, 2)}
 JOB POSTING:
 Title: ${job.title}
 Company: ${job.company}
-Requirements: ${JSON.stringify(job.requirements, null, 2)}
 
-Provide the analysis JSON.`.trim();
-        const aiResult = await (0, aiUtils_1.callAiWithFallback)(openai, perplexityApiKey.value(), systemInstruction, userContent);
+FULL JOB DESCRIPTION (Analyze this for ALL requirements/skills):
+${job.description || ''}
+
+STRUCTURED REQUIREMENTS (Reference):
+${JSON.stringify(job.requirements, null, 2)}
+
+Provide the COMPLETE analysis JSON. List EVERY skill from the job description.`.trim();
+        const aiResult = await (0, aiUtils_1.callAiWithFallback)(openai, perplexityApiKey.value(), systemInstruction, userContent, { maxTokens: 4096 });
         const analysisResult = JSON.parse(aiResult);
         // Normalize results
         const matchAnalysis = {

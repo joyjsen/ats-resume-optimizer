@@ -4,6 +4,7 @@ import { useRouter } from 'expo-router';
 import { Avatar, IconButton } from 'react-native-paper';
 import { useAppTheme } from '../../context/ThemeContext';
 import { useProfileStore } from '../../store/profileStore';
+import { moderateScale } from '../../utils/responsive';
 
 export const UserHeader = () => {
     const { userProfile } = useProfileStore();
@@ -19,13 +20,13 @@ export const UserHeader = () => {
             <IconButton
                 icon={isDark ? "weather-sunny" : "weather-night"}
                 onPress={toggleTheme}
-                size={24}
+                size={moderateScale(24)}
             />
             <TouchableOpacity onPress={() => router.push('/(tabs)/profile')}>
                 {userProfile.photoURL ? (
-                    <Avatar.Image size={32} source={{ uri: userProfile.photoURL }} />
+                    <Avatar.Image size={moderateScale(32)} source={{ uri: userProfile.photoURL }} />
                 ) : (
-                    <Avatar.Text size={32} label={userProfile.displayName?.substring(0, 2).toUpperCase() || 'U'} />
+                    <Avatar.Text size={moderateScale(32)} label={userProfile.displayName?.substring(0, 2).toUpperCase() || 'U'} />
                 )}
             </TouchableOpacity>
         </TouchableOpacity>

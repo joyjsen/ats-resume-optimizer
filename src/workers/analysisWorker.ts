@@ -150,7 +150,17 @@ export const executeAnalysisTask = async (taskId: string, payload: any, type: st
         await taskService.completeTask(taskId, savedId);
         console.log(`[Worker] Task ${taskId} marked as COMPLETED.`);
 
-        // Local notifications removed to prevent duplicates (backend handles this)
+        // Re-enabled local notifications as fallback (backend trigger might be delayed or fail)
+        try {
+            await notificationService.notifyAnalysisComplete(
+                job.title,
+                job.company,
+                analysis.atsScore,
+                savedId
+            );
+        } catch (notifErr) {
+            console.warn("[Worker] Failed to send local completion notification:", notifErr);
+        }
 
         return savedId;
 
@@ -210,6 +220,8 @@ const executeOptimizationTask = async (taskId: string, payload: any) => {
 
                         console.log("[Worker] Background optimization task completed");
 
+                        // Local notification disabled to prevent duplication with Cloud Function push
+                        // resolve(currentAnalysis.id);
                         resolve(currentAnalysis.id);
                     } catch (error: any) {
                         console.error("[Worker] Error in onComplete:", error);
@@ -283,6 +295,7 @@ const executeAddSkillTask = async (taskId: string, payload: any) => {
                 async (bgTask: BackgroundTask) => {
                     console.log("[Worker] Background skill addition task completed - data already saved by Cloud Function");
 
+                    // Local notification disabled to prevent duplication with Cloud Function push
                     resolve(currentAnalysis.id);
                 },
                 // onError

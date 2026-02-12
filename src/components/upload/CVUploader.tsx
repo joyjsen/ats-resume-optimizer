@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, StyleSheet, Alert } from 'react-native';
+import { View, StyleSheet, Alert, Platform } from 'react-native';
 import { Button, Text, Card, IconButton, useTheme } from 'react-native-paper';
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
@@ -14,6 +14,8 @@ interface UploadedFile {
     name: string;
     size?: number;
 }
+
+const isAndroid = Platform.OS === 'android';
 
 export const CVUploader = ({ onFileSelected, isTextModeActive }: Props) => {
     const theme = useTheme();
@@ -58,7 +60,23 @@ export const CVUploader = ({ onFileSelected, isTextModeActive }: Props) => {
                 size: a.size
             }));
 
-            updateFiles([...files, ...newFiles]);
+            // Check for duplicates (same name and size)
+            const duplicates = newFiles.filter(newFile =>
+                files.some(f => f.name === newFile.name && f.size === newFile.size)
+            );
+
+            if (duplicates.length > 0) {
+                const duplicateNames = duplicates.map(d => d.name).join(', ');
+                Alert.alert("Duplicate File", `The following file(s) are already uploaded: ${duplicateNames}`);
+            }
+
+            const nonDuplicates = newFiles.filter(newFile =>
+                !files.some(f => f.name === newFile.name && f.size === newFile.size)
+            );
+
+            if (nonDuplicates.length > 0) {
+                updateFiles([...files, ...nonDuplicates]);
+            }
         } catch (err) {
             console.error('Error picking document:', err);
         }
@@ -92,7 +110,23 @@ export const CVUploader = ({ onFileSelected, isTextModeActive }: Props) => {
                     size: a.fileSize
                 }));
 
-                updateFiles([...files, ...newFiles]);
+                // Check for duplicates (same name and size)
+                const duplicates = newFiles.filter(newFile =>
+                    files.some(f => f.name === newFile.name && f.size === newFile.size)
+                );
+
+                if (duplicates.length > 0) {
+                    const duplicateNames = duplicates.map(d => d.name).join(', ');
+                    Alert.alert("Duplicate Image", `The following image(s) are already uploaded: ${duplicateNames}`);
+                }
+
+                const nonDuplicates = newFiles.filter(newFile =>
+                    !files.some(f => f.name === newFile.name && f.size === newFile.size)
+                );
+
+                if (nonDuplicates.length > 0) {
+                    updateFiles([...files, ...nonDuplicates]);
+                }
             }
         } catch (err) {
             console.error('Error picking images:', err);
@@ -113,8 +147,8 @@ export const CVUploader = ({ onFileSelected, isTextModeActive }: Props) => {
         <View style={styles.container}>
             <Card style={styles.uploadCard} mode="outlined">
                 <Card.Content style={styles.content}>
-                    <IconButton icon="cloud-upload" size={40} iconColor={theme.colors.primary} />
-                    <Text variant="titleMedium">Upload Resume(s)</Text>
+                    <IconButton icon="cloud-upload" size={isAndroid ? 32 : 40} iconColor={theme.colors.primary} />
+                    <Text variant={isAndroid ? "titleSmall" : "titleMedium"}>Upload Resume(s)</Text>
                     <Text variant="bodySmall" style={styles.supportText}>
                         Accepted: Word (DOCX), text files (TXT), or Images
                     </Text>
@@ -125,6 +159,7 @@ export const CVUploader = ({ onFileSelected, isTextModeActive }: Props) => {
                             icon="image"
                             onPress={pickImages}
                             style={styles.button}
+                            compact={isAndroid}
                         >
                             Gallery
                         </Button>
@@ -133,6 +168,7 @@ export const CVUploader = ({ onFileSelected, isTextModeActive }: Props) => {
                             icon="file-document"
                             onPress={pickDocument}
                             style={styles.button}
+                            compact={isAndroid}
                         >
                             Files
                         </Button>
@@ -151,14 +187,17 @@ export const CVUploader = ({ onFileSelected, isTextModeActive }: Props) => {
                     <Card.Title
                         title={f.name}
                         subtitle={`${(f.size ? f.size / 1024 : 0).toFixed(1)} KB`}
-                        left={(props) => <IconButton {...props} icon={getFileType(f.name) === 'image' ? "image" : "file-document"} />}
+                        left={(props) => <IconButton {...props} icon={getFileType(f.name) === 'image' ? "image" : "file-document"} size={isAndroid ? 20 : 24} />}
                         right={(props) => (
                             <IconButton
                                 {...props}
                                 icon="close"
                                 onPress={() => removeFile(f.uri)}
+                                size={isAndroid ? 20 : 24}
                             />
                         )}
+                        titleStyle={isAndroid ? { fontSize: 14 } : undefined}
+                        subtitleStyle={isAndroid ? { fontSize: 11 } : undefined}
                     />
                 </Card>
             ))}
@@ -168,7 +207,7 @@ export const CVUploader = ({ onFileSelected, isTextModeActive }: Props) => {
 
 const styles = StyleSheet.create({
     container: {
-        gap: 12,
+        gap: isAndroid ? 8 : 12,
     },
     uploadCard: {
         borderStyle: 'dashed',
@@ -176,7 +215,7 @@ const styles = StyleSheet.create({
     },
     content: {
         alignItems: 'center',
-        padding: 24,
+        padding: isAndroid ? 16 : 24,
     },
     supportText: {
         opacity: 0.6,
@@ -188,8 +227,9 @@ const styles = StyleSheet.create({
     },
     buttonRow: {
         flexDirection: 'row',
-        gap: 12,
-        marginTop: 16,
+        gap: isAndroid ? 8 : 12,
+        marginTop: isAndroid ? 12 : 16,
         width: '100%',
     }
 });
+

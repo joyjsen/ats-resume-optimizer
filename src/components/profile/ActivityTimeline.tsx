@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, StyleSheet, FlatList } from 'react-native';
+import { View, StyleSheet, FlatList, Platform } from 'react-native';
 import { List, Text, Avatar, useTheme, Button, Divider, Card } from 'react-native-paper';
 import { UserActivity, ActivityType } from '../../types/profile.types';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -45,6 +45,8 @@ const formatRelativeTime = (date: Date): string => {
     return 'Just now';
 };
 
+const isAndroid = Platform.OS === 'android';
+
 export const ActivityTimeline: React.FC<ActivityTimelineProps> = ({ activities, onViewAll }) => {
     const theme = useTheme();
 
@@ -56,7 +58,7 @@ export const ActivityTimeline: React.FC<ActivityTimelineProps> = ({ activities, 
                 <View style={styles.iconContainer}>
                     <MaterialCommunityIcons
                         name={getActivityIcon(item.type) as any}
-                        size={24}
+                        size={isAndroid ? 20 : 24}
                         color={theme.colors.primary}
                     />
                 </View>
@@ -65,12 +67,13 @@ export const ActivityTimeline: React.FC<ActivityTimelineProps> = ({ activities, 
                 <View style={styles.statusContainer}>
                     <MaterialCommunityIcons
                         name={item.status === 'completed' ? 'check-circle' : 'alert-circle'}
-                        size={16}
+                        size={isAndroid ? 14 : 16}
                         color={item.status === 'completed' ? '#4CAF50' : '#F44336'}
                     />
                 </View>
             )}
-            titleStyle={styles.title}
+            titleStyle={[styles.title, isAndroid && { fontSize: 13 }]}
+            descriptionStyle={isAndroid && { fontSize: 11 }}
         />
     );
 

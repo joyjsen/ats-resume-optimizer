@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "776583109504",
+    "project_id": "ats-resume-optimizer-8652d",
+    "storage_bucket": "ats-resume-optimizer-8652d.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:776583109504:android:f84752d6c69bd2b941ff65",
+        "android_client_info": {
+          "package_name": "com.jsn22.riresume"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "776583109504-luid6drq2aglvse8h3njbt8udbfh2a11.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC4fw1UN46G1utXzTu8tV7JOta2Ou0UVjg"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "776583109504-luid6drq2aglvse8h3njbt8udbfh2a11.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "776583109504-865bgmscn9jfld6j4j1l2deokmmcodo8.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.jsn22.atsresumeoptimizer",
+                "app_store_id": "6757821173"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

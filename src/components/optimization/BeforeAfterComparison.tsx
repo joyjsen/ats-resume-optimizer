@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { View, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
-import { Card, Text, SegmentedButtons, Divider, useTheme } from 'react-native-paper';
+import { Card, Text, Divider, useTheme } from 'react-native-paper';
 import { ParsedResume, OptimizationChange, Experience } from '../../types/resume.types';
 
 interface Props {
@@ -44,17 +44,18 @@ export const BeforeAfterComparison = ({ original, optimized, changes }: Props) =
     }, [original.skills, optimized.skills, changes]);
 
     // Dynamically determine available sections based on changes AND actual data diffs
+    // Only allow these three tabs - no individual position/role tabs
+    const allowedTabs = ['summary', 'experience', 'skills'];
+
     const availableSections = React.useMemo(() => {
         const sections = new Set<string>();
 
-        // 1. Check change logs (Explicit intent from AI)
+        // 1. Check change logs (Explicit intent from AI) — map to allowed tabs only
         changes.forEach(c => {
-            if (c.section) sections.add(c.section.toLowerCase());
-            // Map specific types to sections if section name is missing/generic
             const type = c.type || '';
-            if (type.includes('skill')) sections.add('skills');
-            if (type.includes('summary')) sections.add('summary');
-            if (type.includes('experience') || type.includes('bullet')) sections.add('experience');
+            if (type.includes('skill') || type.includes('keyword')) sections.add('skills');
+            if (type.includes('summary') || type.includes('professional')) sections.add('summary');
+            if (type.includes('experience') || type.includes('bullet') || type.includes('enhancement') || type.includes('rewrite')) sections.add('experience');
         });
 
         // 2. Check Data Diffs (Implicit reality) - Only add sections with ACTUAL changes
@@ -88,16 +89,8 @@ export const BeforeAfterComparison = ({ original, optimized, changes }: Props) =
             if (hasExperienceChanges) sections.add('experience');
         }
 
-        // Sort: Summary -> Experience -> Skills -> Others
-        const order = ['summary', 'experience', 'skills'];
-        return Array.from(sections).sort((a, b) => {
-            const idxA = order.indexOf(a);
-            const idxB = order.indexOf(b);
-            if (idxA !== -1 && idxB !== -1) return idxA - idxB;
-            if (idxA !== -1) return -1;
-            if (idxB !== -1) return 1;
-            return a.localeCompare(b);
-        });
+        // Filter to only allowed tabs, maintain order: Summary -> Experience -> Skills
+        return allowedTabs.filter(tab => sections.has(tab));
     }, [changes, optimized, addedSkillsList, original, normalize]);
 
     const [section, setSection] = useState(availableSections[0] || 'summary');
@@ -284,17 +277,35 @@ export const BeforeAfterComparison = ({ original, optimized, changes }: Props) =
             <Card.Content>
                 <Text variant="titleMedium" style={styles.title}>Optimization Preview</Text>
 
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.toggle}>
-                    <SegmentedButtons
-                        value={section}
-                        onValueChange={setSection}
-                        buttons={availableSections.map(s => ({
-                            value: s,
-                            label: s.charAt(0).toUpperCase() + s.slice(1)
-                        }))}
-                        density="medium"
-                    />
-                </ScrollView>
+                <View style={[styles.toggle, { flexDirection: 'row', borderRadius: 8, borderWidth: 1, borderColor: theme.colors.outline, overflow: 'hidden' }]}>
+                    {availableSections.map((s, idx) => (
+                        <TouchableOpacity
+                            key={s}
+                            onPress={() => setSection(s)}
+                            style={{
+                                flex: 1,
+                                paddingVertical: 10,
+                                paddingHorizontal: 16,
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                backgroundColor: section === s ? theme.colors.secondaryContainer : 'transparent',
+                                borderRightWidth: idx < availableSections.length - 1 ? 1 : 0,
+                                borderRightColor: theme.colors.outline,
+                            }}
+                        >
+                            <Text
+                                style={{
+                                    fontSize: 14,
+                                    fontWeight: section === s ? 'bold' : '500',
+                                    color: section === s ? theme.colors.onSecondaryContainer : theme.colors.onSurface,
+                                }}
+                                numberOfLines={1}
+                            >
+                                {s.charAt(0).toUpperCase() + s.slice(1)}
+                            </Text>
+                        </TouchableOpacity>
+                    ))}
+                </View>
 
                 {renderContent()}
 

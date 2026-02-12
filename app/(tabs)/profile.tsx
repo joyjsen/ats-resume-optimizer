@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { ScrollView, StyleSheet, View, Alert, TouchableOpacity, Linking, TextInput } from 'react-native';
+import { ScrollView, StyleSheet, View, Alert, TouchableOpacity, Linking, TextInput, Platform } from 'react-native';
 import { Text, Divider, List, Switch, Button, useTheme, Portal, Dialog, ActivityIndicator } from 'react-native-paper';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { ProfileHeader } from '../../src/components/profile/ProfileHeader';
@@ -12,6 +12,8 @@ import { authService } from '../../src/services/firebase/authService';
 import { userService } from '../../src/services/firebase/userService';
 import { auth } from '../../src/services/firebase/config';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+
+const isAndroid = Platform.OS === 'android';
 
 export default function ProfileScreen() {
     const router = useRouter();
@@ -194,31 +196,37 @@ export default function ProfileScreen() {
                 onViewAll={() => router.push('/user-activity' as any)}
             />
 
-            <List.Section title="Settings">
+            <List.Section title="Settings" titleStyle={isAndroid && { fontSize: 13, marginBottom: -8 }}>
                 <List.Item
                     title="Push Notifications"
-                    left={props => <List.Icon {...props} icon="bell-outline" />}
+                    titleStyle={isAndroid && { fontSize: 14 }}
+                    left={props => <List.Icon {...props} icon="bell-outline" style={isAndroid && { marginVertical: 0 }} />}
                     right={() => (
                         <Switch
                             value={userProfile.notificationsEnabled}
                             onValueChange={() => toggleNotification('push')}
+                            style={isAndroid && { transform: [{ scale: 0.8 }] }}
                         />
                     )}
                 />
                 <List.Item
                     title="Email Notifications"
-                    left={props => <List.Icon {...props} icon="email-outline" />}
+                    titleStyle={isAndroid && { fontSize: 14 }}
+                    left={props => <List.Icon {...props} icon="email-outline" style={isAndroid && { marginVertical: 0 }} />}
                     right={() => (
                         <Switch
                             value={userProfile.emailNotifications}
                             onValueChange={() => toggleNotification('email')}
+                            style={isAndroid && { transform: [{ scale: 0.8 }] }}
                         />
                     )}
                 />
                 <List.Item
                     title="Appearance"
                     description={isDark ? "Dark Mode" : "Light Mode"}
-                    left={props => <List.Icon {...props} icon="theme-light-dark" />}
+                    titleStyle={isAndroid && { fontSize: 14 }}
+                    descriptionStyle={isAndroid && { fontSize: 12 }}
+                    left={props => <List.Icon {...props} icon="theme-light-dark" style={isAndroid && { marginVertical: 0 }} />}
                     right={() => (
                         <Switch
                             value={isDark}
@@ -240,6 +248,7 @@ export default function ProfileScreen() {
                                     }
                                 }
                             }}
+                            style={isAndroid && { transform: [{ scale: 0.8 }] }}
                         />
                     )}
                 />
@@ -251,6 +260,7 @@ export default function ProfileScreen() {
                         mode="outlined"
                         icon="sync"
                         loading={loading}
+                        compact={isAndroid}
                         onPress={async () => {
                             setLoading(true);
                             const { migrationService } = require('../../src/services/firebase/migrationService');
@@ -282,47 +292,56 @@ export default function ProfileScreen() {
 
             <Divider />
 
-            <List.Section title="Payment & Billing">
+            <List.Section title="Payment & Billing" titleStyle={isAndroid && { fontSize: 13, marginBottom: -8 }}>
                 <List.Item
                     title="Purchase History"
-                    left={props => <List.Icon {...props} icon="history" />}
+                    titleStyle={isAndroid && { fontSize: 14 }}
+                    left={props => <List.Icon {...props} icon="history" style={isAndroid && { marginVertical: 0 }} />}
                     onPress={() => router.push('/purchase-history' as any)}
                 />
                 <List.Item
                     title="Manage Payment Methods"
-                    left={props => <List.Icon {...props} icon="credit-card-outline" />}
+                    titleStyle={isAndroid && { fontSize: 14 }}
+                    left={props => <List.Icon {...props} icon="credit-card-outline" style={isAndroid && { marginVertical: 0 }} />}
                     onPress={() => Alert.alert("Payments", "Stripe management coming soon.")}
                 />
             </List.Section>
 
             <Divider />
 
-            <List.Section title="Support & Legal">
+            <List.Section title="Support & Legal" titleStyle={isAndroid && { fontSize: 13, marginBottom: -8 }}>
                 <List.Item
                     title="Help & Support"
-                    left={props => <List.Icon {...props} icon="help-circle-outline" />}
+                    titleStyle={isAndroid && { fontSize: 14 }}
+                    left={props => <List.Icon {...props} icon="help-circle-outline" style={isAndroid && { marginVertical: 0 }} />}
                     onPress={() => router.push('/settings/help' as any)}
                 />
                 <List.Item
                     title="Give Feedback"
                     description="Help us improve RiResume"
-                    left={props => <List.Icon {...props} icon="message-draw" />}
+                    titleStyle={isAndroid && { fontSize: 14 }}
+                    descriptionStyle={isAndroid && { fontSize: 12 }}
+                    left={props => <List.Icon {...props} icon="message-draw" style={isAndroid && { marginVertical: 0 }} />}
                     onPress={handleGiveFeedback}
                 />
                 <List.Item
                     title="Terms of Service"
-                    left={props => <List.Icon {...props} icon="file-document-outline" />}
+                    titleStyle={isAndroid && { fontSize: 14 }}
+                    left={props => <List.Icon {...props} icon="file-document-outline" style={isAndroid && { marginVertical: 0 }} />}
                     onPress={() => router.push('/settings/terms' as any)}
                 />
                 <List.Item
                     title="Privacy Policy"
-                    left={props => <List.Icon {...props} icon="shield-check-outline" />}
+                    titleStyle={isAndroid && { fontSize: 14 }}
+                    left={props => <List.Icon {...props} icon="shield-check-outline" style={isAndroid && { marginVertical: 0 }} />}
                     onPress={() => router.push('/settings/privacy' as any)}
                 />
                 <List.Item
                     title="About this app"
                     description="Version 1.0.0"
-                    left={props => <List.Icon {...props} icon="information-outline" />}
+                    titleStyle={isAndroid && { fontSize: 14 }}
+                    descriptionStyle={isAndroid && { fontSize: 12 }}
+                    left={props => <List.Icon {...props} icon="information-outline" style={isAndroid && { marginVertical: 0 }} />}
                     onPress={() => router.push('/settings/about' as any)}
                 />
             </List.Section>
@@ -335,6 +354,7 @@ export default function ProfileScreen() {
                     onPress={handleLogout}
                     style={styles.actionButton}
                     icon="logout"
+                    compact={isAndroid}
                 >
                     Logout
                 </Button>
@@ -355,6 +375,7 @@ export default function ProfileScreen() {
                         onPress={() => router.push('/admin' as any)}
                         style={styles.adminButton}
                         buttonColor={theme.colors.tertiary}
+                        compact={isAndroid}
                     >
                         Admin Dashboard
                     </Button>
@@ -453,7 +474,7 @@ const styles = StyleSheet.create({
         alignItems: 'center',
     },
     actions: {
-        padding: 16,
+        padding: isAndroid ? 12 : 16,
     },
     actionButton: {
         marginVertical: 4,

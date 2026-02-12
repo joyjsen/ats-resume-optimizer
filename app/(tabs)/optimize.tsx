@@ -1,6 +1,6 @@
 
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
-import { View, StyleSheet, FlatList, RefreshControl, Alert } from 'react-native';
+import { View, StyleSheet, FlatList, RefreshControl, Alert, Platform } from 'react-native';
 import { Text, Button, Card, Chip, FAB, useTheme, IconButton, ProgressBar } from 'react-native-paper';
 import { useRouter, useFocusEffect, useNavigation } from 'expo-router';
 import { historyService } from '../../src/services/firebase/historyService';
@@ -227,9 +227,19 @@ export default function Dashboard() {
 
     return (
         <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
-            <View style={styles.header}>
-                <Text variant="headlineMedium" style={styles.title}>Optimize</Text>
-                <Text variant="bodyLarge" style={styles.subtitle}>Your career optimization history</Text>
+            <View style={[styles.header, Platform.OS === 'android' && { marginBottom: 8, marginTop: 4 }]}>
+                <Text
+                    variant={Platform.OS === 'android' ? "titleLarge" : "headlineMedium"}
+                    style={[styles.title, Platform.OS === 'android' && { fontSize: 22 }]}
+                >
+                    Optimize
+                </Text>
+                <Text
+                    variant={Platform.OS === 'android' ? "bodySmall" : "bodyLarge"}
+                    style={styles.subtitle}
+                >
+                    Your career optimization history
+                </Text>
             </View>
 
             {/* Dashboard Filters & Sort */}
@@ -242,24 +252,61 @@ export default function Dashboard() {
 
             {/* Active Tasks Section */}
             {activeTasks.filter(t => t.status !== 'completed' && t.status !== 'cancelled').length > 0 && (
-                <View style={{ marginBottom: 24 }}>
-                    <Text variant="titleMedium" style={styles.sectionTitle}>In Progress</Text>
+                <View style={{ marginBottom: Platform.OS === 'android' ? 12 : 24 }}>
+                    <Text
+                        variant={Platform.OS === 'android' ? "labelLarge" : "titleMedium"}
+                        style={[styles.sectionTitle, Platform.OS === 'android' && { marginTop: 8, marginBottom: 8 }]}
+                    >
+                        In Progress
+                    </Text>
                     {activeTasks.filter(t => t.status !== 'completed' && t.status !== 'cancelled').map(task => (
-                        <Card key={task.id} style={{ marginBottom: 12, backgroundColor: theme.dark ? theme.colors.elevation.level2 : '#E3F2FD', borderColor: theme.dark ? theme.colors.primary : 'transparent', borderWidth: theme.dark ? 1 : 0 }}>
-                            <Card.Content>
+                        <Card
+                            key={task.id}
+                            style={{
+                                marginBottom: Platform.OS === 'android' ? 8 : 12,
+                                backgroundColor: theme.dark ? theme.colors.elevation.level2 : '#E3F2FD',
+                                borderColor: theme.dark ? theme.colors.primary : 'transparent',
+                                borderWidth: theme.dark ? 1 : 0
+                            }}
+                        >
+                            <Card.Content style={Platform.OS === 'android' && { paddingVertical: 8, paddingHorizontal: 12 }}>
                                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
                                     <View style={{ flex: 1 }}>
-                                        <Text variant="titleSmall" style={{ fontWeight: 'bold', color: theme.dark ? theme.colors.primary : 'black' }}>
+                                        <Text
+                                            variant={Platform.OS === 'android' ? "labelMedium" : "titleSmall"}
+                                            style={{ fontWeight: 'bold', color: theme.dark ? theme.colors.primary : 'black' }}
+                                        >
                                             {task.type === 'analyze_resume' ? 'Analyzing Resume...' :
                                                 task.type === 'add_skill' ? 'Adding Skill...' : 'Optimizing...'}
                                         </Text>
-                                        <Text variant="bodySmall" style={{ marginBottom: 8, color: theme.dark ? theme.colors.onSurfaceVariant : undefined }}>{task.stage}</Text>
+                                        <Text
+                                            variant="bodySmall"
+                                            style={{
+                                                marginBottom: Platform.OS === 'android' ? 4 : 8,
+                                                fontSize: Platform.OS === 'android' ? 10 : undefined,
+                                                color: theme.dark ? theme.colors.onSurfaceVariant : undefined
+                                            }}
+                                        >
+                                            {task.stage}
+                                        </Text>
                                     </View>
-                                    <IconButton icon="close-circle-outline" iconColor={theme.colors.error} onPress={() => handleCancelTask(task)} />
+                                    <IconButton
+                                        icon="close-circle-outline"
+                                        iconColor={theme.colors.error}
+                                        onPress={() => handleCancelTask(task)}
+                                        size={Platform.OS === 'android' ? 18 : 24}
+                                        style={Platform.OS === 'android' && { margin: 0 }}
+                                    />
                                 </View>
-                                <ProgressBar progress={task.progress / 100} color={theme.colors.primary} />
+                                <ProgressBar
+                                    progress={task.progress / 100}
+                                    color={theme.colors.primary}
+                                    style={Platform.OS === 'android' && { height: 2 }}
+                                />
                                 {task.status === 'failed' && (
-                                    <Text style={{ color: 'red', marginTop: 4 }}>Failed: {task.error}</Text>
+                                    <Text style={{ color: 'red', marginTop: 4, fontSize: Platform.OS === 'android' ? 10 : undefined }}>
+                                        Failed: {task.error}
+                                    </Text>
                                 )}
                             </Card.Content>
                         </Card>
@@ -268,13 +315,22 @@ export default function Dashboard() {
             )}
 
             {/* Recent Analyses Header with Toggle */}
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 24, marginBottom: 12 }}>
-                <Text variant="titleMedium" style={{ fontWeight: '600' }}>
+            <View style={{
+                flexDirection: 'row',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                marginTop: Platform.OS === 'android' ? 8 : 24,
+                marginBottom: Platform.OS === 'android' ? 8 : 12
+            }}>
+                <Text
+                    variant={Platform.OS === 'android' ? "labelLarge" : "titleMedium"}
+                    style={{ fontWeight: '600' }}
+                >
                     Recent Analyses ({filteredHistory.length})
                 </Text>
                 <IconButton
                     icon={isAnalysesExpanded ? "chevron-up" : "chevron-down"}
-                    size={24}
+                    size={Platform.OS === 'android' ? 20 : 24}
                     onPress={() => setIsAnalysesExpanded(!isAnalysesExpanded)}
                     style={{ margin: 0 }}
                 />
@@ -323,40 +379,63 @@ export default function Dashboard() {
                                 onPress={() => handleOpenAnalysis(item)}
                                 mode="outlined"
                             >
-                                <Card.Content>
+                                <Card.Content style={Platform.OS === 'android' && { paddingVertical: 8, paddingHorizontal: 12 }}>
                                     <View style={styles.cardHeader}>
                                         <View style={{ flex: 1, marginRight: 8 }}>
-                                            <Text variant="titleMedium" numberOfLines={1}>{item.jobTitle}</Text>
-                                            <Text variant="bodyMedium" numberOfLines={1}>{item.company}</Text>
+                                            <Text
+                                                variant={Platform.OS === 'android' ? "titleSmall" : "titleMedium"}
+                                                numberOfLines={1}
+                                            >
+                                                {item.jobTitle}
+                                            </Text>
+                                            <Text
+                                                variant="bodySmall"
+                                                numberOfLines={1}
+                                                style={Platform.OS === 'android' && { fontSize: 11 }}
+                                            >
+                                                {item.company}
+                                            </Text>
 
                                             {/* Simplified Recommendation on Dashboard */}
-                                            <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 8 }}>
-                                                <IconButton icon={rec.icon} size={16} iconColor={rec.color} style={{ margin: 0, padding: 0, width: 20, height: 20 }} />
-                                                <Text variant="labelSmall" style={{ color: rec.color, fontWeight: 'bold' }}>
+                                            <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: Platform.OS === 'android' ? 4 : 8 }}>
+                                                <IconButton
+                                                    icon={rec.icon}
+                                                    size={Platform.OS === 'android' ? 12 : 16}
+                                                    iconColor={rec.color}
+                                                    style={{ margin: 0, padding: 0, width: Platform.OS === 'android' ? 16 : 20, height: Platform.OS === 'android' ? 16 : 20 }}
+                                                />
+                                                <Text
+                                                    variant="labelSmall"
+                                                    style={{ color: rec.color, fontWeight: 'bold', fontSize: Platform.OS === 'android' ? 9 : undefined }}
+                                                >
                                                     {rec.message}
                                                 </Text>
                                             </View>
                                         </View>
                                         <View style={{ alignItems: 'flex-end' }}>
                                             <Text
-                                                variant="displaySmall"
-                                                style={{ fontSize: 24, color: rec.color, fontWeight: 'bold' }}
+                                                variant={Platform.OS === 'android' ? "titleLarge" : "displaySmall"}
+                                                style={{
+                                                    fontSize: Platform.OS === 'android' ? 20 : 24,
+                                                    color: rec.color,
+                                                    fontWeight: 'bold'
+                                                }}
                                             >
                                                 {score}
                                             </Text>
-                                            <Text variant="labelSmall">ATS Score</Text>
+                                            <Text variant="labelSmall" style={Platform.OS === 'android' && { fontSize: 9 }}>ATS Score</Text>
                                         </View>
                                     </View>
 
-                                    <View style={styles.metaRow}>
-                                        <View style={{ flexDirection: 'column', alignItems: 'flex-start', gap: 4, flex: 1 }}>
+                                    <View style={[styles.metaRow, Platform.OS === 'android' && { marginTop: 4, gap: 8 }]}>
+                                        <View style={{ flexDirection: 'column', alignItems: 'flex-start', gap: Platform.OS === 'android' ? 2 : 4, flex: 1 }}>
                                             {isPending ? (
                                                 <Chip
                                                     icon="progress-clock"
                                                     compact
                                                     mode="flat"
                                                     style={{ backgroundColor: theme.dark ? '#1565C0' : '#E3F2FD' }}
-                                                    textStyle={{ color: theme.dark ? '#E3F2FD' : 'black' }}
+                                                    textStyle={{ color: theme.dark ? '#E3F2FD' : 'black', fontSize: Platform.OS === 'android' ? 9 : undefined }}
                                                 >
                                                     Updating...
                                                 </Chip>
@@ -366,7 +445,7 @@ export default function Dashboard() {
                                                     compact
                                                     mode="flat"
                                                     style={{ backgroundColor: theme.dark ? '#EF6C00' : '#FFF3E0' }}
-                                                    textStyle={{ color: theme.dark ? '#FFF3E0' : 'black' }}
+                                                    textStyle={{ color: theme.dark ? '#FFF3E0' : 'black', fontSize: Platform.OS === 'android' ? 9 : undefined }}
                                                 >
                                                     Draft Ready
                                                 </Chip>
@@ -376,7 +455,7 @@ export default function Dashboard() {
                                                     compact
                                                     mode="flat"
                                                     style={{ backgroundColor: theme.dark ? '#0277BD' : '#E3F2FD' }}
-                                                    textStyle={{ color: theme.dark ? '#E1F5FE' : '#1565C0', fontWeight: 'bold' }}
+                                                    textStyle={{ color: theme.dark ? '#E1F5FE' : '#1565C0', fontWeight: 'bold', fontSize: Platform.OS === 'android' ? 9 : undefined }}
                                                 >
                                                     {item.applicationStatus.replace('_', ' ').replace(/\b\w/g, c => c.toUpperCase())}
                                                 </Chip>
@@ -386,7 +465,7 @@ export default function Dashboard() {
                                                     compact
                                                     mode="flat"
                                                     style={{ backgroundColor: theme.dark ? '#2E7D32' : '#E8F5E9' }}
-                                                    textStyle={{ color: theme.dark ? '#E8F5E9' : '#2E7D32' }}
+                                                    textStyle={{ color: theme.dark ? '#E8F5E9' : '#2E7D32', fontSize: Platform.OS === 'android' ? 9 : undefined }}
                                                 >
                                                     Optimized
                                                 </Chip>
@@ -396,18 +475,21 @@ export default function Dashboard() {
                                                     compact
                                                     mode="flat"
                                                     style={{ backgroundColor: theme.dark ? '#d84315' : '#FFF3E0' }} // Deep Orange for dark
-                                                    textStyle={{ color: theme.dark ? '#FFF3E0' : '#EF6C00' }}
+                                                    textStyle={{ color: theme.dark ? '#FFF3E0' : '#EF6C00', fontSize: Platform.OS === 'android' ? 9 : undefined }}
                                                 >
                                                     Pending Resume Update
                                                 </Chip>
                                             )}
-                                            <Text variant="bodySmall" style={styles.date}>
+                                            <Text
+                                                variant="bodySmall"
+                                                style={[styles.date, Platform.OS === 'android' && { fontSize: 10 }]}
+                                            >
                                                 {formatDate(item.updatedAt || item.createdAt)}
                                             </Text>
                                         </View>
                                         <IconButton
                                             icon="trash-can-outline"
-                                            size={20}
+                                            size={Platform.OS === 'android' ? 16 : 20}
                                             onPress={() => handleDelete(item)}
                                             style={{ margin: 0 }}
                                         />

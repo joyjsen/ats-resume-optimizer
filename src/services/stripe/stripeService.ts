@@ -1,9 +1,11 @@
+import { Platform, Appearance } from 'react-native';
 import { initPaymentSheet, presentPaymentSheet } from '@stripe/stripe-react-native';
 import { httpsCallable } from 'firebase/functions';
 import { ENV } from '../../config/env';
 import { activityService } from '../firebase/activityService';
 import { userService } from '../firebase/userService';
 import { functions } from '../firebase/config';
+import { useProfileStore } from '../../store/profileStore';
 
 export class StripeService {
     private isInitialized = false;
@@ -14,13 +16,15 @@ export class StripeService {
         return Promise.resolve();
     }
 
-    /**
-     * Initialize the Payment Sheet
-     * Calls the Firebase Cloud Function to create a PaymentIntent and get the clientSecret.
-     */
     async initializePaymentSheet(uid: string, amount: number, isDark: boolean = false) {
         try {
-            console.log(`[Stripe] Requesting PaymentIntent for $${amount}...`);
+            // Detect system color scheme
+            const systemColorScheme = Appearance.getColorScheme();
+            const isSystemDark = systemColorScheme === 'dark';
+
+            console.log(`[Stripe] Initializing PaymentSheet. systemColorScheme: ${systemColorScheme}, isSystemDark: ${isSystemDark}`);
+
+            const { userProfile } = useProfileStore.getState();
 
             // 1. Call the Firebase Cloud Function
             const createIntent = httpsCallable(functions, 'createStripePaymentIntent');
@@ -36,22 +40,21 @@ export class StripeService {
                 merchantDisplayName: 'RiResume',
                 paymentIntentClientSecret: clientSecret,
                 defaultBillingDetails: {
-                    name: 'User Name',
+                    name: userProfile?.displayName || 'User',
                 },
                 allowsDelayedPaymentMethods: true,
-                returnURL: 'atsresumeoptimizer://stripe-redirect',
-                style: isDark ? 'alwaysDark' : 'alwaysLight',
+                returnURL: 'riresume://stripe-redirect',
+                // Use 'automatic' to let the native Stripe SDK detect the OS theme directly.
+                // This bypasses the app's 'userInterfaceStyle: light' setting which was confusing the logic.
+                style: 'automatic',
                 appearance: {
                     colors: {
                         primary: '#6200ee',
-                        background: isDark ? '#121212' : '#ffffff',
-                        componentBackground: isDark ? '#1e1e1e' : '#ffffff',
-                        componentBorder: isDark ? '#333333' : '#e0e0e0',
-                        componentDivider: isDark ? '#333333' : '#e0e0e0',
-                        primaryText: isDark ? '#ffffff' : '#000000',
-                        secondaryText: isDark ? '#cccccc' : '#737373',
-                        placeholderText: isDark ? '#888888' : '#a3acb9',
-                        icon: isDark ? '#ffffff' : '#000000',
+                        error: '#ff1744',
+                    },
+                    shapes: {
+                        borderRadius: 10,
+                        borderWidth: 1,
                     }
                 }
             });

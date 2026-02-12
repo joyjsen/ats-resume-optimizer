@@ -23,11 +23,12 @@ import * as AuthSession from 'expo-auth-session';
 import { auth } from './config';
 import { userService } from './userService';
 import { AuthProvider, UserProfile } from '../../types/profile.types';
+import { ENV } from '../../config/env';
 
 // Configure Google Sign-In
 GoogleSignin.configure({
-    webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID || '776583109504-luid6drq2aglvse8h3njbt8udbfh2a11.apps.googleusercontent.com',
-    iosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID || '776583109504-j4tdkj2e7oiore61l1q8m61b8v5po7nl.apps.googleusercontent.com',
+    webClientId: ENV.GOOGLE_WEB_CLIENT_ID || '776583109504-luid6drq2aglvse8h3njbt8udbfh2a11.apps.googleusercontent.com',
+    iosClientId: ENV.GOOGLE_IOS_CLIENT_ID || '776583109504-j4tdkj2e7oiore61l1q8m61b8v5po7nl.apps.googleusercontent.com',
     offlineAccess: true,
 });
 

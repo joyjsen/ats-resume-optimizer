@@ -25,6 +25,7 @@ const options = {
         delay: 1000,
     },
     // Android-specific: Keep service in foreground
+    foregroundServiceType: 'dataSync',
     progressBar: {
         max: 100,
         value: 0,

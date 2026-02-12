@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { View, StyleSheet, ScrollView } from 'react-native';
+import { View, StyleSheet, ScrollView, Platform } from 'react-native';
 import { Text, Chip, Menu, Button, Divider, useTheme, Surface } from 'react-native-paper';
 import { LearningEntry, LearningPath } from '../../types/learning.types';
 
@@ -19,6 +19,8 @@ interface Props {
     currentSort: LearningSortOption;
     onSortChange: (sort: LearningSortOption) => void;
 }
+
+const isAndroid = Platform.OS === 'android';
 
 export const LearningFilters: React.FC<Props> = ({
     entries,
@@ -107,6 +109,7 @@ export const LearningFilters: React.FC<Props> = ({
                         onPress={() => setIsExpanded(!isExpanded)}
                         icon={isExpanded ? "chevron-up" : "filter-variant"}
                         compact
+                        labelStyle={isAndroid ? { fontSize: 12 } : undefined}
                     >
                         Filters
                     </Button>
@@ -182,10 +185,9 @@ export const LearningFilters: React.FC<Props> = ({
 
 const styles = StyleSheet.create({
     container: {
-        marginHorizontal: 16,
-        marginBottom: 12,
+        marginHorizontal: isAndroid ? 12 : 16,
+        marginBottom: isAndroid ? 8 : 12,
         borderRadius: 8,
-        // backgroundColor: '#fff', -- Handled by Surface elevation or explicit override below
     },
     contentWrapper: {
         overflow: 'hidden',
@@ -201,9 +203,8 @@ const styles = StyleSheet.create({
         minWidth: 160
     },
     expandedContent: {
-        padding: 16,
+        padding: isAndroid ? 12 : 16,
         paddingTop: 0,
-        // backgroundColor: '#f9f9f9' -- Handled inline if needed or let it match container
     },
     label: {
         fontWeight: 'bold',

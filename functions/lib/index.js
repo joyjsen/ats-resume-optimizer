@@ -19,6 +19,7 @@ const functionsV1 = require("firebase-functions/v1");
 const admin = require("firebase-admin");
 const stripe_1 = require("stripe");
 admin.initializeApp();
+admin.firestore().settings({ ignoreUndefinedProperties: true });
 const secrets_1 = require("./secrets");
 /**
  * Creates a Stripe Payment Intent for a token purchase.

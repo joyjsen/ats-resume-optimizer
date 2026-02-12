@@ -13,6 +13,8 @@ import { SavedAnalysis } from "../../src/types/history.types";
 import { Application } from "../../src/types/application.types";
 import { auth } from "../../src/services/firebase/config";
 
+const isAndroid = Platform.OS === 'android';
+
 const RiResumeHome = () => {
     const router = useRouter();
     const theme = useTheme();
@@ -180,12 +182,12 @@ const RiResumeHome = () => {
                 showsVerticalScrollIndicator={false}
             >
                 {/* Header */}
-                <View style={styles.header}>
+                <View style={[styles.header, isAndroid && { paddingVertical: 12 }]}>
                     <View>
-                        <Text variant="labelLarge" style={{ color: theme.colors.onSurfaceVariant, textTransform: 'uppercase', letterSpacing: 1 }}>{greeting()}</Text>
-                        <Text variant="headlineMedium" style={{ fontWeight: "700" }}>{userName} 👋</Text>
+                        <Text variant={isAndroid ? "labelSmall" : "labelLarge"} style={{ color: theme.colors.onSurfaceVariant, textTransform: 'uppercase', letterSpacing: 1 }}>{greeting()}</Text>
+                        <Text variant={isAndroid ? "headlineSmall" : "headlineMedium"} style={{ fontWeight: "700" }}>{userName} 👋</Text>
                     </View>
-                    <Button mode="contained" onPress={() => router.push('/purchase' as any)} compact style={{ alignSelf: 'center' }}>
+                    <Button mode="contained" onPress={() => router.push('/purchase' as any)} compact={isAndroid} style={{ alignSelf: 'center' }}>
                         Buy Tokens
                     </Button>
                 </View>
@@ -239,10 +241,10 @@ const RiResumeHome = () => {
                                             />
                                         </View>
                                     )}
-                                    <Card.Content style={{ alignItems: 'center', padding: 8, paddingTop: action.infoMessage ? 16 : 8 }}>
-                                        <IconButton icon={action.icon} size={24} iconColor={theme.colors.primary} style={{ margin: 0 }} />
-                                        <Text variant="labelSmall" style={{ textAlign: 'center', marginTop: 4, fontWeight: 'bold' }}>{action.label}</Text>
-                                        <Text variant="labelSmall" style={{ color: theme.colors.onSurfaceVariant, fontSize: 10 }}>{action.cost}</Text>
+                                    <Card.Content style={{ alignItems: 'center', padding: isAndroid ? 4 : 8, paddingTop: action.infoMessage ? (isAndroid ? 12 : 16) : (isAndroid ? 4 : 8) }}>
+                                        <IconButton icon={action.icon} size={isAndroid ? 20 : 24} iconColor={theme.colors.primary} style={{ margin: 0 }} />
+                                        <Text variant="labelSmall" style={{ textAlign: 'center', marginTop: isAndroid ? 2 : 4, fontWeight: 'bold', fontSize: isAndroid ? 9 : 11 }}>{action.label}</Text>
+                                        <Text variant="labelSmall" style={{ color: theme.colors.onSurfaceVariant, fontSize: isAndroid ? 8 : 10 }}>{action.cost}</Text>
                                     </Card.Content>
                                 </View>
                             </Card>
@@ -255,14 +257,14 @@ const RiResumeHome = () => {
                     <Text variant="titleMedium" style={styles.sectionTitle}>Overview</Text>
                     <View style={styles.statsGrid}>
                         {weeklyStats.map((stat, i) => (
-                            <View key={i} style={[styles.statItem, { borderColor: theme.colors.outlineVariant, backgroundColor: theme.colors.elevation.level1 }]}>
-                                <IconButton icon={stat.icon} size={20} style={{ margin: 0 }} />
-                                <Text variant="titleLarge" style={{ fontWeight: 'bold' }}>{stat.value}</Text>
+                            <View key={i} style={[styles.statItem, { borderColor: theme.colors.outlineVariant, backgroundColor: theme.colors.elevation.level1 }, isAndroid && { padding: 8 }]}>
+                                <IconButton icon={stat.icon} size={isAndroid ? 18 : 20} style={{ margin: 0 }} />
+                                <Text variant={isAndroid ? "titleMedium" : "titleLarge"} style={{ fontWeight: 'bold' }}>{stat.value}</Text>
                                 <Text
                                     variant="labelSmall"
                                     numberOfLines={1}
                                     adjustsFontSizeToFit
-                                    style={{ color: theme.colors.onSurfaceVariant, fontSize: 10 }}
+                                    style={{ color: theme.colors.onSurfaceVariant, fontSize: isAndroid ? 9 : 10 }}
                                 >
                                     {stat.label}
                                 </Text>
@@ -292,21 +294,21 @@ const RiResumeHome = () => {
                                     <Card.Content style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 8 }}>
                                         <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
                                             <Avatar.Icon
-                                                size={40}
+                                                size={isAndroid ? 32 : 40}
                                                 icon={isOptimized ? "check-decagram" : "file-document-outline"}
                                                 style={{ backgroundColor: isOptimized ? theme.colors.primaryContainer : theme.colors.surfaceVariant }}
                                                 color={isOptimized ? theme.colors.primary : theme.colors.onSurfaceVariant}
                                             />
-                                            <View style={{ marginLeft: 12, flex: 1 }}>
-                                                <Text variant="titleMedium" numberOfLines={1}>{app.company}</Text>
-                                                <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>{app.jobTitle} · {daysAgo}d ago</Text>
+                                            <View style={{ marginLeft: isAndroid ? 8 : 12, flex: 1 }}>
+                                                <Text variant={isAndroid ? "titleSmall" : "titleMedium"} numberOfLines={1}>{app.company}</Text>
+                                                <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant, fontSize: isAndroid ? 10 : 12 }}>{app.jobTitle} · {daysAgo}d ago</Text>
                                             </View>
                                         </View>
                                         <View style={{ alignItems: 'flex-end' }}>
                                             {score > 0 ? (
                                                 <>
-                                                    <Text variant="headlineSmall" style={{ color: score >= 80 ? theme.colors.primary : theme.colors.secondary, fontWeight: 'bold' }}>{score}%</Text>
-                                                    <Text variant="labelSmall" style={{ color: theme.colors.onSurfaceVariant }}>ATS</Text>
+                                                    <Text variant={isAndroid ? "titleLarge" : "headlineSmall"} style={{ color: score >= 80 ? theme.colors.primary : theme.colors.secondary, fontWeight: 'bold' }}>{score}%</Text>
+                                                    <Text variant="labelSmall" style={{ color: theme.colors.onSurfaceVariant, fontSize: isAndroid ? 9 : 11 }}>ATS</Text>
                                                 </>
                                             ) : (
                                                 <Chip compact style={{ backgroundColor: theme.colors.surfaceVariant }}>Draft</Chip>
@@ -370,7 +372,7 @@ const styles = StyleSheet.create({
     actionCard: {
         width: (Dimensions.get("window").width - 32 - 16) / 3,
         marginBottom: 8,
-        height: 110,
+        height: isAndroid ? 90 : 110,
         justifyContent: 'center',
     },
     statsGrid: {

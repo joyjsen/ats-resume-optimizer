@@ -42,91 +42,7 @@ async function sendEmail(to: string, subject: string, html: string) {
     }
 }
 
-// --- Helper: Send Push Notification ---
-async function sendPush(uid: string, title: string, body: string, data?: any) {
-    console.log(`[sendPush] Attempting to send push to user ${uid}: "${title}"`);
-    try {
-        const userDoc = await admin.firestore().collection("users").doc(uid).get();
-        if (!userDoc.exists) {
-            console.warn(`[sendPush] User ${uid} not found in Firestore. Cannot send push.`);
-            return;
-        }
-
-        const userData = userDoc.data();
-        let rawTokens = userData?.pushTokens || [];
-
-        // Ensure we have an array of strings
-        if (typeof rawTokens === 'object' && !Array.isArray(rawTokens)) {
-            console.warn(`[sendPush] pushTokens for ${uid} is an object, converting to array...`);
-            rawTokens = Object.values(rawTokens).flat();
-        }
-
-        const tokens = (Array.isArray(rawTokens) ? rawTokens : [rawTokens])
-            .filter(t => typeof t === 'string' && t.startsWith('ExponentPushToken'));
-
-        if (!tokens.length) {
-            console.warn(`[sendPush] User ${uid} has no valid Expo push tokens. Data:`, JSON.stringify(rawTokens));
-            return;
-        }
-
-        console.log(`[sendPush] Found ${tokens.length} valid push token(s) for user ${uid}`);
-
-        // IMPORTANT FIX: Send tokens individually to avoid "PUSH_TOO_MANY_EXPERIENCE_IDS" error
-        // Expo rejects batches that mix different slug/experience IDs.
-        for (const token of tokens) {
-            try {
-                const message = {
-                    to: token,
-                    sound: "default",
-                    title,
-                    body,
-                    data,
-                    priority: 'high',
-                    channelId: 'default', // Android
-                    mutableContent: true, // iOS
-                    interruptionLevel: 'active', // iOS 15+
-                    badge: 1,
-                    projectId: "3584d443-a654-4a9b-98bb-8344ba4c3110",
-                };
-
-                const response = await fetch("https://exp.host/--/api/v2/push/send", {
-                    method: "POST",
-                    headers: {
-                        Accept: "application/json",
-                        "Accept-encoding": "gzip, deflate",
-                        "Content-Type": "application/json",
-                    },
-                    body: JSON.stringify(message),
-                });
-
-                const responseData = await response.json() as any;
-
-                if (responseData.data && responseData.data.status === 'error') {
-                    console.error(`[sendPush] Error for token ${token}: ${responseData.data.message}`);
-
-                    // AUTO-CLEANUP: If token is invalid or not registered, remove it from Firestore
-                    const isPermanentFailure =
-                        responseData.data.details?.error === 'DeviceNotRegistered' ||
-                        responseData.data.message?.includes('not a valid');
-
-                    if (isPermanentFailure) {
-                        console.log(`[sendPush] Removing invalid token from user ${uid}: ${token}`);
-                        await admin.firestore().collection("users").doc(uid).update({
-                            pushTokens: admin.firestore.FieldValue.arrayRemove(token)
-                        }).catch(e => console.error(`[sendPush] Failed to remove token ${token}:`, e));
-                    }
-                } else {
-                    console.log(`[sendPush] Successfully sent to token: ${token.substring(0, 25)}...`);
-                }
-            } catch (tokenError) {
-                console.error(`[sendPush] Failed to send to token ${token}:`, tokenError);
-            }
-        }
-
-    } catch (error) {
-        console.error("[sendPush] Error in sendPush loop:", error);
-    }
-}
+import { sendPush } from "./utils/notificationUtils";
 
 // 1. Welcome Email (onUserCreated)
 export const onUserCreated = functionsV1
@@ -237,14 +153,9 @@ export const onTaskUpdated = functionsV1
             let emailSubject = "Resume Analysis Complete";
             let emailBody = `<p>Your resume has been analyzed.</p><a href="https://riresume.web.app/analysis-result?id=${after.resultId || ''}">View Results in App</a>`;
 
-            // Push
-            await sendPush(uid, title, body, {
-                taskId: context.params.taskId,
-                type,
-                resultId: after.resultId,
-                route: '/analysis-result',
-                params: { id: after.resultId }
-            });
+            // Push notification is handled client-side via notifyAnalysisComplete()
+            // which provides more detail (job title, company, score).
+            // Sending a server-side push here would create a duplicate notification.
 
             // Email
             if (email) {
@@ -308,14 +219,7 @@ export const onBackgroundTaskUpdated = functionsV1
                 data.resultId = payload.analysisTaskId || payload.historyId;
                 data.route = '/analysis-result';
                 data.params = { id: data.resultId };
-            } else if (type === "prep_guide" || type === "prep_guide_refresh") {
-                title = "Interview Prep Guide Ready";
-                body = `Your interview prep guide for ${payload.jobTitle || 'the position'} at ${payload.companyName || 'the company'} is ready`;
-                emailSubject = "Interview Prep Guide Ready";
-                emailBody = `<p>Your interview prep guide is ready. We've included company research and tailored questions.</p>`;
-                data.applicationId = payload.applicationId;
-                data.route = "/(tabs)/applications";
-                data.action = "viewPrep";
+
             } else if (type === "cover_letter") {
                 title = "Cover Letter Generated";
                 body = `Your tailored cover letter for ${payload.company || 'the position'} is ready.`;

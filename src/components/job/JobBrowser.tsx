@@ -11,6 +11,8 @@ interface JobBrowserProps {
     onImport: (text: string, url: string) => void;
 }
 
+const isAndroid = Platform.OS === 'android';
+
 export default function JobBrowser({ visible, initialUrl, onClose, onImport }: JobBrowserProps) {
     const webViewRef = useRef<WebView>(null);
     const [url, setUrl] = useState(initialUrl || 'https://www.linkedin.com/jobs');
@@ -134,7 +136,9 @@ export default function JobBrowser({ visible, initialUrl, onClose, onImport }: J
     };
 
     const clearCache = () => {
-        webViewRef.current?.clearCache(true);
+        if (webViewRef.current) {
+            (webViewRef.current as any).clearCache?.(true);
+        }
         setUrl('https://www.linkedin.com/jobs');
         Alert.alert('Browser Reset', 'Cache cleared. Reloading LinkedIn.');
     };
@@ -212,18 +216,29 @@ export default function JobBrowser({ visible, initialUrl, onClose, onImport }: J
     return (
         <Modal visible={visible} animationType="slide" presentationStyle="pageSheet">
             <SafeAreaView style={styles.container}>
-                <Appbar.Header style={styles.header}>
-                    <Appbar.Action icon="close" onPress={onClose} />
-                    <Appbar.Content title="Job Browser" subtitle={url.replace('https://', '').substring(0, 20) + '...'} />
-                    <Appbar.Action icon="layers-off" onPress={removeOverlays} />
-                    <Appbar.Action icon="refresh" onPress={() => webViewRef.current?.reload()} />
-                    <Appbar.Action icon="delete" onPress={clearCache} />
-                    <Button mode="contained-tonal" style={{ marginRight: 8 }} onPress={handleImport}>
+                <Appbar.Header style={[styles.header, isAndroid && { height: 48 }]}>
+                    <Appbar.Action icon="close" onPress={onClose} size={isAndroid ? 20 : 24} />
+                    <Appbar.Content
+                        title="Job Browser"
+                        subtitle={url.replace('https://', '').substring(0, 20) + '...'}
+                        titleStyle={isAndroid ? { fontSize: 16 } : undefined}
+                        subtitleStyle={isAndroid ? { fontSize: 10 } : undefined}
+                    />
+                    <Appbar.Action icon="layers-off" onPress={removeOverlays} size={isAndroid ? 20 : 24} />
+                    <Appbar.Action icon="refresh" onPress={() => webViewRef.current?.reload()} size={isAndroid ? 20 : 24} />
+                    <Appbar.Action icon="delete" onPress={clearCache} size={isAndroid ? 20 : 24} />
+                    <Button
+                        mode="contained-tonal"
+                        style={{ marginRight: 8 }}
+                        onPress={handleImport}
+                        compact={isAndroid}
+                        labelStyle={isAndroid ? { fontSize: 11 } : undefined}
+                    >
                         Import
                     </Button>
                 </Appbar.Header>
 
-                {progress < 1 && <ProgressBar progress={progress} color="#2196F3" />}
+                {progress < 1 && <ProgressBar progress={progress} color="#2196F3" style={isAndroid ? { height: 2 } : undefined} />}
 
                 <WebView
                     ref={webViewRef}
@@ -248,9 +263,9 @@ export default function JobBrowser({ visible, initialUrl, onClose, onImport }: J
 
                 <View style={styles.footer}>
                     <View style={styles.quickLinks}>
-                        <Button compact onPress={() => { setUrl('https://www.linkedin.com/jobs'); }}>LinkedIn</Button>
-                        <Button compact onPress={() => { setUrl('https://www.indeed.com'); }}>Indeed</Button>
-                        <Button compact onPress={() => { setUrl('https://www.google.com/about/careers/applications/jobs/results/'); }}>Google</Button>
+                        <Button compact onPress={() => { setUrl('https://www.linkedin.com/jobs'); }} labelStyle={isAndroid ? { fontSize: 10 } : undefined}>LinkedIn</Button>
+                        <Button compact onPress={() => { setUrl('https://www.indeed.com'); }} labelStyle={isAndroid ? { fontSize: 10 } : undefined}>Indeed</Button>
+                        <Button compact onPress={() => { setUrl('https://www.google.com/about/careers/applications/jobs/results/'); }} labelStyle={isAndroid ? { fontSize: 10 } : undefined}>Google</Button>
                     </View>
                 </View>
             </SafeAreaView>
@@ -270,7 +285,7 @@ const styles = StyleSheet.create({
         borderBottomColor: '#e0e0e0',
     },
     footer: {
-        padding: 8,
+        padding: isAndroid ? 4 : 8,
         borderTopWidth: 1,
         borderTopColor: '#e0e0e0',
         backgroundColor: '#f9f9f9',
@@ -280,3 +295,4 @@ const styles = StyleSheet.create({
         justifyContent: 'space-around',
     }
 });
+

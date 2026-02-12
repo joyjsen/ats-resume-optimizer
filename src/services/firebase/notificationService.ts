@@ -66,10 +66,11 @@ export class NotificationService {
     /**
      * Set the notification handler safely
      */
-    initHandler() {
+    async initHandler() {
         const Notifications = this.getNotifications();
         if (Notifications) {
             try {
+                // Set the notification handler
                 Notifications.setNotificationHandler({
                     handleNotification: async () => ({
                         shouldShowAlert: true,
@@ -79,8 +80,20 @@ export class NotificationService {
                         shouldShowList: true
                     }),
                 });
+
+                // ALWAYS create the default Android channel on initialization
+                // This ensures local notifications work even before push registration
+                if (Platform.OS === 'android') {
+                    await Notifications.setNotificationChannelAsync('default', {
+                        name: 'default',
+                        importance: Notifications.AndroidImportance.MAX,
+                        vibrationPattern: [0, 250, 250, 250],
+                        lightColor: '#FF231F7C',
+                    });
+                    console.log("Notification Service: Android default channel initialized.");
+                }
             } catch (e) {
-                console.warn("Notification Service: Failed to set notification handler", e);
+                console.warn("Notification Service: Failed to initialize handler or channel", e);
             }
         }
     }
@@ -143,7 +156,20 @@ export class NotificationService {
                     await this.saveTokenToUserProfile(token);
 
                 } catch (e) {
-                    console.error("Error fetching push token:", e);
+                    console.error("Error fetching Expo push token:", e);
+                }
+
+                // Also get the native device push token (FCM for Android, APNs for iOS)
+                // This enables direct FCM messaging from Cloud Functions, which is more
+                // reliable for background delivery on Android than the Expo Push relay
+                try {
+                    const deviceToken = await Notifications.getDevicePushTokenAsync();
+                    if (deviceToken?.data) {
+                        console.log(`Native Device Push Token (${deviceToken.type}):`, deviceToken.data.substring(0, 30) + '...');
+                        await this.saveFcmTokenToUserProfile(deviceToken.data);
+                    }
+                } catch (e) {
+                    console.warn("Could not get native device push token:", e);
                 }
             } else {
                 console.log('Must use physical device for Push Notifications');
@@ -168,6 +194,25 @@ export class NotificationService {
                 });
             } catch (error) {
                 console.error("Error saving push token to profile:", error);
+            }
+        }
+    }
+
+    /**
+     * Save the native FCM/APNs token to the user's profile
+     * This is used for direct FCM messaging from Cloud Functions
+     */
+    async saveFcmTokenToUserProfile(token: string) {
+        const user = auth.currentUser;
+        if (user) {
+            const userRef = doc(db, 'users', user.uid);
+            try {
+                await updateDoc(userRef, {
+                    fcmTokens: arrayUnion(token)
+                });
+                console.log("Saved native FCM token to profile");
+            } catch (error) {
+                console.error("Error saving FCM token to profile:", error);
             }
         }
     }

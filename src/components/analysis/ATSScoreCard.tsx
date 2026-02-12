@@ -20,19 +20,19 @@ export const ATSScoreCard = ({ score, originalScore, threshold = 75 }: Props) =>
             <Card.Content style={styles.content}>
                 <View style={styles.header}>
                     <Text variant="titleMedium">ATS Compatibility Score</Text>
-                    <View style={{ flexDirection: 'row', alignItems: 'baseline' }}>
-                        {originalScore !== undefined && diff !== 0 && (
-                            <Text variant="titleMedium" style={{ color: '#666', marginRight: 8, textDecorationLine: 'line-through' }}>
+                </View>
+                <View style={{ alignItems: 'center', marginVertical: 4 }}>
+                    <Text variant="displayMedium" style={{ color: rec.color, fontWeight: 'bold' }}>{score}%</Text>
+                    {originalScore !== undefined && diff !== 0 && (
+                        <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
+                            <Text variant="titleSmall" style={{ color: '#999', textDecorationLine: 'line-through', marginRight: 10 }}>
                                 {originalScore}%
                             </Text>
-                        )}
-                        <Text variant="displayMedium" style={{ color: rec.color, fontWeight: 'bold' }}>{score}%</Text>
-                        {originalScore !== undefined && diff > 0 && (
-                            <Text variant="titleMedium" style={{ color: '#4CAF50', marginLeft: 8 }}>
-                                (+{diff}) ⬆️
+                            <Text variant="titleMedium" style={{ color: '#4CAF50', fontWeight: 'bold' }}>
+                                +{diff}% ⬆️
                             </Text>
-                        )}
-                    </View>
+                        </View>
+                    )}
                 </View>
 
                 <ProgressBar progress={score / 100} color={rec.color} style={styles.progress} />

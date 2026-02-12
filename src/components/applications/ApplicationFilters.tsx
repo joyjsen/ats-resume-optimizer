@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { View, StyleSheet, ScrollView, Modal, TouchableOpacity, TouchableWithoutFeedback } from 'react-native';
+import { View, StyleSheet, ScrollView, Modal, TouchableOpacity, TouchableWithoutFeedback, Platform } from 'react-native';
 import { Text, Chip, Button, Divider, useTheme, Surface } from 'react-native-paper';
 import { Application, ApplicationStage } from '../../types/application.types';
 
@@ -21,6 +21,8 @@ interface Props {
     currentSort: ApplicationSortOption;
     onSortChange: (sort: ApplicationSortOption) => void;
 }
+
+const isAndroid = Platform.OS === 'android';
 
 export const ApplicationFilters: React.FC<Props> = ({
     applications,
@@ -109,6 +111,7 @@ export const ApplicationFilters: React.FC<Props> = ({
                         onPress={() => setIsExpanded(!isExpanded)}
                         icon={isExpanded ? "chevron-up" : "filter-variant"}
                         compact
+                        labelStyle={isAndroid ? { fontSize: 12 } : undefined}
                     >
                         Filters
                     </Button>
@@ -245,10 +248,9 @@ export const ApplicationFilters: React.FC<Props> = ({
 
 const styles = StyleSheet.create({
     container: {
-        marginHorizontal: 16,
-        marginBottom: 12,
+        marginHorizontal: isAndroid ? 12 : 16,
+        marginBottom: isAndroid ? 8 : 12,
         borderRadius: 8,
-        // backgroundColor: '#fff',
     },
     contentWrapper: {
         overflow: 'hidden',
@@ -264,9 +266,8 @@ const styles = StyleSheet.create({
         minWidth: 160
     },
     expandedContent: {
-        padding: 16,
+        padding: isAndroid ? 12 : 16,
         paddingTop: 0,
-        // backgroundColor: '#f9f9f9'
     },
     label: {
         fontWeight: 'bold',

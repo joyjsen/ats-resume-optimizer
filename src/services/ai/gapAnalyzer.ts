@@ -80,68 +80,65 @@ Analyze the candidate's resume against the provided job posting to determine app
 
 ## ANALYSIS METHODOLOGY
 
-### Skill Classification Rules
-1. **Matched Skill**: The candidate explicitly demonstrates this skill through listed experience, projects, certifications, or their skills section. Evidence must be clear and direct — not assumed.
-2. **Partial Match**: The candidate possesses a related, transferable, or adjacent skill that could reasonably bridge to the required skill with minimal ramp-up. Example: "PostgreSQL experience" partially matches a "MySQL" requirement.
-3. **Missing Skill**: No evidence whatsoever in the resume — neither direct nor transferable.
+### Skill Discovery & Classification
+1. **READ THE FULL DESCRIPTION**: Do not rely only on structured requirements. Identify implied skills, tools, and methodologies mentioned anywhere in the job description.
+2. **Matched Skill**: The candidate explicitly demonstrates this skill through listed experience, projects, certifications, or their skills section. Evidence must be clear and direct.
+3. **Partial Match (CRITICAL)**: Actively look for transferable or adjacent skills. If a candidate has X and the job requires Y, and X is a common precursor or peer to Y (e.g., PostgreSQL for MySQL, React for Vue), classify it as a Partial Match. 
+   - **Explain transferability**: Explicitly state how the candidate's existing skill bridges the gap.
+4. **Missing Skill**: No evidence whatsoever in the resume — neither direct nor transferable.
 
 ### Importance Classification
-- **critical**: Explicitly stated as "required," "must-have," or listed in minimum qualifications. The candidate will likely be auto-rejected without this.
-- **high**: Strongly emphasized in the posting (mentioned multiple times, listed early, or central to the role's core function).
+- **critical**: Explicitly stated as "required," "must-have," or listed in minimum qualifications.
+- **high**: Strongly emphasized in the posting (mentioned multiple times, listed early).
 - **medium**: Listed as "preferred," "nice-to-have," or mentioned once without emphasis.
-- **low**: Implied by the role context or industry norms but not explicitly stated in the posting.
+- **low**: Implied by the role context or industry norms.
 
 ### Confidence Scoring (0-100)
-Rate how confident you are in each classification:
-- **90-100**: Explicit, unambiguous evidence (e.g., skill listed verbatim, years of experience stated)
-- **70-89**: Strong evidence through context (e.g., job titles, project descriptions that clearly involve the skill)
-- **50-69**: Moderate/indirect evidence (e.g., related tools or frameworks used)
-- **30-49**: Weak evidence, largely inferred
-- **0-29**: Near-zero evidence, speculative at best
+Rate how confident you are in each classification (90-100 for explicit, 50-89 for strong context/transferable, <50 for weak inference).
 
 ### Scoring Formulas
-- **keywordDensity** (0-100): Percentage of important keywords/phrases from the job posting that appear (exactly or semantically) in the resume. Weight critical keywords 3x, high keywords 2x, medium 1x, low 0.5x.
-- **experienceMatch** (0-100): How well the candidate's years of experience, seniority level, industry background, and scope of responsibilities align with the job's requirements.
-- **totalGapScore** (0-100): Overall gap severity. 0 = no gaps (perfect match), 100 = completely unqualified. Weight critical gaps at 40% each (capped at 100), high gaps at 15% each, medium at 5% each, low at 2% each. Reduce gap weight by 30% if hasTransferable is true.
+- **keywordDensity** (0-100): Percentage of important keywords/phrases from the job posting that appear in the resume. Weight critical keywords 3x.
+- **experienceMatch** (0-100): Alignment of years, seniority, and industry background.
+- **totalGapScore** (0-100): Overall gap severity. 0 = perfect match, 100 = completely unqualified.
 
 ## OUTPUT FORMAT
-Return ONLY valid JSON — no markdown fencing, no commentary, no text before or after the JSON object.
+Return ONLY valid JSON.
 
 {
   "matchAnalysis": {
     "matchedSkills": [
       {
-        "skill": "string — the skill name as referenced in the job posting",
+        "skill": "string",
         "importance": "critical | high | medium | low",
-        "confidence": "number 0-100",
-        "evidence": "string — brief quote or reference from the resume proving this match",
-        "recommendation": "string — brief actionable tip to optimize how this skill is presented"
+        "confidence": number,
+        "evidence": "string",
+        "recommendation": "string"
       }
     ],
     "partialMatches": [
       {
-        "skill": "string — the required skill from the job posting",
+        "skill": "string (the required skill)",
         "importance": "critical | high | medium | low",
-        "confidence": "number 0-100",
-        "candidateSkill": "string — the related skill the candidate actually has",
-        "transferability": "string — brief explanation of how the existing skill transfers",
-        "recommendation": "string — brief actionable tip to bridge this partial gap"
+        "confidence": number,
+        "candidateSkill": "string (the skill the candidate has)",
+        "transferability": "string (explanation of how it transfers)",
+        "recommendation": "string"
       }
     ],
     "missingSkills": [
       {
-        "skill": "string — the skill name as referenced in the job posting",
+        "skill": "string",
         "importance": "critical | high | medium | low",
-        "confidence": "number 0-100",
-        "recommendation": "string — brief actionable tip to acquire/demonstrate this missing skill"
+        "confidence": number,
+        "recommendation": "string"
       }
     ],
-    "keywordDensity": "number 0-100",
+    "keywordDensity": number,
     "experienceMatch": {
-      "match": "number 0-100",
-      "requiredYears": "string — what the job asks for",
-      "candidateYears": "string — what the resume shows",
-      "seniorityAlignment": "string — e.g., 'Candidate is mid-level, role requires senior'"
+      "match": number,
+      "requiredYears": "string",
+      "candidateYears": "string",
+      "seniorityAlignment": "string"
     }
   },
   "gaps": {
@@ -150,7 +147,7 @@ Return ONLY valid JSON — no markdown fencing, no commentary, no text before or
         "skill": "string",
         "importance": "critical",
         "hasTransferable": "boolean",
-        "recommendation": "string — actionable suggestion to close this gap (e.g., certification, project, course)"
+        "recommendation": "string"
       }
     ],
     "minorGaps": [
@@ -158,20 +155,21 @@ Return ONLY valid JSON — no markdown fencing, no commentary, no text before or
         "skill": "string",
         "importance": "medium | low",
         "hasTransferable": "boolean",
-        "recommendation": "string — actionable suggestion to close this gap"
+        "recommendation": "string"
       }
     ],
-    "totalGapScore": "number 0-100",
+    "totalGapScore": number,
     "readinessVerdict": "strong_match | competitive | stretch | underqualified",
-    "verdictSummary": "string — 1-2 sentence plain-English assessment of application readiness"
+    "verdictSummary": "string (comprehensive 1-2 sentence assessment)"
   }
 }
 
 ## IMPORTANT RULES
-- Be honest and precise. Do not inflate matches to be encouraging — candidates rely on this to make real decisions.
-- Every skill in the job posting must appear in exactly ONE category: matchedSkills, partialMatches, or missingSkills. No skill should be omitted or duplicated.
-- If the job posting is vague or lacks explicit requirements, infer reasonable requirements from the job title, industry, and seniority level, and note inferred requirements with lower confidence scores.
-- Return ONLY the JSON object. No preamble, no explanation, no markdown code blocks.
+- **Discovery**: Ensure you capture ALL technical and soft skills mentioned in the FULL description.
+- **Accuracy**: Be precise. Do not invent matches.
+- **Completeness**: Every identified requirement from the JD must be categorized. You MUST list ALL missing skills, regardless of their importance (critical, high, medium, or low). Do not omit minor requirements.
+- **Exhaustive Coverage**: Before generating your response, first mentally enumerate EVERY skill, technology, tool, framework, methodology, certification, and soft skill mentioned anywhere in the job description (title, responsibilities, requirements, nice-to-haves, preferred qualifications). Then ensure EACH one appears in exactly one of: matchedSkills, partialMatches, or missingSkills. The total count across all three arrays MUST account for every requirement in the JD.
+- **No Truncation**: Do NOT stop listing skills early. Include ALL skills even if the list is long.
     `.trim();
 
     const userContent = `
@@ -181,9 +179,14 @@ ${JSON.stringify(resume, null, 2)}
 JOB POSTING:
 Title: ${job.title}
 Company: ${job.company}
-Requirements: ${JSON.stringify(job.requirements, null, 2)}
 
-Provide the analysis JSON.
+FULL JOB DESCRIPTION (Analyze this for all requirements/skills):
+${job.description}
+
+STRUCTURED REQUIREMENTS (Reference):
+${JSON.stringify(job.requirements, null, 2)}
+
+Provide the complete analysis JSON.
     `.trim();
 
     const options = {
@@ -193,7 +196,7 @@ Provide the analysis JSON.
         { role: 'user', content: userContent }
       ],
       response_format: { type: 'json_object' },
-      max_tokens: 2500,
+      max_tokens: 4096,
     };
 
     const response = await safeOpenAICall(

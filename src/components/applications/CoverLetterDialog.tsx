@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ScrollView, TextInput as RNTextInput } from 'react-native';
+import { ScrollView, TextInput as RNTextInput, View, Alert } from 'react-native';
 import { Button, Dialog, Portal, Text, useTheme, TextInput } from 'react-native-paper';
 import { Application } from '../../types/application.types';
 
@@ -77,28 +77,30 @@ export const CoverLetterDialog: React.FC<CoverLetterDialogProps> = ({
                 </Dialog.ScrollArea>
                 <Dialog.Actions>
                     {isEditing ? (
-                        <>
-                            <Button onPress={handleCancelEdit}>Cancel</Button>
-                            <Button mode="contained" onPress={handleSave}>Save</Button>
-                        </>
+                        [
+                            <Button key="cancel" onPress={handleCancelEdit}>Cancel</Button>,
+                            <Button key="save" mode="contained" onPress={handleSave}>Save</Button>
+                        ]
                     ) : (
-                        <>
-                            <Button onPress={handleDismiss}>Close</Button>
-                            <Button onPress={() => setIsEditing(true)}>Edit</Button>
+                        [
+                            <Button key="close" onPress={handleDismiss}>Close</Button>,
+                            <Button key="edit" onPress={() => setIsEditing(true)}>Edit</Button>,
                             <Button
+                                key="regenerate"
                                 onPress={onRegenerate}
                                 textColor={theme.colors.error}
                             >
                                 Regenerate
-                            </Button>
+                            </Button>,
                             <Button
+                                key="download"
                                 mode="contained"
                                 onPress={() => onDownload(editedContent)}
                                 icon="download"
                             >
                                 Download
                             </Button>
-                        </>
+                        ]
                     )}
                 </Dialog.Actions>
             </Dialog>
