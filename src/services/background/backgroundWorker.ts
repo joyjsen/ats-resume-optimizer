@@ -25,7 +25,7 @@ const options = {
         delay: 1000,
     },
     // Android-specific: Keep service in foreground
-    foregroundServiceType: 'dataSync',
+    foregroundServiceType: 'shortService',
     progressBar: {
         max: 100,
         value: 0,
@@ -98,7 +98,7 @@ export class BackgroundWorker {
             if (this.isRunning) {
                 // Feature Change: "Rewrite & Optimize Resume", "Skill Addition", "Prep Guide", "Cover Letter" 
                 // should NOT pause or warn. They should just continue processing.
-                const allowedBackgroundTasks = ['optimize_resume', 'add_skill', 'prep_guide', 'cover_letter', 'resume_optimization'];
+                const allowedBackgroundTasks = ['optimize_resume', 'add_skill', 'prep_guide', 'cover_letter', 'resume_optimization', 'analyze_resume'];
 
                 if (allowedBackgroundTasks.includes(this.currentTaskType || '')) {
                     console.log(`[BackgroundWorker] Task ${this.currentTaskType} is allowed to run in background. No warning.`);
@@ -218,7 +218,7 @@ export class BackgroundWorker {
             } catch (e) {
                 // Ignore update errors
             }
-        }, 5000);
+        }, 2000);
 
         try {
             await task();

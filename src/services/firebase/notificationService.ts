@@ -73,7 +73,6 @@ export class NotificationService {
                 // Set the notification handler
                 Notifications.setNotificationHandler({
                     handleNotification: async () => ({
-                        shouldShowAlert: true,
                         shouldPlaySound: true,
                         shouldSetBadge: false,
                         shouldShowBanner: true,
@@ -434,13 +433,11 @@ export class NotificationService {
             }
         );
     }
-    /**
-     * Notify when app is backgrounded during active task
-     */
+    // Notify when app is backgrounded during active task
     async notifyBackgroundWarning(): Promise<void> {
         await this.scheduleLocalNotification(
-            "Analysis Paused",
-            "Please return to the app to continue the analysis.",
+            "Parsing Paused",
+            "Please return to the app for the local parsing to complete.",
             {
                 route: '/(tabs)/analyze'
             }

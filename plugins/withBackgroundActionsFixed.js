@@ -15,15 +15,15 @@ module.exports = function withBackgroundActionsFixed(config) {
         );
 
         if (existingService) {
-            existingService.$['android:foregroundServiceType'] = 'dataSync';
-            console.log(`[ConfigPlugin] Updated existing service ${serviceName} with foregroundServiceType="dataSync"`);
+            existingService.$['android:foregroundServiceType'] = 'shortService';
+            console.log(`[ConfigPlugin] Updated existing service ${serviceName} with foregroundServiceType="shortService"`);
         } else {
             mainApplication.service.push({
                 $: {
                     'android:name': serviceName,
                     'android:enabled': 'true',
                     'android:exported': 'false',
-                    'android:foregroundServiceType': 'dataSync',
+                    'android:foregroundServiceType': 'shortService',
                 },
             });
             console.log(`[ConfigPlugin] Added new service ${serviceName} with foregroundServiceType="dataSync"`);

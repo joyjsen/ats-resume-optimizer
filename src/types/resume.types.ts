@@ -29,6 +29,7 @@ export interface ParsedResume {
     skills: Skill[];
     certifications?: Certification[];
     projects?: Project[];
+    text?: string;
 }
 
 export interface Experience {

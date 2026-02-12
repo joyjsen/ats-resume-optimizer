@@ -49,6 +49,7 @@ export class ResumeParserService {
       const otherUris: string[] = [];
 
       for (const uri of fileUris) {
+        if (!uri || typeof uri !== 'string') continue; // Skip invalid URIs
         if (uri.match(/\.(jpg|jpeg|png)$/i) || uri.startsWith('data:image')) {
           imageUris.push(uri);
         } else {
@@ -232,6 +233,7 @@ Guidelines:
       experience: (parsed.experience || []).map((exp: any) => ({ ...exp, id: this.generateId() })),
       education: (parsed.education || []).map((edu: any) => ({ ...edu, id: this.generateId() })),
       skills: parsed.skills || [],
+      text: content
     };
   }
 

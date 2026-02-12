@@ -18,15 +18,18 @@ export const generateHash = async (message: string): Promise<string> => {
     // but for now, to ensure stability, let's use a combination of length + simple char code sum + DJB2 
     // transformed to hex, which is "good enough" for UI deduplication.
 
+    // STABILITY FIX: Coerce input to string to prevent crashes if a number/object slips in
+    const safeMessage = String(message || '');
     let hash = 0;
-    if (message.length === 0) return '00000000';
 
-    for (let i = 0; i < message.length; i++) {
-        const char = message.charCodeAt(i);
+    if (safeMessage.length === 0) return '00000000';
+
+    for (let i = 0; i < safeMessage.length; i++) {
+        const char = safeMessage.charCodeAt(i);
         hash = ((hash << 5) - hash) + char;
         hash = hash & hash; // Convert to 32bit integer
     }
 
     // Add length to reduce collision chance of similar strings
-    return Math.abs(hash).toString(16) + "-" + message.length.toString(16);
+    return Math.abs(hash).toString(16) + "-" + safeMessage.length.toString(16);
 };

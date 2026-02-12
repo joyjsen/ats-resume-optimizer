@@ -45,7 +45,6 @@
       "predictiveBackGestureEnabled": false,
       "permissions": [
         "FOREGROUND_SERVICE",
-        "FOREGROUND_SERVICE_DATA_SYNC",
         "WAKE_LOCK",
         "POST_NOTIFICATIONS"
       ],

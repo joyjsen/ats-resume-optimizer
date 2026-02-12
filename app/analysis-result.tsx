@@ -37,8 +37,10 @@ export default function AnalysisResultScreen() {
                         draftOptimizedResumeData: analysis.draftOptimizedResumeData,
                         draftChangesData: analysis.draftChangesData,
                         draftAtsScore: analysis.draftAtsScore,
+                        draftAtsScore: analysis.draftAtsScore,
                         draftMatchAnalysis: analysis.draftMatchAnalysis,
-                        atsScore: analysis.atsScore
+                        // Priority: Top-level (fast read) -> Nested (legacy/backup) -> 0
+                        atsScore: analysis.atsScore ?? analysis.analysisData?.atsScore ?? 0
                     });
                 }
             });
@@ -572,7 +574,7 @@ export default function AnalysisResultScreen() {
                         <Card.Content>
                             <Text variant="titleMedium" style={{ marginBottom: 8 }}>Recommendation</Text>
                             <Text variant="bodyMedium">
-                                {currentAnalysis.recommendation.reasoning}
+                                {currentAnalysis.recommendation?.reasoning || "Analysis successfully completed. Proceed to optimization."}
                             </Text>
 
                             {!optimizing ? (
@@ -585,7 +587,7 @@ export default function AnalysisResultScreen() {
                                     >
                                         {currentAnalysis.isLocked ? "Optimizer Locked" : "✨ Rewrite & Optimize Resume"}
                                     </Button>
-                                    {currentAnalysis.recommendation.action === 'upskill' && (
+                                    {currentAnalysis.recommendation?.action === 'upskill' && (
                                         <Button
                                             mode="outlined"
                                             onPress={() => router.push({ pathname: '/upskilling-path', params: { id: currentAnalysis.id } } as any)}
@@ -642,7 +644,7 @@ export default function AnalysisResultScreen() {
                                         </Text>
 
                                         {changes.map((change, index) => (
-                                            <View key={index} style={{ marginBottom: 12, paddingLeft: 8, borderLeftWidth: 2, borderLeftColor: '#4CAF50' }}>
+                                            <View key={`${change.type}-${index}`} style={{ marginBottom: 12, paddingLeft: 8, borderLeftWidth: 2, borderLeftColor: '#4CAF50' }}>
                                                 <View>
                                                     <Text variant="labelLarge" style={{ color: '#2E7D32' }}>
                                                         {change.type

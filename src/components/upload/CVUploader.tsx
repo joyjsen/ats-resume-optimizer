@@ -9,10 +9,15 @@ interface Props {
     isTextModeActive?: boolean;
 }
 
-interface UploadedFile {
+export interface UploadedFile {
     uri: string;
     name: string;
     size?: number;
+}
+
+interface Props {
+    onFileSelected: (files: UploadedFile[]) => void;
+    isTextModeActive?: boolean;
 }
 
 const isAndroid = Platform.OS === 'android';
@@ -135,7 +140,7 @@ export const CVUploader = ({ onFileSelected, isTextModeActive }: Props) => {
 
     const updateFiles = (newFileList: UploadedFile[]) => {
         setFiles(newFileList);
-        onFileSelected(newFileList.map(f => f.uri));
+        onFileSelected(newFileList); // Pass full objects, not just URIs
     };
 
     const removeFile = (uri: string) => {

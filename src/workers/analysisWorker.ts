@@ -1,4 +1,5 @@
 import { AppState } from 'react-native';
+import { BackgroundWorker } from '../services/background/backgroundWorker';
 import { jobParserService } from '../services/ai/jobParser';
 import { resumeParserService } from '../services/ai/resumeParser';
 import { gapAnalyzerService } from '../services/ai/gapAnalyzer';
@@ -22,153 +23,138 @@ const generateRecommendationCloud = httpsCallable(functions, 'generateRecommenda
 
 export const executeAnalysisTask = async (taskId: string, payload: any, type: string = 'analyze_resume') => {
     console.log(`[Worker] Starting task: ${taskId} (${type})`);
-    try {
-        if (type === 'optimize_resume') {
-            return await executeOptimizationTask(taskId, payload);
-        } else if (type === 'add_skill') {
-            return await executeAddSkillTask(taskId, payload);
-        } else if (type === 'cover_letter' || type === 'prep_guide' || type === 'prep_guide_refresh' || type === 'course_completion' || type === 'resume_validation') {
-            // These are "ghost" tasks created by the client to trigger notifications.
-            // They are already completed or handled on the client-side.
-            console.log(`[Worker] Skipping execution for client-side task: ${taskId} (${type})`);
-            return;
-        }
 
-        const { jobUrl, jobText, jobTitle, jobCompany, resumeText, resumeFiles, jobHash, resumeHash } = payload;
-
-        // OPTIMIZATION: Parse Job and Resume in PARALLEL to reduce total time
+    // Wrap the entire execution in BackgroundWorker to ensure it runs even if backgrounded
+    return BackgroundWorker.start(async () => {
         try {
-            await taskService.updateProgress(taskId, 15, 'Parsing job and resume...');
-        } catch (updateError: any) {
-            if (updateError.message?.includes('no longer exists')) {
-                console.warn(`[Worker] Task ${taskId} was cancelled, stopping execution.`);
+            if (type === 'optimize_resume') {
+                return await executeOptimizationTask(taskId, payload);
+            } else if (type === 'add_skill') {
+                return await executeAddSkillTask(taskId, payload);
+            } else if (type === 'cover_letter' || type === 'prep_guide' || type === 'prep_guide_refresh' || type === 'course_completion' || type === 'resume_validation') {
+                // These are "ghost" tasks created by the client to trigger notifications.
+                // They are already completed or handled on the client-side.
+                console.log(`[Worker] Skipping execution for client-side task: ${taskId} (${type})`);
                 return;
             }
-            throw updateError;
-        }
 
-        // Create job parsing promise
-        const jobParsePromise = (async () => {
+            const { jobUrl, jobText, jobTitle, jobCompany, resumeText, resumeFiles, jobHash, resumeHash } = payload;
+
+            // 1. Parsing (Keep Local - Fast & Requires Files)
+            // We still parse locally because handling file uploads/imports on the server is complex.
+            // It's fast enough to do before backgrounding.
             try {
-                await taskService.updateProgress(taskId, 20, 'Parsing job details...');
-            } catch (ignore) { }
+                await taskService.updateProgress(taskId, 15, 'Parsing inputs locally...');
+            } catch (updateError: any) {
+                if (updateError.message?.includes('no longer exists')) return;
+                throw updateError;
+            }
 
-            if (payload.screenshots && payload.screenshots.length > 0) {
-                console.log(`[Worker] Parsing job from ${payload.screenshots.length} snapshots...`);
-                return await jobParserService.parseJobFromImage(payload.screenshots);
-            } else {
-                const hasValidText = jobText && jobText.trim().length > 50;
-                if (hasValidText) {
-                    console.log("[Worker] Parsing job from provided text (respecting edits)...");
-                    return await jobParserService.parseJobFromText(jobText, jobTitle, jobCompany);
-                } else if (jobUrl) {
-                    console.log("[Worker] Parsing job from URL (Note: fallback text expected)...");
-                    throw new Error("Direct URL scraping in background not fully supported without pre-import.");
+            const jobParsePromise = (async () => {
+                await BackgroundWorker.updateProgress("Extracting Job Details...");
+                if (payload.screenshots && payload.screenshots.length > 0) {
+                    // For images, we still need OCR. We can't avoid this network call easily without uploading images.
+                    // But we can skip the "Structuring" step.
+                    // Ideally, we'd upload images, but for now let's hope OCR is fast enough or user is using text.
+                    // If user processes TEXT (which handles the vast majority of "stuck" cases), this is instant.
+                    return await jobParserService.parseJobFromImage(payload.screenshots);
                 } else {
-                    throw new Error("No job input provided");
+                    const hasValidText = jobText && jobText.trim().length > 50;
+                    if (hasValidText) {
+                        // SKIP AI STRUCTURING LOCALLY
+                        return {
+                            title: jobTitle || 'Detected Job',
+                            company: jobCompany || 'Detected Company',
+                            description: jobText,
+                            requirements: { mustHaveSkills: [], niceToHaveSkills: [], keywords: [] },
+                            id: 'raw_job_' + Date.now(),
+                            parsedAt: new Date()
+                        };
+                    } else if (jobUrl) {
+                        throw new Error("Direct URL scraping in background not fully supported without pre-import.");
+                    } else {
+                        throw new Error("No job input provided");
+                    }
                 }
-            }
-        })();
+            })();
 
-        // Create resume parsing promise
-        const resumeParsePromise = (async () => {
+            const resumeParsePromise = (async () => {
+                await BackgroundWorker.updateProgress("Extracting Resume Text...");
+                if (resumeText && resumeText.trim().length > 0) {
+                    // SKIP AI STRUCTURING LOCALLY
+                    return { text: resumeText, skills: [], experience: [], education: [] };
+                } else if (resumeFiles && resumeFiles.length > 0) {
+                    // This uses Mammoth (local) for DOCX, but OpenAI for Images.
+                    // We get RAW TEXT here.
+                    const rawText = await resumeParserService.extractContentFromFiles(resumeFiles);
+                    return { text: rawText, skills: [], experience: [], education: [] };
+                } else {
+                    throw new Error("No resume input provided");
+                }
+            })();
+
+            const [job, resume] = await Promise.all([jobParsePromise, resumeParsePromise]);
+
+            console.log(`[Worker] Extraction complete (Raw/Semi-Parsed). Offloading to cloud...`);
+
             try {
-                await taskService.updateProgress(taskId, 30, 'Extracting resume text...');
+                await taskService.updateProgress(taskId, 30, 'Sending to cloud analyzer...');
             } catch (ignore) { }
 
-            if (resumeText && resumeText.trim().length > 0) {
-                console.log("[Worker] Parsing resume from text...");
-                return await resumeParserService.parseResumeFromContent(resumeText);
-            } else if (resumeFiles && resumeFiles.length > 0) {
-                console.log(`[Worker] Parsing resume from ${resumeFiles.length} files...`);
-                return await resumeParserService.parseResume(resumeFiles);
-            } else {
-                throw new Error("No resume input provided");
-            }
-        })();
+            // 2. Offload to Background Task Service (Server-Side)
+            await new Promise<string>((resolve, reject) => {
+                backgroundTaskService.createTask(
+                    'analyze_resume',
+                    {
+                        analysisTaskId: taskId,
+                        // Send RAW or Semi-Parsed data
+                        job,
+                        resume,
+                        jobHash,
+                        resumeHash,
+                        jobTitle: job.title,
+                        jobCompany: job.company,
+                        jobText: job.description || jobText,
+                        resumeText: resume.text || resumeText,
+                        // Flag to tell backend it needs to do the heavy parsing
+                        requiresParsing: true
+                    },
+                    async (bgTask) => {
+                        console.log("[Worker] Background analysis completed!");
+                        // The Cloud Function updates the analysis task status and resultId.
+                        // We just resolve here.
+                        // We can return the resultId if it's in the background task result.
+                        resolve(bgTask.result?.savedId);
+                    },
+                    async (bgTask) => {
+                        // If the error is just "task cancelled" or "not found", we shouldn't error out loudly
+                        const isNotFoundError = bgTask.error?.includes('NOT_FOUND') || bgTask.error?.includes('No document to update');
 
-        // Execute both in parallel
-        const [job, resume] = await Promise.all([jobParsePromise, resumeParsePromise]);
+                        if (!isNotFoundError) {
+                            console.error("[Worker] Background analysis failed:", bgTask.error);
+                            await taskService.failTask(taskId, bgTask.error || "Background analysis failed");
+                        } else {
+                            console.log("[Worker] Background analysis stopped (Task cancelled/deleted).");
+                        }
 
-        console.log(`[Worker] Job parsed: ${job.title} @ ${job.company}`);
-        console.log(`[Worker] Resume parsed for: ${resume.contactInfo.name || 'User'}`);
+                        reject(new Error(bgTask.error));
+                    }
+                ).catch(err => {
+                    if (err?.message?.includes('NOT_FOUND') || err?.message?.includes('No document to update')) {
+                        console.log("[Worker] Background task creation aborted (Task cancelled/deleted).");
+                    } else {
+                        console.error("[Worker] Failed to create background task:", err);
+                    }
+                    reject(err);
+                });
+            });
 
-        try {
-            await taskService.updateProgress(taskId, 50, 'Analyzing fit...');
-        } catch (updateError: any) {
-            if (updateError.message?.includes('no longer exists')) {
-                console.warn(`[Worker] Task ${taskId} was cancelled, stopping execution.`);
-                return;
-            }
-            throw updateError;
+        } catch (error: any) {
+            console.error(`[Worker] Task ${taskId} FAILED:`, error);
+            await taskService.failTask(taskId, error.message || "Unknown error");
+            throw error;
         }
-
-        // 3. Gap Analysis - Force local execution to ensure we use the updated hiring consultant prompt and metrics
-        console.log("[Worker] Running Local Gap Analysis for enhanced metrics...");
-        let analysis: any;
-        analysis = await gapAnalyzerService.analyzeJobFit(resume, job);
-
-        /* 
-        // TEMPORARILY DISABLED: Favor local analysis for latest high-fidelity metrics
-        try {
-            // ... cloud logic ...
-        } catch (cloudError: any) {
-            // ... fallback ...
-        }
-        */
-
-        console.log(`[Worker] Analysis complete. Score: ${analysis.atsScore}`);
-
-        try {
-            await taskService.updateProgress(taskId, 90, 'Saving results...');
-        } catch (updateError: any) {
-            if (updateError.message?.includes('no longer exists')) {
-                console.warn(`[Worker] Task ${taskId} was cancelled, stopping execution.`);
-                return;
-            }
-            throw updateError;
-        }
-
-        // 4. Save Result
-        console.log("[Worker] Saving analysis to Firestore...");
-        const savedId = await historyService.saveAnalysis(
-            analysis,
-            job,
-            resume,
-            undefined,
-            undefined,
-            jobHash,
-            resumeHash
-        );
-
-        if (savedId) {
-            console.log(`[Worker] Analysis saved successfully with ID: ${savedId}`);
-        } else {
-            console.warn("[Worker] HistoryService.saveAnalysis returned empty ID.");
-        }
-
-        await taskService.completeTask(taskId, savedId);
-        console.log(`[Worker] Task ${taskId} marked as COMPLETED.`);
-
-        // Re-enabled local notifications as fallback (backend trigger might be delayed or fail)
-        try {
-            await notificationService.notifyAnalysisComplete(
-                job.title,
-                job.company,
-                analysis.atsScore,
-                savedId
-            );
-        } catch (notifErr) {
-            console.warn("[Worker] Failed to send local completion notification:", notifErr);
-        }
-
-        return savedId;
-
-    } catch (error: any) {
-        console.error(`[Worker] Task ${taskId} FAILED:`, error);
-        await taskService.failTask(taskId, error.message || "Unknown error");
-        throw error;
-    }
+    }, taskId, type);
 };
 
 const executeOptimizationTask = async (taskId: string, payload: any) => {

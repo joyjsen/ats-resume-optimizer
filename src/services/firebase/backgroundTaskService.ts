@@ -8,7 +8,7 @@ import {
 } from 'firebase/firestore';
 import { db, auth } from './config';
 
-export type BackgroundTaskType = 'optimize_resume' | 'add_skill' | 'prep_guide' | 'cover_letter';
+export type BackgroundTaskType = 'optimize_resume' | 'add_skill' | 'prep_guide' | 'cover_letter' | 'analyze_resume';
 
 export interface BackgroundTask {
     id: string;

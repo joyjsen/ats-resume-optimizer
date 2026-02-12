@@ -122,18 +122,26 @@ export class TaskService {
      */
     async failTask(taskId: string, error: string) {
         const docRef = doc(db, this.collectionName, taskId);
-        const snap = await getDoc(docRef);
+        try {
+            const snap = await getDoc(docRef);
 
-        if (!snap.exists()) {
-            console.warn(`[TaskService] Cannot mark task as failed: Task ${taskId} no longer exists.`);
-            return;
+            if (!snap.exists()) {
+                console.warn(`[TaskService] Cannot mark task as failed: Task ${taskId} no longer exists.`);
+                return;
+            }
+
+            await updateDoc(docRef, {
+                status: 'failed',
+                error,
+                updatedAt: serverTimestamp()
+            });
+        } catch (e: any) {
+            if (e?.code === 'not-found' || e?.message?.includes('No document to update')) {
+                console.warn(`[TaskService] Ignore failTask error: Task ${taskId} already deleted.`);
+                return;
+            }
+            console.error(`[TaskService] Error failing task ${taskId}:`, e);
         }
-
-        await updateDoc(docRef, {
-            status: 'failed',
-            error,
-            updatedAt: serverTimestamp()
-        });
     }
 
     /**

@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { View, ScrollView, StyleSheet, Alert, Image, KeyboardAvoidingView, Platform, TouchableWithoutFeedback, Keyboard } from 'react-native';
+import { View, ScrollView, StyleSheet, Alert, Image, KeyboardAvoidingView, Platform, TouchableWithoutFeedback, Keyboard, AppState } from 'react-native';
 import { Button, Text, ActivityIndicator, IconButton, Dialog, Portal, TextInput, useTheme, List } from 'react-native-paper';
 import { useRouter, useNavigation } from 'expo-router'; // Add useNavigation
 import * as ImagePicker from 'expo-image-picker';
@@ -19,6 +19,7 @@ import { useTaskQueue } from '../../src/context/TaskQueueContext';
 import { linkedInService } from '../../src/services/external/linkedInService';
 import { useTokenCheck } from '../../src/hooks/useTokenCheck';
 import { horizontalScale, verticalScale, moderateScale, scaleFont } from '../../src/utils/responsive';
+import { notificationService } from '../../src/services/firebase/notificationService';
 const isAndroid = Platform.OS === 'android';
 
 export default function AnalyzeScreen() {
@@ -219,18 +220,54 @@ export default function AnalyzeScreen() {
             console.log("Hashes generated:", { jobHash, resumeHash });
 
             console.log("Checking for existing analysis...");
-            const existingAnalysis = await historyService.findExistingAnalysis(jobHash, resumeHash);
+
+            // Priority 1: Check by URL OR Title+Company
+            // If we have a Job URL, that's a very strong signal.
+            // If not, we fall back to Title + Company.
+            let existingAnalysis = null;
+            const hasUrl = jobUrl && jobUrl.length > 5;
+            const hasDetails = jobTitle && jobCompany && jobTitle.length > 2 && jobCompany.length > 2;
+
+            if (hasUrl || hasDetails) {
+                console.log(`Checking by details... URL: ${hasUrl}, Details: ${hasDetails}`);
+                existingAnalysis = await historyService.findExistingAnalysisByDetails(
+                    jobTitle || '',
+                    jobCompany || '',
+                    resumeHash,
+                    jobUrl // Pass the URL for the stronger check
+                );
+            }
+
+            // Priority 2: Fallback to strict Hash Check (if nothing found by title/company)
+            if (!existingAnalysis) {
+                console.log("Checking by strict hash...");
+                existingAnalysis = await historyService.findExistingAnalysis(jobHash, resumeHash);
+            }
 
             if (existingAnalysis) {
                 console.log("Existing analysis found.");
                 setLoading(false);
                 Alert.alert(
-                    "Analysis Exists",
-                    "You have already analyzed this specific job and resume pairing.",
+                    "Duplicate Analysis",
+                    "You have already analyzed this resume for this position (" + existingAnalysis.jobTitle + " at " + existingAnalysis.company + ").",
                     [
                         {
-                            text: "View Existing Result",
+                            text: "Exit",
+                            style: "cancel",
+                            onPress: () => console.log("User cancelled analysis")
+                        },
+                        {
+                            text: "Start New Anyway",
+                            style: "destructive", // Highlighted as a 're-do' action
+                            onPress: async () => {
+                                console.log("User chose to start new anyway");
+                                await proceedWithAnalysis(jobHash, resumeHash);
+                            }
+                        },
+                        {
+                            text: "View Existing",
                             onPress: () => {
+                                // @ts-ignore
                                 setCurrentAnalysis({
                                     ...existingAnalysis.analysisData,
                                     id: existingAnalysis.id,
@@ -241,14 +278,6 @@ export default function AnalyzeScreen() {
                                 });
 
                                 router.push({ pathname: '/analysis-result', params: { id: existingAnalysis.id } } as any);
-                            }
-                        },
-                        {
-                            text: "Start New Anyway",
-                            style: "cancel",
-                            onPress: async () => {
-                                console.log("User chose to start new anyway");
-                                await proceedWithAnalysis(jobHash, resumeHash);
                             }
                         }
                     ]
@@ -279,6 +308,8 @@ export default function AnalyzeScreen() {
     const [currentTaskId, setCurrentTaskId] = useState<string | null>(null);
     const hasLoggedCompletionRef = useRef<string | null>(null); // Track which task completion has been logged
 
+    const progressRef = useRef<number>(0); // Track progress for background listener
+
     // Watch for task completion (direct subscription)
     React.useEffect(() => {
         if (!currentTaskId) return;
@@ -289,8 +320,10 @@ export default function AnalyzeScreen() {
         const unsubscribe = taskService.subscribeToTask(currentTaskId, (task) => {
             console.log(`Task update: ${task.id} [${task.status}] - ${task.progress}%`);
             setStage(`${task.stage} (${task.progress}%)`);
+            progressRef.current = task.progress; // Update ref
 
             if (task.status === 'completed' && task.resultId) {
+                // ... (completion logic)
                 console.log("Task completed! resultId:", task.resultId);
                 setLoading(false);
                 historyService.getUserHistory().then(history => {
@@ -318,7 +351,15 @@ export default function AnalyzeScreen() {
 
                         setCurrentTaskId(null); // Stop watching
 
-                        router.push({ pathname: '/analysis-result', params: { id: saved.id } } as any);
+                        if (AppState.currentState === 'active') {
+                            console.log("App is active, navigating to results...");
+                            router.push({ pathname: '/analysis-result', params: { id: saved.id } } as any);
+                        } else {
+                            console.log("App is backgrounded, skipping auto-navigation. User should tap notification.");
+                            // We still clear the current task ID so the UI resets when they return
+                        }
+
+                        setCurrentTaskId(null); // Stop watching
                     } else {
                         // Fallback: If history fetch lags, try fetching specific doc?
                         console.warn("Task completed but result not found in history fetch yet.");
@@ -334,7 +375,9 @@ export default function AnalyzeScreen() {
                                         optimizedResume: retrySaved.optimizedResumeData,
                                         changes: retrySaved.changesData
                                     });
-                                    router.push({ pathname: '/analysis-result', params: { id: retrySaved.id } } as any);
+                                    if (AppState.currentState === 'active') {
+                                        router.push({ pathname: '/analysis-result', params: { id: retrySaved.id } } as any);
+                                    }
                                 }
                             });
                         }, 2000);
@@ -360,6 +403,20 @@ export default function AnalyzeScreen() {
         return () => unsubscribe();
     }, [currentTaskId]);
 
+    // Background Listener for "Parsing Paused" notification
+    React.useEffect(() => {
+        const subscription = AppState.addEventListener('change', nextAppState => {
+            if (nextAppState === 'background' && currentTaskId && progressRef.current < 19) {
+                console.log(`[Analyze] App backgrounded with progress ${progressRef.current}%. Triggering warning.`);
+                notificationService.notifyBackgroundWarning();
+            }
+        });
+
+        return () => {
+            subscription.remove();
+        };
+    }, [currentTaskId]);
+
 
     const proceedWithAnalysis = async (jobHash: string, resumeHash: string) => {
         console.log("--- proceedWithAnalysis ---", { jobHash, resumeHash });
@@ -381,13 +438,20 @@ export default function AnalyzeScreen() {
             }
 
             // 1. Prepare Payload
+            // Extract pure URIs from the objects for the worker AND filter out invalid ones
+            const fileUris = cvUris
+                .map(f => (typeof f === 'object' ? f.uri : f))
+                .filter(uri => typeof uri === 'string' && uri.length > 0);
+
+            console.log("Analysis Payload URIs:", fileUris);
+
             const payload = {
                 jobUrl,
                 jobText,
                 jobTitle,
                 jobCompany,
                 resumeText,
-                resumeFiles: cvUris,
+                resumeFiles: fileUris, // Send strings to worker/backend
                 screenshots: screenshots.length > 0 ? screenshots : undefined,
                 jobHash,
                 resumeHash

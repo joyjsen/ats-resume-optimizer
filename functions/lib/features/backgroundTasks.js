@@ -45,7 +45,11 @@ const onBackgroundTaskCreated = (openaiApiKey, perplexityApiKey) => (0, firestor
                 await processPrepGuide(task, taskRef, openai, db, perplexityApiKey.value());
                 break;
             case "cover_letter":
+            case "cover_letter":
                 await processCoverLetter(task, taskRef, db, perplexityApiKey.value());
+                break;
+            case "analyze_resume":
+                await processAnalyzeResume(task, taskRef, openai, db, perplexityApiKey.value());
                 break;
             default:
                 throw new Error(`Unknown task type: ${task.type}`);
@@ -284,7 +288,11 @@ RULES:
             }
         }
         // Combine: existing changes + tracking entry + new AI changes (deduplicated)
-        const allChanges = [...existingChanges, trackingEntry, ...aiChanges];
+        const newChanges = [trackingEntry, ...aiChanges];
+        // Filter out any new changes that identical to existing ones (by type and reason/skill)
+        const uniqueNewChanges = newChanges.filter(nc => !existingChanges.some(ec => ec.type === nc.type &&
+            (ec.reason === nc.reason || ec.skill === nc.skill)));
+        const allChanges = [...existingChanges, ...uniqueNewChanges];
         // Sanitize for Firestore
         const sanitizedResume = JSON.parse(JSON.stringify(optimizedResume));
         const sanitizedChanges = JSON.parse(JSON.stringify(allChanges));
@@ -436,6 +444,219 @@ JD: ${jobDescription || "Not provided"}`;
             }
         }, { merge: true }).catch((e) => console.error(`[CoverLetter] Failed to update failure status for ${applicationId}:`, e));
         throw error; // Propagate to main handler to mark Task as failed
+    }
+}
+async function processAnalyzeResume(task, taskRef, openai, db, perplexityKey) {
+    const { jobUrl, jobText, jobTitle, jobCompany, resumeText, resumeFiles, jobHash, resumeHash } = task.payload;
+    const userId = task.userId;
+    const analysisTaskId = task.payload.analysisTaskId;
+    const analysisTaskRef = analysisTaskId ? db.collection("analysis_tasks").doc(analysisTaskId) : null;
+    // Extract relevant data from task.payload for clarity and potential server-side parsing
+    // If the worker sent "formatted" data (even if raw), use that.
+    const initialJob = task.payload.job || {
+        title: jobTitle,
+        company: jobCompany,
+        description: jobText,
+        url: jobUrl
+    };
+    const initialResume = task.payload.resume || {
+        text: resumeText,
+        files: resumeFiles
+    };
+    const requiresParsing = task.payload.requiresParsing || false; // Flag to indicate if server-side parsing is needed
+    let finalJob = initialJob;
+    let finalResume = initialResume;
+    try {
+        if (analysisTaskRef) {
+            await analysisTaskRef.update({
+                status: "processing",
+                progress: 20,
+                currentStep: "Analyzing resume in background...",
+                updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            });
+        }
+        // 1. Validate & Parse Inputs (Server-Side)
+        // If data came from "Fast Mode" client (requiresParsing=true), we need to structure it here.
+        if (requiresParsing || (!initialJob.requirements && !initialJob.description) || !initialResume.experience) {
+            console.log("[Background] Performing server-side AI parsing/structuring...");
+            // Helper to add IDs if missing
+            const addIds = (arr) => (arr || []).map(x => ({ ...x, id: x.id || Date.now() + Math.random().toString() }));
+            // Parallelize the structuring
+            const [structuredJob, structuredResume] = await Promise.all([
+                (async () => {
+                    const jobPrompt = `
+                        Extract structured job info from this text.
+                        Job Text: ${(initialJob.description || initialJob.text || jobText || '').substring(0, 15000)}
+                        Known Title: ${initialJob.title || jobTitle}
+                        Known Company: ${initialJob.company || jobCompany}
+                        
+                        Return JSON: { "title": "...", "company": "...", "description": "verbatim text", "requirements": { "mustHaveSkills": [{ "name": "...", "importance": "high", "category": "tech" }], "niceToHaveSkills": [], "keywords": [] } }
+                    `;
+                    try {
+                        const res = await (0, aiUtils_1.callAiWithFallback)(openai, perplexityKey, "You are a job parser.", jobPrompt, { maxTokens: 1000, jsonMode: true });
+                        const parsed = JSON.parse(res.replace(/```json/g, '').replace(/```/g, '').trim());
+                        return { ...initialJob, ...parsed, id: initialJob.id || Date.now().toString(), parsedAt: new Date() };
+                    }
+                    catch (e) {
+                        console.error("Job parsing failed", e);
+                        return initialJob;
+                    }
+                })(),
+                (async () => {
+                    const resumePrompt = `
+                        Extract structured resume info from this text.
+                        Resume Text: ${(initialResume.text || resumeText || '').substring(0, 15000)}
+                        
+                        Return JSON: { "contactInfo": {}, "summary": "...", "experience": [], "education": [], "skills": [{ "name": "...", "category": "..." }] }
+                    `;
+                    try {
+                        const res = await (0, aiUtils_1.callAiWithFallback)(openai, perplexityKey, "You are a resume parser.", resumePrompt, { maxTokens: 2000, jsonMode: true });
+                        const parsed = JSON.parse(res.replace(/```json/g, '').replace(/```/g, '').trim());
+                        return { ...initialResume, ...parsed, experience: addIds(parsed.experience), education: addIds(parsed.education) };
+                    }
+                    catch (e) {
+                        console.error("Resume parsing failed", e);
+                        return initialResume;
+                    }
+                })()
+            ]);
+            finalJob = structuredJob;
+            finalResume = structuredResume;
+            console.log("[Background] Server-side parsing complete.");
+        }
+        if (analysisTaskRef) {
+            await analysisTaskRef.update({ progress: 50, currentStep: "Performing Gap Analysis..." });
+        }
+        // --- LOGIC REUSED FROM gapAnalysis.ts ---
+        const systemInstruction = `
+You are an expert career advisor and ATS specialist. Analyze if this candidate is ready to apply for this job.
+Perform a comprehensive, exhaustive analysis and return a JSON object with matchAnalysis and gaps.
+
+IMPORTANT RULES:
+- Read the FULL job description. Identify ALL skills, tools, technologies, frameworks, methodologies, certifications, and soft skills.
+- Every identified requirement MUST be categorized into: matchedSkills, partialMatches, or missingSkills.
+- For partialMatches, identify transferable/adjacent skills.
+- The total count across matchedSkills + partialMatches + missingSkills MUST account for EVERY requirement.
+
+Return JSON with this EXACT structure:
+{
+  "matchAnalysis": {
+    "matchedSkills": [{ "skill": "name", "importance": "critical|high|medium|low", "confidence": 0-100 }],
+    "partialMatches": [{ "skill": "name", "importance": "critical|high|medium|low", "confidence": 0-100, "candidateSkill": "what they have", "transferability": "how it transfers" }],
+    "missingSkills": [{ "skill": "name", "importance": "critical|high|medium|low", "confidence": 0-100 }],
+    "keywordDensity": 0-100,
+    "experienceMatch": { "match": 0-100 }
+  },
+  "gaps": {
+    "criticalGaps": [{ "skill": "name", "importance": "critical", "hasTransferable": boolean }],
+    "minorGaps": [{ "skill": "name", "importance": "medium", "hasTransferable": boolean }],
+    "totalGapScore": 0-100
+  }
+}`.trim();
+        const userContent = `
+CANDIDATE RESUME:
+${JSON.stringify(finalResume, null, 2)}
+
+JOB POSTING:
+Title: ${finalJob.title}
+Company: ${finalJob.company}
+
+FULL JOB DESCRIPTION:
+${finalJob.description || ''}
+`.trim();
+        const aiResult = await (0, aiUtils_1.callAiWithFallback)(openai, perplexityKey, systemInstruction, userContent, { maxTokens: 4096 });
+        let analysisResult;
+        try {
+            const cleaned = aiResult.replace(/```json\s*/gi, "").replace(/```\s*/g, "").trim();
+            const firstBrace = cleaned.indexOf('{');
+            const lastBrace = cleaned.lastIndexOf('}');
+            let jsonStr = cleaned;
+            if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+                jsonStr = cleaned.substring(firstBrace, lastBrace + 1);
+            }
+            analysisResult = JSON.parse(jsonStr);
+        }
+        catch (e) {
+            throw new Error("AI returned invalid JSON for analysis.");
+        }
+        // Normalize
+        const matchAnalysis = {
+            matchedSkills: Array.isArray(analysisResult.matchAnalysis?.matchedSkills) ? analysisResult.matchAnalysis.matchedSkills : [],
+            partialMatches: Array.isArray(analysisResult.matchAnalysis?.partialMatches) ? analysisResult.matchAnalysis.partialMatches : [],
+            missingSkills: Array.isArray(analysisResult.matchAnalysis?.missingSkills) ? analysisResult.matchAnalysis.missingSkills : [],
+            keywordDensity: analysisResult.matchAnalysis?.keywordDensity || 0,
+            experienceMatch: analysisResult.matchAnalysis?.experienceMatch || { match: 0 },
+        };
+        const gaps = {
+            criticalGaps: Array.isArray(analysisResult.gaps?.criticalGaps) ? analysisResult.gaps.criticalGaps : [],
+            minorGaps: Array.isArray(analysisResult.gaps?.minorGaps) ? analysisResult.gaps.minorGaps : [],
+            totalGapScore: analysisResult.gaps?.totalGapScore || 0,
+        };
+        const atsScore = (0, aiUtils_1.calculateATSScore)(matchAnalysis);
+        // --- END LOGIC ---
+        if (analysisTaskRef) {
+            await analysisTaskRef.update({ progress: 90, currentStep: "Saving results..." });
+        }
+        // Save to History (User Analyses)
+        // We'll reproduce `historyService.saveAnalysis` logic here directly to ensure server-side safety
+        const savedAnalysisData = {
+            userId,
+            jobData: finalJob,
+            resumeData: finalResume,
+            // Top-level fields required for List Views and easy access
+            jobTitle: finalJob.title,
+            company: finalJob.company,
+            atsScore: atsScore,
+            action: analysisResult?.recommendation?.action || 'optimize',
+            analysisData: {
+                matchAnalysis,
+                gaps,
+                atsScore,
+                recommendation: analysisResult?.recommendation // Ensure recommendation is saved
+            },
+            jobHash,
+            resumeHash,
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            isLatest: true,
+            type: 'gap_analysis'
+        };
+        const historyRef = await db.collection("user_analyses").add(savedAnalysisData);
+        const savedId = historyRef.id;
+        // Finalize Analysis Task
+        if (analysisTaskRef) {
+            await analysisTaskRef.update({
+                status: "completed",
+                progress: 100,
+                currentStep: "Analysis Complete",
+                resultId: savedId,
+                updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            });
+        }
+        // Complete Background Task
+        await taskRef.update({
+            result: { savedId, atsScore },
+            progress: 100
+        });
+        // Send Notification
+        if (userId) {
+            try {
+                await (0, notificationUtils_1.sendPush)(userId, "Resume Analysis Complete", `Score: ${atsScore}% - ${finalJob.title} at ${finalJob.company}`, { route: "/analysis-result", params: { id: savedId } });
+            }
+            catch (ignored) {
+                console.error("Failed to send push:", ignored);
+            }
+        }
+    }
+    catch (error) {
+        console.error(`[AnalyzeResume] Failed:`, error);
+        if (analysisTaskRef) {
+            await analysisTaskRef.update({
+                status: "failed",
+                error: error.message || "Analysis failed"
+            }).catch(() => { });
+        }
+        throw error;
     }
 }
 //# sourceMappingURL=backgroundTasks.js.map

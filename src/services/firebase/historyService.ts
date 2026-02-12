@@ -368,6 +368,64 @@ export class HistoryService {
         }
     }
 
+    async findExistingAnalysisByDetails(jobTitle: string, company: string, resumeHash: string, jobUrl?: string): Promise<SavedAnalysis | null> {
+        try {
+            const user = auth.currentUser;
+            if (!user) return null;
+            const userId = user.uid;
+
+            // Strategy: Query by userId + resumeHash (indexed/exact).
+            // Then filter in-memory for Job Title / Company / URL
+            const q = query(
+                this.analysesCollection,
+                where('userId', '==', userId),
+                where('resumeHash', '==', resumeHash)
+            );
+
+            const querySnapshot = await getDocs(q);
+
+            if (querySnapshot.empty) return null;
+
+            const targetTitle = jobTitle.trim().toLowerCase();
+            const targetCompany = company.trim().toLowerCase();
+            const targetUrl = jobUrl ? jobUrl.trim().toLowerCase() : '';
+
+            // Find match
+            const match = querySnapshot.docs.find(doc => {
+                const data = doc.data();
+
+                // Parse Job Data once
+                let jobData: any = {};
+                try {
+                    jobData = typeof data.jobData === 'string' ? JSON.parse(data.jobData) : data.jobData;
+                } catch (e) { }
+
+                // CHECK 1: URL Match (Strongest Signal if provided)
+                if (targetUrl && jobData?.url) {
+                    if (jobData.url.trim().toLowerCase() === targetUrl) {
+                        return true;
+                    }
+                }
+
+                // CHECK 2: Title + Company Match (Fallback)
+                const title = (data.jobTitle || jobData?.title || '').toLowerCase();
+                const comp = (data.company || jobData?.company || '').toLowerCase();
+
+                return title === targetTitle && comp === targetCompany;
+            });
+
+            if (match) {
+                return this.mapDocToAnalysis(match);
+            }
+
+            return null;
+
+        } catch (error) {
+            console.error('Error finding existing analysis by details:', error);
+            return null;
+        }
+    }
+
     subscribeToUserHistory(callback: (history: SavedAnalysis[]) => void): () => void {
         try {
             const user = auth.currentUser;
