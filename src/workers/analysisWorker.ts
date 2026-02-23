@@ -28,9 +28,11 @@ export const executeAnalysisTask = async (taskId: string, payload: any, type: st
     return BackgroundWorker.start(async () => {
         try {
             if (type === 'optimize_resume') {
-                return await executeOptimizationTask(taskId, payload);
+                await executeOptimizationTask(taskId, payload);
+                return;
             } else if (type === 'add_skill') {
-                return await executeAddSkillTask(taskId, payload);
+                await executeAddSkillTask(taskId, payload);
+                return;
             } else if (type === 'cover_letter' || type === 'prep_guide' || type === 'prep_guide_refresh' || type === 'course_completion' || type === 'resume_validation') {
                 // These are "ghost" tasks created by the client to trigger notifications.
                 // They are already completed or handled on the client-side.
@@ -38,7 +40,7 @@ export const executeAnalysisTask = async (taskId: string, payload: any, type: st
                 return;
             }
 
-            const { jobUrl, jobText, jobTitle, jobCompany, resumeText, resumeFiles, jobHash, resumeHash } = payload;
+            const { jobUrl, jobText, jobTitle, jobCompany, resumeText, resumeFiles, jobHash, resumeHash, resume: preParsedResume, job: preParsedJob } = payload;
 
             // 1. Parsing (Keep Local - Fast & Requires Files)
             // We still parse locally because handling file uploads/imports on the server is complex.
@@ -51,7 +53,12 @@ export const executeAnalysisTask = async (taskId: string, payload: any, type: st
             }
 
             const jobParsePromise = (async () => {
-                await BackgroundWorker.updateProgress("Extracting Job Details...");
+                // TRUST CLIENT DATA: If payload already includes structured job, use it!
+                if (preParsedJob && typeof preParsedJob === 'object' && preParsedJob.requirements) {
+                    console.log("[Worker] Using pre-parsed job data from payload");
+                    return preParsedJob;
+                }
+
                 if (payload.screenshots && payload.screenshots.length > 0) {
                     // For images, we still need OCR. We can't avoid this network call easily without uploading images.
                     // But we can skip the "Structuring" step.
@@ -80,6 +87,12 @@ export const executeAnalysisTask = async (taskId: string, payload: any, type: st
 
             const resumeParsePromise = (async () => {
                 await BackgroundWorker.updateProgress("Extracting Resume Text...");
+                // TRUST CLIENT DATA: If payload already includes structured resume, use it!
+                if (preParsedResume && typeof preParsedResume === 'object' && Array.isArray(preParsedResume.experience) && preParsedResume.experience.length > 0) {
+                    console.log("[Worker] Using pre-parsed resume data from payload");
+                    return preParsedResume;
+                }
+
                 if (resumeText && resumeText.trim().length > 0) {
                     // SKIP AI STRUCTURING LOCALLY
                     return { text: resumeText, skills: [], experience: [], education: [] };
@@ -101,13 +114,16 @@ export const executeAnalysisTask = async (taskId: string, payload: any, type: st
                 await taskService.updateProgress(taskId, 30, 'Sending to cloud analyzer...');
             } catch (ignore) { }
 
+            const needsBackendParsing = !resume.experience || resume.experience.length === 0 || !job.requirements;
+            console.log(`[Worker] Analysis offload: needsBackendParsing = ${needsBackendParsing}`);
+
             // 2. Offload to Background Task Service (Server-Side)
             await new Promise<string>((resolve, reject) => {
                 backgroundTaskService.createTask(
                     'analyze_resume',
                     {
                         analysisTaskId: taskId,
-                        // Send RAW or Semi-Parsed data
+                        // Send Parsed or Semi-Parsed data
                         job,
                         resume,
                         jobHash,
@@ -116,8 +132,8 @@ export const executeAnalysisTask = async (taskId: string, payload: any, type: st
                         jobCompany: job.company,
                         jobText: job.description || jobText,
                         resumeText: resume.text || resumeText,
-                        // Flag to tell backend it needs to do the heavy parsing
-                        requiresParsing: true
+                        // Only re-parse on server if client data is missing/incomplete
+                        requiresParsing: needsBackendParsing
                     },
                     async (bgTask) => {
                         console.log("[Worker] Background analysis completed!");

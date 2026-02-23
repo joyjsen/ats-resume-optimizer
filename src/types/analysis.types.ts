@@ -26,6 +26,14 @@ export interface MatchAnalysis {
     matchedSkills: SkillMatch[];
     partialMatches: SkillMatch[];
     missingSkills: SkillMatch[];
+
+    // NEW DETAILED FIELDS
+    strongMatches?: any[];
+    weakMatches?: any[];
+    noMatches?: any[];
+    atsKeywordAnalysis?: any;
+    executiveSummary?: string;
+
     keywordDensity: number;
     experienceMatch: {
         match: number;
@@ -41,16 +49,18 @@ export interface SkillMatch {
     skill: string;
     importance: 'critical' | 'high' | 'medium' | 'low';
     confidence: number;
-    evidence?: string; // For matched skills
+    evidence?: string | string[]; // For matched skills, can now be multiple bullets
     candidateSkill?: string; // For partial matches
     transferability?: string; // For partial matches
     recommendation?: string; // Actionable suggestion
+    requirementId?: string; // New
 }
 
 export interface GapAnalysis {
     criticalGaps: Gap[];
     minorGaps: Gap[];
     totalGapScore: number;
+    prioritizedActions?: any[]; // New
 }
 
 export interface Gap {
@@ -58,6 +68,7 @@ export interface Gap {
     importance: 'critical' | 'high' | 'medium' | 'low';
     hasTransferable: boolean;
     recommendation?: string;
+    impactOnApplication?: string; // New
 }
 
 export interface Recommendation {

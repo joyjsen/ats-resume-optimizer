@@ -6,6 +6,9 @@ import { UserHeader } from '../../src/components/layout/UserHeader';
 import { AppLogo } from '../../src/components/layout/AppLogo';
 import { useProfileStore } from '../../src/store/profileStore';
 
+import { TokenBalance } from '../../src/components/layout/TokenBalance';
+import { View } from 'react-native';
+
 export default function TabsLayout() {
     const theme = useTheme();
     const { userProfile, subscribeToProfile } = useProfileStore();
@@ -20,6 +23,13 @@ export default function TabsLayout() {
     if (!userProfile) {
         return null;
     }
+
+    const HeaderLeftWithBalance = () => (
+        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <AppLogo />
+            <TokenBalance />
+        </View>
+    );
 
     return (
         <Tabs
@@ -50,6 +60,7 @@ export default function TabsLayout() {
                 name="optimize"
                 options={{
                     title: 'Optimize',
+                    headerLeft: () => <HeaderLeftWithBalance />,
                     tabBarIcon: ({ color, size }) => <Icon source="shimmer" size={size} color={color} />,
                 }}
             />
@@ -57,6 +68,7 @@ export default function TabsLayout() {
                 name="analyze"
                 options={{
                     title: 'Analyze',
+                    headerLeft: () => <HeaderLeftWithBalance />,
                     tabBarIcon: ({ color, size }) => <Icon source="file-document-edit" size={size} color={color} />,
                 }}
             />
@@ -64,6 +76,7 @@ export default function TabsLayout() {
                 name="applications"
                 options={{
                     title: 'Applications',
+                    headerLeft: () => <HeaderLeftWithBalance />,
                     tabBarIcon: ({ color, size }) => <Icon source="briefcase" size={size} color={color} />,
                 }}
             />
@@ -71,6 +84,7 @@ export default function TabsLayout() {
                 name="learning"
                 options={{
                     title: 'Learning',
+                    headerLeft: () => <HeaderLeftWithBalance />,
                     tabBarIcon: ({ color, size }) => <Icon source="school" size={size} color={color} />,
                 }}
             />

@@ -15,7 +15,7 @@ export class MigrationService {
      */
     async migrateAnonymousData(): Promise<{ success: boolean; count: number }> {
         const user = auth.currentUser;
-        if (!user || user.email !== 'pjmarket1316@gmail.com') {
+        if (!user || user.email !== 'support@riresume.com') {
             console.warn("Migration attempted by non-primary admin. Blocked.");
             return { success: false, count: 0 };
         }

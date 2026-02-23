@@ -140,9 +140,10 @@ export class NotificationService {
                 }
 
                 if (finalStatus !== 'granted') {
-                    console.log('Failed to get push token for push notification!');
+                    console.log('❌ Notification Service: Permission not granted! Status:', finalStatus);
                     return;
                 }
+                console.log('✅ Notification Service: Permission granted.');
 
                 const projectId = Constants?.expoConfig?.extra?.eas?.projectId ?? Constants?.easConfig?.projectId;
 
@@ -436,8 +437,21 @@ export class NotificationService {
     // Notify when app is backgrounded during active task
     async notifyBackgroundWarning(): Promise<void> {
         await this.scheduleLocalNotification(
-            "Parsing Paused",
-            "Please return to the app for the local parsing to complete.",
+            "Resume Parsing Paused",
+            "Please click here to return within 5 seconds",
+            {
+                route: '/(tabs)/analyze'
+            }
+        );
+    }
+
+    /**
+     * Notify when resume parsing fails
+     */
+    async notifyParsingFailed(): Promise<void> {
+        await this.scheduleLocalNotification(
+            "Resume Parsing Failed",
+            "We encountered an error while parsing your resume. Please try again or paste the text manually.",
             {
                 route: '/(tabs)/analyze'
             }

@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, ScrollView, StyleSheet, Alert } from 'react-native';
+import { View, ScrollView, StyleSheet, Alert, Platform } from 'react-native';
 import { Text, Surface, Title, Divider, useTheme, Button } from 'react-native-paper';
 import { useResumeStore } from '../src/store/resumeStore';
 import { DocxGenerator } from '../src/services/docx/docxGenerator';
@@ -21,8 +21,22 @@ export default function ResumePreview() {
 
     if (!optimizedResume) {
         return (
-            <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
-                <Text>No optimized resume available to preview.</Text>
+            <View style={[styles.container, { backgroundColor: theme.colors.background, justifyContent: 'center', alignItems: 'center', padding: 20 }]}>
+                <Text variant="titleMedium" style={{ marginBottom: 10 }}>Preview Unavailable</Text>
+                <Text variant="bodyMedium" style={{ textAlign: 'center', marginBottom: 20 }}>
+                    We couldn't find an optimized resume to display.
+                </Text>
+                <View style={{ backgroundColor: '#f0f0f0', padding: 10, borderRadius: 8, width: '100%' }}>
+                    <Text variant="bodySmall" style={{ fontFamily: 'monospace' }}>
+                        Analysis ID: {currentAnalysis.id}
+                    </Text>
+                    <Text variant="bodySmall" style={{ fontFamily: 'monospace' }}>
+                        Draft Data: {currentAnalysis.draftOptimizedResumeData ? 'Present' : 'Missing'}
+                    </Text>
+                    <Text variant="bodySmall" style={{ fontFamily: 'monospace' }}>
+                        Final Data: {currentAnalysis.optimizedResume ? 'Present' : 'Missing'}
+                    </Text>
+                </View>
             </View>
         );
     }
@@ -68,11 +82,11 @@ export default function ResumePreview() {
                 {/* Resume Paper - Adaptive Background for functionality, but keeps paper look if desired */}
                 <Surface style={[styles.paper, { backgroundColor: theme.colors.surface }]} elevation={2}>
                     <View style={styles.header}>
-                        <Title style={[styles.name, { color: theme.colors.onSurface }]}>{optimizedResume.contactInfo.name}</Title>
+                        <Title style={[styles.name, { color: theme.colors.onSurface }]}>{optimizedResume?.contactInfo?.name || 'Name Not Found'}</Title>
                         <Text variant="bodySmall" style={[styles.contact, { color: theme.colors.onSurfaceVariant }]}>
-                            {optimizedResume.contactInfo.email} | {optimizedResume.contactInfo.phone}
+                            {optimizedResume?.contactInfo?.email || 'No Email'} | {optimizedResume?.contactInfo?.phone || 'No Phone'}
                         </Text>
-                        {optimizedResume.contactInfo.linkedin && (
+                        {optimizedResume?.contactInfo?.linkedin && (
                             <Text variant="bodySmall" style={styles.contact}>{optimizedResume.contactInfo.linkedin}</Text>
                         )}
                     </View>
@@ -80,20 +94,20 @@ export default function ResumePreview() {
                     <Divider style={styles.divider} />
 
                     <Section title="PROFESSIONAL SUMMARY">
-                        <Text variant="bodyMedium" style={{ lineHeight: 20 }}>{optimizedResume.summary}</Text>
+                        <Text variant="bodyMedium" style={{ lineHeight: 20 }}>{optimizedResume?.summary || 'No professional summary provided.'}</Text>
                     </Section>
 
                     <Section title="EXPERIENCE">
-                        {optimizedResume.experience.map((exp: any, index: number) => (
+                        {(optimizedResume.experience || []).map((exp: any, index: number) => (
                             <View key={index} style={{ marginBottom: 16 }}>
                                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
-                                    <Text variant="titleSmall" style={{ fontWeight: 'bold' }}>{exp.title}</Text>
+                                    <Text variant="titleSmall" style={{ fontWeight: 'bold' }}>{exp.title || exp.role || 'Title/Role'}</Text>
                                     <Text variant="bodySmall">{formatDate(exp.startDate, exp.endDate, exp.current)}</Text>
                                 </View>
                                 <Text variant="bodyMedium" style={{ fontStyle: 'italic', marginBottom: 4 }}>
                                     {exp.company}
                                 </Text>
-                                {exp.bullets.map((bullet: string, bIndex: number) => (
+                                {(exp.bullets || exp.bulletPoints || (Array.isArray(exp.description) ? exp.description : [])).map((bullet: string, bIndex: number) => (
                                     <View key={bIndex} style={{ flexDirection: 'row', marginBottom: 4 }}>
                                         <Text style={{ marginRight: 6 }}>•</Text>
                                         <Text variant="bodyMedium" style={{ flex: 1, lineHeight: 20 }}>{bullet}</Text>
@@ -105,16 +119,16 @@ export default function ResumePreview() {
 
                     <Section title="SKILLS">
                         <Text variant="bodyMedium" style={{ lineHeight: 20 }}>
-                            {optimizedResume.skills.map((s: any) => s.name).join(' • ')}
+                            {(optimizedResume.skills || []).map((s: any) => s.name).join(' • ')}
                         </Text>
                     </Section>
 
-                    {optimizedResume.education.length > 0 && (
+                    {optimizedResume.education && optimizedResume.education.length > 0 && (
                         <Section title="EDUCATION">
-                            {optimizedResume.education.map((edu: any, index: number) => (
+                            {(optimizedResume.education || []).map((edu: any, index: number) => (
                                 <View key={index} style={{ marginBottom: 8 }}>
-                                    <Text variant="titleSmall">{edu.institution}</Text>
-                                    <Text variant="bodySmall">{edu.degree} {edu.endDate ? `(${edu.endDate})` : ''}</Text>
+                                    <Text variant="titleSmall">{edu.institution || 'Institution'}</Text>
+                                    <Text variant="bodySmall">{edu.degree || 'Degree'} {edu.endDate ? `(${edu.endDate})` : ''}</Text>
                                 </View>
                             ))}
                         </Section>
@@ -122,7 +136,7 @@ export default function ResumePreview() {
                 </Surface>
             </ScrollView>
 
-            <View style={[styles.fabContainer, { backgroundColor: theme.colors.elevation.level2, borderTopColor: theme.colors.outline }]}>
+            <View style={[styles.fabContainer, { backgroundColor: theme.colors.elevation.level2, borderTopColor: theme.colors.outline, paddingBottom: Platform.OS === 'ios' ? 34 : 16 }]}>
                 {!canDownload && (
                     <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant, textAlign: 'center', marginBottom: 8 }}>
                         {isUpdating ? "Resume is currently updating..." : "Please validate and save changes to download."}

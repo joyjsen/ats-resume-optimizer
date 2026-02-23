@@ -41,6 +41,7 @@ export interface Experience {
     endDate?: string;
     current: boolean;
     bullets: string[];
+    bulletPoints?: string[]; // Fallback for AI inconsistencies
 }
 
 export interface Education {
@@ -92,4 +93,5 @@ export interface OptimizationChange {
     modified: string;
     skill?: string;
     reason: string;
+    timestamp?: string | Date; // Added for UI display
 }

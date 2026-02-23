@@ -1,5 +1,5 @@
 import React, { forwardRef, useImperativeHandle, useState, useRef } from 'react';
-import { Modal, StyleSheet, View, TouchableOpacity, Text } from 'react-native';
+import { Modal, StyleSheet, View, TouchableOpacity, Text, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { WebView } from 'react-native-webview';
 import { ApplicationVerifier } from 'firebase/auth';
@@ -108,6 +108,10 @@ const RecaptchaVerifierModal = forwardRef<RecaptchaVerifierRef, Props>(({ fireba
       </body>
     </html>
   `;
+
+  if (Platform.OS === 'web') {
+    return null; // On web, we use the invisible recaptcha handled by authService
+  }
 
   return (
     <Modal visible={visible} animationType="slide" transparent={false}>

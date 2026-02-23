@@ -155,29 +155,9 @@ export default function LearningScreen() {
                 item.userId
             );
 
-            // Log activity client-side (Server deducts tokens, but we log here for immediate visibility)
-            // Using skipTokenDeduction: true to avoid double deduction
-            try {
-                // DEBUG: Alert to confirm we reached this point
-                // Alert.alert("Debug", "Generation complete. Attempting to log...");
-
-                await activityService.logActivity({
-                    type: 'training_slideshow_generation',
-                    description: `Generated AI Training for "${item.skillName}"`,
-                    resourceId: item.id,
-                    resourceName: item.skillName,
-                    platform: 'ios',
-                    skipTokenDeduction: true,
-                    tokensUsed: ACTIVITY_COSTS.training_slideshow_generation,
-                    aiProvider: 'openai-gpt4o-mini' // Matches 'openai-gpt4o-mini' | 'perplexity-sonar' | 'other'
-                });
-
-                // DEBUG: Alert to confirm log success
-                // Alert.alert("Debug", "Activity logged successfully!");
-            } catch (logError: any) {
-                console.warn("Failed to log training generation activity:", logError);
-                Alert.alert("Log Error", "Failed to log activity: " + logError.message);
-            }
+            // Server-side cloud function (generateTrainingSlideshow) already deducts tokens
+            // and logs activity atomically inside a transaction to prevent duplicates.
+            // Client-side manual logging removed.
 
             // Re-fetch or rely on subscription to update entries
             // For better UX, we can manually construct the item for the modal
@@ -383,8 +363,9 @@ export default function LearningScreen() {
     return (
         <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
             <View style={[styles.summaryHeader, { backgroundColor: theme.colors.background, borderBottomColor: theme.colors.outlineVariant }]}>
-                <Text variant={isAndroid ? "headlineSmall" : "headlineMedium"} style={styles.title}>Learning Hub</Text>
-                <Text variant="bodySmall">Track your skill acquisition and professional growth.</Text>
+                <Text style={{ fontSize: 14, fontWeight: 'normal', marginBottom: 8, color: theme.colors.onSurface }}>
+                    Track your skill acquisition and professional growth
+                </Text>
 
                 <View style={styles.tabContainer}>
                     <TouchableOpacity

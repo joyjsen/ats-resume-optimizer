@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { ScrollView, TextInput as RNTextInput, View, Alert } from 'react-native';
-import { Button, Dialog, Portal, Text, useTheme, TextInput } from 'react-native-paper';
+import { Button, Dialog, Portal, Text, useTheme, TextInput, IconButton } from 'react-native-paper';
 import { Application } from '../../types/application.types';
 
 interface CoverLetterDialogProps {
@@ -50,9 +50,16 @@ export const CoverLetterDialog: React.FC<CoverLetterDialogProps> = ({
     return (
         <Portal>
             <Dialog visible={visible} onDismiss={handleDismiss} style={{ maxHeight: '90%' }}>
-                <Dialog.Title>
-                    {isEditing ? "Edit Cover Letter" : "Cover Letter"}
-                </Dialog.Title>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingRight: 8 }}>
+                    <Dialog.Title style={{ flex: 1 }}>
+                        {isEditing ? "Edit Cover Letter" : "Cover Letter"}
+                    </Dialog.Title>
+                    <IconButton
+                        icon="close"
+                        size={24}
+                        onPress={handleDismiss}
+                    />
+                </View>
                 <Dialog.ScrollArea>
                     <ScrollView
                         contentContainerStyle={{ paddingVertical: 12 }}
@@ -60,14 +67,19 @@ export const CoverLetterDialog: React.FC<CoverLetterDialogProps> = ({
                         keyboardShouldPersistTaps="handled"
                     >
                         {isEditing ? (
-                            <TextInput
-                                mode="outlined"
-                                multiline
-                                value={editedContent}
-                                onChangeText={setEditedContent}
-                                style={{ height: 400, backgroundColor: theme.colors.surface }}
-                                autoFocus
-                            />
+                            <View>
+                                <TextInput
+                                    mode="outlined"
+                                    multiline
+                                    value={editedContent}
+                                    onChangeText={setEditedContent}
+                                    style={{ height: 400, backgroundColor: theme.colors.surface }}
+                                    autoFocus
+                                    returnKeyType="done"
+                                    blurOnSubmit={true}
+                                    placeholder="Type your cover letter here..."
+                                />
+                            </View>
                         ) : (
                             <Text variant="bodyMedium" style={{ lineHeight: 22 }}>
                                 {application.coverLetter?.content}
@@ -83,7 +95,7 @@ export const CoverLetterDialog: React.FC<CoverLetterDialogProps> = ({
                         ]
                     ) : (
                         [
-                            <Button key="close" onPress={handleDismiss}>Close</Button>,
+                            // Close button removed from here
                             <Button key="edit" onPress={() => setIsEditing(true)}>Edit</Button>,
                             <Button
                                 key="regenerate"
@@ -103,6 +115,11 @@ export const CoverLetterDialog: React.FC<CoverLetterDialogProps> = ({
                         ]
                     )}
                 </Dialog.Actions>
+                {!isEditing && (
+                    <Text variant="labelSmall" style={{ textAlign: 'center', marginBottom: 16, color: theme.colors.outline, paddingHorizontal: 16 }}>
+                        Each cover letter Regeneration costs 30 tokens, while manual Edit is free of charge
+                    </Text>
+                )}
             </Dialog>
         </Portal>
     );

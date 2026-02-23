@@ -15,10 +15,20 @@ export class ResumeParserService {
    */
   async parseResume(fileUris: string[]): Promise<ParsedResume> {
     try {
-      // Step 1: Extract text/images from files
-      const mixedContent = await this.extractContentFromFiles(fileUris);
+      // OPTIMIZATION: Check if we can use Vision-First multimodal parsing (faster for images)
+      const imageUris = fileUris.filter(uri => uri.match(/\.(jpg|jpeg|png)$/i) || uri.startsWith('data:image'));
+      const otherUris = fileUris.filter(uri => !uri.match(/\.(jpg|jpeg|png)$/i) && !uri.startsWith('data:image'));
 
-      // Step 2: Use OpenAI to parse structured data
+      if (imageUris.length > 0 && otherUris.length === 0) {
+        console.log(`[ResumeParser] Using Vision-First multimodal parsing for ${imageUris.length} images.`);
+        const base64Images = await Promise.all(
+          imageUris.map(uri => FileSystem.readAsStringAsync(uri, { encoding: 'base64' }))
+        );
+        return await this.parseWithMultimodalAI(base64Images);
+      }
+
+      // Fallback/Mixed content: Extract text first
+      const mixedContent = await this.extractContentFromFiles(fileUris);
       return await this.parseWithAI(mixedContent);
     } catch (error: any) {
       console.error('Error parsing resume:', error);
@@ -118,82 +128,36 @@ export class ResumeParserService {
   /**
    * Use OpenAI to parse resume into structured data
    */
+  /**
+   * Use OpenAI to parse structured data from the resume text.
+   * IMPROVED: proper system/user role separation to avoid token limits and hallucination.
+   */
   private async parseWithAI(content: string): Promise<ParsedResume> {
-    const prompt = `
-You are an expert resume parser. Extract structured information from this resume.
-If multiple pages (images) are provided, combine the information intelligently.
-
-Resume Content:
-${content.replace(/\[IMAGE_CONTENT:.*?\]/g, '(Image Data Included)')}
-
-Extract and return JSON with the following structure:
+    const systemPrompt = `Expert Resume Parser. Extract data from the text into EXACT JSON.
+Structure:
 {
-  "contactInfo": {
-    "name": "full name",
-    "email": "email",
-    "phone": "phone number",
-    "location": "city, state",
-    "linkedin": "linkedin URL",
-    "portfolio": "portfolio URL",
-    "github": "github URL"
-  },
-  "summary": "professional summary if present",
-  "experience": [
-    {
-      "company": "company name",
-      "title": "job title",
-      "location": "city, state",
-      "startDate": "MM/YYYY",
-      "endDate": "MM/YYYY or null if current",
-      "current": true|false,
-      "bullets": ["bullet point 1", "bullet point 2"]
-    }
-  ],
-  "education": [
-    {
-      "institution": "school name",
-      "degree": "degree type",
-      "field": "field of study",
-      "startDate": "YYYY",
-      "endDate": "YYYY",
-      "gpa": "GPA if mentioned"
-    }
-  ],
-  "skills": [
-    {
-      "name": "skill name",
-      "category": "technical|soft|language|tool|framework",
-      "proficiency": "beginner|intermediate|advanced|expert (infer from context)"
-    }
-  ],
-  "certifications": [
-    {
-      "name": "certification name",
-      "issuer": "issuing organization",
-      "date": "MM/YYYY"
-    }
-  ],
-  "projects": [
-    {
-      "name": "project name",
-      "description": "brief description",
-      "technologies": ["tech1", "tech2"],
-      "url": "project URL if available"
-    }
-  ]
+  "contactInfo": {"name":"", "email":"", "phone":"", "location":"", "linkedin":"", "portfolio":"", "github":""},
+  "summary": "",
+  "experience": [{"company":"", "title":"", "location":"", "startDate":"MM/YYYY", "endDate":"MM/YYYY", "current":false, "bullets":[]}],
+  "education": [{"institution":"", "degree":"", "field":"", "startDate":"YYYY", "endDate":"YYYY", "gpa":""}],
+  "skills": [{"name":"", "category":"technical|soft|domain|methodology", "proficiency":"beginner|intermediate|advanced|expert"}],
+  "certifications": [{"name":"", "issuer":"", "date":"MM/YYYY"}],
+  "projects": [{"name":"", "description":"", "technologies":[], "url":""}]
 }
+Rules:
+- Exhaustive extraction. Do not truncate bullets.
+- MM/YYYY dates.
+- Clean bullets (no symbols).
+- Categorize skills accurately.
+- Return EXACT JSON, no other text.`.trim();
 
-Guidelines:
-- Extract ALL information present
-- Infer skill proficiency from experience context
-- Standardize date formats
-- Clean up bullet points (remove extra symbols)
-- Categorize skills accurately
-- If section is missing, return empty array
-    `.trim();
+    // Clean visualization markers if present
+    const cleanContent = content.replace(/\[IMAGE_CONTENT:.*?\]/g, '(Image Data Included)');
 
-    // Simplified prompt now that we always have text (OCR performed upstream)
-    const messages: any[] = [{ role: 'user', content: prompt + `\n\nResume Content:\n${content}` }];
+    const messages = [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: `Resume Content:\n${cleanContent}` }
+    ];
 
     // Validation
     const lines = content.split('\n');
@@ -214,6 +178,8 @@ Guidelines:
       model: 'gpt-4o-mini',
       messages: messages,
       response_format: { type: 'json_object' },
+      max_tokens: 4000,
+      temperature: 0, // Deterministic and faster
     };
 
     const response = await safeOpenAICall(
@@ -238,8 +204,67 @@ Guidelines:
   }
 
   /**
+   * Multimodal Vision Parsing - Combined OCR and Structure extraction
+   * This is the FASTEST way to parse images.
+   */
+  private async parseWithMultimodalAI(base64Images: string[]): Promise<ParsedResume> {
+    const systemPrompt = `Expert Resume Parser. Extract all details from these images into EXACT JSON.
+Structure:
+{
+  "contactInfo": {"name":"", "email":"", "phone":"", "location":"", "linkedin":"", "portfolio":"", "github":""},
+  "summary": "",
+  "experience": [{"company":"", "title":"", "location":"", "startDate":"MM/YYYY", "endDate":"MM/YYYY", "current":false, "bullets":[]}],
+  "education": [{"institution":"", "degree":"", "field":"", "startDate":"YYYY", "endDate":"YYYY", "gpa":""}],
+  "skills": [{"name":"", "category":"technical|soft|domain|methodology", "proficiency":"beginner|intermediate|advanced|expert"}],
+  "certifications": [{"name":"", "issuer":"", "date":"MM/YYYY"}],
+  "projects": [{"name":"", "description":"", "technologies":[], "url":""}]
+}
+Rules:
+- EXHAUSTIVE text extraction. Do not skip content.
+- Combined all images into one profile.
+- Return EXACT JSON, no explanations.`.trim();
+
+    const imageContent = base64Images.map(base64 => ({
+      type: 'image_url',
+      image_url: { url: `data:image/jpeg;base64,${base64}` }
+    }));
+
+    const messages: any[] = [
+      { role: 'system', content: systemPrompt },
+      {
+        role: 'user',
+        content: [
+          { type: 'text', text: "Extract and structure this resume from the attached images." },
+          ...imageContent as any
+        ]
+      }
+    ];
+
+    const response = await safeOpenAICall(() => openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: messages,
+      response_format: { type: 'json_object' },
+      max_tokens: 4000,
+      temperature: 0,
+    }), 'Resume Vision-First Parse');
+
+    const contentResponse = response.choices[0].message.content;
+    if (!contentResponse) throw new Error("No response from AI");
+
+    const parsed = JSON.parse(contentResponse);
+
+    return {
+      ...parsed,
+      experience: (parsed.experience || []).map((exp: any) => ({ ...exp, id: this.generateId() })),
+      education: (parsed.education || []).map((edu: any) => ({ ...edu, id: this.generateId() })),
+      skills: parsed.skills || [],
+      text: "[Parsed from images]"
+    };
+  }
+
+  /**
    * Batched OCR - processes multiple images in a single API call
-   * This is significantly faster than individual OCR calls
+   * This is kept as a fallback for pure text extraction needs.
    */
   private async performBatchedOCR(base64Images: string[]): Promise<string> {
     try {
@@ -249,8 +274,8 @@ Guidelines:
       }));
 
       const prompt = base64Images.length > 1
-        ? `Extract ALL text from these ${base64Images.length} resume images verbatim. If the content spans multiple pages/images, combine them in logical order. Do not summarize. Return only the extracted text.`
-        : "Extract the text from this resume image verbatim. Do not summarize. Return only the text.";
+        ? `Extract ALL text from these ${base64Images.length} resume images verbatim. Combine in logical order. Do not summarize.`
+        : "Extract the text from this resume image verbatim. Do not summarize.";
 
       const messages: any[] = [
         {
@@ -265,18 +290,12 @@ Guidelines:
       const response = await safeOpenAICall(() => openai.chat.completions.create({
         model: 'gpt-4o-mini',
         messages: messages,
-        max_tokens: 4000, // Higher limit for multiple pages
+        max_tokens: 4000,
+        temperature: 0,
       }), 'Resume OCR (Batched)');
 
       let text = response.choices[0].message.content || "";
-
-      // Text Cleaning: Remove AI refusal/apology messages
-      const refusalPattern = /(?:^|\s)(?:I'?m\s+sorry|I\s+am\s+sorry|Sorry)[^.!?]*[.!?]/gi;
-      text = text.replace(refusalPattern, '');
-
-      // Clean up excessive whitespace
       text = text.replace(/\s+/g, ' ').trim();
-
       return text;
     } catch (e) {
       console.error("Batched OCR Failed", e);

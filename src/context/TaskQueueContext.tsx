@@ -108,53 +108,68 @@ export const TaskQueueProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         };
     }, []);
 
+    const isProcessingQueueRef = useRef(false);
+
     const processQueue = async (tasks: AnalysisTask[]) => {
-        const queuedTasks = tasks.filter(t => t.status === 'queued');
-
-        if (queuedTasks.length > 0) {
-            console.log(`[TaskQueue] ${queuedTasks.length} queued tasks found.`);
+        if (isProcessingQueueRef.current) {
+            console.log("[TaskQueue] Queue processing already in progress, skipping.");
+            return;
         }
+        isProcessingQueueRef.current = true;
 
-        for (const task of queuedTasks) {
-            if (processingRef.current.has(task.id)) {
-                console.log(`[TaskQueue] Task ${task.id} is already being processed.`);
-                continue;
+        try {
+            const queuedTasks = tasks.filter(t => t.status === 'queued');
+
+            if (queuedTasks.length > 0) {
+                console.log(`[TaskQueue] ${queuedTasks.length} queued tasks found.`);
             }
 
-            console.log(`[TaskQueue] Starting execution for task: ${task.id} (${task.type})`);
-            processingRef.current.add(task.id);
-
-            // Execute in background "thread" (promise)
-            const executeTask = async () => {
-                const { BackgroundWorker } = require('../services/background/backgroundWorker');
-
-                // Start background service if not already running
-                await BackgroundWorker.start(async () => {
-                    try {
-                        await executeAnalysisTask(task.id, task.payload, task.type);
-                        console.log(`[TaskQueue] Worker finished for task: ${task.id}`);
-                    } catch (error: any) {
-                        console.error(`[TaskQueue] Worker failed for task: ${task.id}`, error);
-                        // Notify user immediately of failure if they are in the app
-                        Alert.alert(
-                            "Task Failed",
-                            `Optimization for ${(task.payload as any)?.job?.company || 'Job'} failed: ${error?.message || 'Unknown error'}`
-                        );
-                        throw error;
-                    } finally {
-                        processingRef.current.delete(task.id);
-                    }
-                }, task.id, task.type); // Pass taskId and taskType
-            };
-
-            executeTask().catch(e => {
-                if (e.message !== 'Task was force stopped') {
-                    console.error("[TaskQueue] Background Task Launcher Exception:", e);
-                } else {
-                    console.log("[TaskQueue] Task cancellation handled gracefully.");
+            for (const task of queuedTasks) {
+                if (processingRef.current.has(task.id)) {
+                    console.log(`[TaskQueue] Task ${task.id} is already being processed (Set check).`);
+                    continue;
                 }
-                processingRef.current.delete(task.id);
-            });
+
+                console.log(`[TaskQueue] Locking & Starting execution for task: ${task.id} (${task.type})`);
+                processingRef.current.add(task.id);
+
+                // Execute in background "thread" (promise)
+                const executeTask = async () => {
+                    const { BackgroundWorker } = require('../services/background/backgroundWorker');
+
+                    // Start background service if not already running
+                    await BackgroundWorker.start(async () => {
+                        try {
+                            await executeAnalysisTask(task.id, task.payload, task.type);
+                            console.log(`[TaskQueue] Worker finished for task: ${task.id}`);
+                        } catch (error: any) {
+                            console.error(`[TaskQueue] Worker failed for task: ${task.id}`, error);
+                            // Notify user immediately of failure if they are in the app
+                            Alert.alert(
+                                "Task Failed",
+                                `Optimization for ${(task.payload as any)?.job?.company || 'Job'} failed: ${error?.message || 'Unknown error'}`
+                            );
+                            throw error;
+                        } finally {
+                            console.log(`[TaskQueue] Unlocking task: ${task.id}`);
+                            processingRef.current.delete(task.id);
+                        }
+                    }, task.id, task.type); // Pass taskId and taskType
+                };
+
+                // Trigger execution but don't await the result (fire and forget)
+                // However, we DO want to ensure the loop continues synchronously to lock subsequent tasks
+                executeTask().catch(e => {
+                    if (e.message !== 'Task was force stopped') {
+                        console.error("[TaskQueue] Background Task Launcher Exception:", e);
+                    } else {
+                        console.log("[TaskQueue] Task cancellation handled gracefully.");
+                    }
+                    processingRef.current.delete(task.id);
+                });
+            }
+        } finally {
+            isProcessingQueueRef.current = false;
         }
     };
 

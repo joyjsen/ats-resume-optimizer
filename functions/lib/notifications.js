@@ -179,8 +179,6 @@ exports.onBackgroundTaskUpdated = functionsV1
         let emailBody = "";
         let data = { taskId, type };
         if (type === "optimize_resume") {
-            title = "Resume Optimized ✨";
-            body = "Your resume has been rewritten and optimized for the job. Tap to review.";
             emailSubject = "Resume Optimization Complete";
             emailBody = `<p>Your resume rewrite and optimization is complete.</p><a href="https://riresume.web.app/analysis-result?id=${payload.analysisTaskId || ''}">Review Optimized Resume</a>`;
             data.resultId = payload.analysisTaskId || payload.historyId;
@@ -188,17 +186,20 @@ exports.onBackgroundTaskUpdated = functionsV1
             data.params = { id: data.resultId };
         }
         else if (type === "add_skill" || type === "skill_addition") {
-            title = "Skill Added to Resume";
-            body = "The new skill has been incorporated into your optimized resume.";
+            const skill = payload.skill || "Skill";
+            const jobTitle = payload.jobTitle || payload.job?.title || "your target role";
+            const score = after.result?.calibratedScore || "updated";
+            title = `Skill Added: ${skill}`;
+            body = `Added to resume for ${jobTitle}. ATS Score updated to ${score}%. Tap to view changes.`;
             emailSubject = "Skill Addition Complete";
-            emailBody = `<p>We've successfully added the new skill to your resume and updated your ATS score.</p>`;
+            emailBody = `<p>We've successfully added <strong>${skill}</strong> to your resume for <strong>${jobTitle}</strong>.</p><p>Your new ATS Score is <strong>${score}%</strong>.</p>`;
             data.resultId = payload.analysisTaskId || payload.historyId;
             data.route = '/analysis-result';
             data.params = { id: data.resultId };
         }
         else if (type === "cover_letter") {
-            title = "Cover Letter Generated";
-            body = `Your tailored cover letter for ${payload.company || 'the position'} is ready.`;
+            title = "Cover Letter Ready!";
+            body = `Your cover letter for ${payload.company || 'your application'} is ready to view.`;
             emailSubject = "Cover Letter Generated";
             emailBody = `<p>Your cover letter for ${payload.company || 'the position'} is ready.</p>`;
             data.applicationId = payload.applicationId;

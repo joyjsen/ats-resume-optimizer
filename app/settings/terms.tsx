@@ -9,7 +9,7 @@ const TERMS_CONTENT = `
 **Last Updated:** January 27, 2026
 **Effective Date:** January 27, 2026
 
-Please read these Terms of Service ("Terms", "Terms of Service") carefully before using the RiResume mobile application (the "Service") operated by [Your Company Name] ("us", "we", or "our").
+Please read these Terms of Service ("Terms", "Terms of Service") carefully before using the RiResume mobile application (the "Service") operated by RiResume ("us", "we", or "our").
 
 Your access to and use of the Service is conditioned on your acceptance of and compliance with these Terms. These Terms apply to all visitors, users, and others who access or use the Service.
 
@@ -163,10 +163,7 @@ The Service does not provide professional career counseling, legal advice, or em
 
 ## 7. Intellectual Property Rights
 **7.1 Our Intellectual Property**
-The Service and its original content (excluding User Content), features, and functionality are and will remain the exclusive property of [Your Company Name] and its licensors. The Service is protected by copyright, trademark, and other laws of both the United States and foreign countries.
-
-**7.2 Trademarks**
-RiResume and related logos, graphics, and service names are trademarks of [Your Company Name]. You may not use these trademarks without our prior written permission.
+RiResume and related logos, graphics, and service names are trademarks of RiResume. You may not use these trademarks without our prior written permission.
 
 **7.3 Feedback**
 If you provide us with any feedback, suggestions, or ideas about the Service ("Feedback"), you grant us a perpetual, irrevocable, worldwide, royalty-free license to use, modify, and incorporate such Feedback into the Service without any obligation to you.
@@ -194,7 +191,7 @@ TO THE MAXIMUM EXTENT PERMITTED BY LAW, OUR TOTAL LIABILITY SHALL NOT EXCEED THE
 
 ## 12. Dispute Resolution
 **12.1 Governing Law**
-These Terms shall be governed by and construed in accordance with the laws of [Your State/Country].
+These Terms shall be governed by and construed in accordance with the laws of the United States.
 
 **12.2 Arbitration Agreement**
 Any dispute shall be resolved through binding arbitration in accordance with the rules of the American Arbitration Association.
@@ -204,7 +201,7 @@ YOU AGREE THAT ANY ARBITRATION OR PROCEEDING SHALL BE LIMITED TO THE DISPUTE BET
 
 ## 16. Contact Information
 If you have any questions about these Terms, please contact us:
-* By Email: pjmarket1316@gmail.com
+* By Email: support@riresume.com
 * Through the App: Profile → Help & Support
 `;
 

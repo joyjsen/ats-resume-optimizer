@@ -38,6 +38,15 @@ export const onBackgroundTaskCreated = (openaiApiKey: any, perplexityApiKey: any
 
             const openai = new OpenAI({ apiKey: openaiApiKey.value() });
 
+            // Ensure payload is parsed (TaskService stringifies it)
+            if (typeof task.payload === 'string') {
+                try {
+                    task.payload = JSON.parse(task.payload);
+                } catch (e) {
+                    console.error("[BackgroundTask] Failed to parse task payload JSON", e);
+                }
+            }
+
             switch (task.type) {
                 case "optimize_resume":
                     await processOptimizeResume(task, taskRef, openai, db, perplexityApiKey.value());
@@ -69,6 +78,7 @@ export const onBackgroundTaskCreated = (openaiApiKey: any, perplexityApiKey: any
 
 async function processOptimizeResume(task: any, taskRef: any, openai: any, db: any, perplexityKey: string) {
     const { analysisTaskId, resume, job, analysis, historyId } = task.payload;
+    const userId = task.userId;
     const analysisTaskRef = db.collection("analysis_tasks").doc(analysisTaskId);
     if (!(await checkTaskExists(analysisTaskId, db))) return;
 
@@ -77,20 +87,25 @@ async function processOptimizeResume(task: any, taskRef: any, openai: any, db: a
         await analysisTaskRef.update({ status: "processing", progress: 30, currentStep: "Optimizing resume..." });
 
         // Rich prompt matching the quality of resumeOptimization.ts
+        const strongMatches = analysis?.matchAnalysis?.matchedSkills?.map((s: any) => s.skill).join(', ') || 'Already present';
         const missingKeywords = analysis?.matchAnalysis?.missingSkills?.map((s: any) => s.skill).join(', ') || 'None identified';
         const currentScore = analysis?.atsScore || 0;
 
+        if (!resume) {
+            console.error("[BackgroundTask] Missing resume in task payload!");
+            throw new Error("Resume data is missing from task payload.");
+        }
+        console.log(`[BackgroundTask] Original Resume Keys: ${Object.keys(resume).join(', ')}`);
+        if (resume.contactInfo) console.log(`[BackgroundTask] Original Contact Info: ${JSON.stringify(resume.contactInfo)}`);
         const systemInstruction = `You are an expert ATS resume optimizer. Optimize the provided resume for the target job while maintaining truthfulness.
 Return a JSON object with properties 'optimizedResume' (structure matching original) and 'changes' (array of change objects).
 Aim for an ATS score of 85-95%. You must respond with valid JSON only, no other text.`;
 
-        const userContent = `You are an expert Executive Resume Writer. Optimize this resume for the target job while maintaining truthfulness.
+        const userContent = `
+You are an expert Executive Resume Writer. Optimize this resume for the target job while maintaining truthfulness.
 Your mandate is to REWRITE the content to be more professional, impactful, and ATS-optimized.
 
 CRITICAL: DO NOT BE CONCISE. The user wants a detailed, comprehensive resume.
-- Expand on bullet points to explain HOW and WHY, not just WHAT.
-- Use full sentences with strong impact.
-- Aim for 2-3 lines per bullet point if necessary to convey depth.
 
 ORIGINAL RESUME:
 ${JSON.stringify(resume, null, 2)}
@@ -99,16 +114,10 @@ TARGET JOB:
 ${JSON.stringify({ title: job.title, company: job.company, requirements: job.requirements }, null, 2)}
 
 ANALYSIS INSIGHTS:
-Missing Keywords: ${missingKeywords}
+Strong Matches (MUST be included in Skills section): ${strongMatches}
+Missing Keywords (Integrate into experience/summary): ${missingKeywords}
 Current ATS Score: ${currentScore}%
 
-OPTIMIZATION INSTRUCTIONS:
-1. **Professional Summary**: WRITE A COMPLETELY NEW summary. It must be 3-4 lines, punchy, include key achievements, and naturally integrate the top 5 keywords.
-2. **Experience Section (CRITICAL)**:
-   - For EACH and EVERY role, rewrite the bullet points.
-   - **EXPAND** on them. Do not simplify.
-   - Transform passive responsibilities into active achievements (e.g., "Responsible for sales" -> "Spearheaded sales strategy delivering 20% growth by leveraging X and Y...").
-   - INTEGRATE the missing keywords naturally into these bullets.
    - Use strong power verbs.
    - Provide context (team size, budget, technologies used).
 3. **Skills**: Reorder and categorize them to match the job description priorities.
@@ -140,9 +149,8 @@ Return JSON:
   ]
 }`;
 
-        // Use jsonMode: false to avoid OpenAI 400 error about 'json' word in messages.
-        // We handle JSON extraction manually below.
-        const aiResult = await callAiWithFallback(openai, perplexityKey, systemInstruction, userContent, { maxTokens: 10000, jsonMode: false });
+        // Use jsonMode: true to enforce valid JSON output from OpenAI
+        const aiResult = await callAiWithFallback(openai, perplexityKey, systemInstruction, userContent, { maxTokens: 10000, jsonMode: true });
         console.log(`[BackgroundTask] Raw AI Result length: ${aiResult.length}`);
 
         // Robust JSON extraction: strip markdown fences, find first { and last }
@@ -171,37 +179,88 @@ Return JSON:
 
         if (!(await checkTaskExists(analysisTaskId, db))) return;
 
-        if (!result || (!result.optimizedResume && !result.optimized_resume)) {
-            console.error("[BackgroundTask] AI Response Missing Keys. Received:", Object.keys(result));
+        // Helper to find the resume object even if nested or flat
+        const findResumeObject = (obj: any): any => {
+            if (!obj) return null;
+            if (obj.optimizedResume) return obj.optimizedResume;
+            if (obj.optimized_resume) return obj.optimized_resume;
+            // Fallback: If it looks like a resume (has experience/education), use it directly
+            if (Array.isArray(obj.experience) || Array.isArray(obj.education)) return obj;
+            return null;
+        };
+
+        const optimizedResume = findResumeObject(result);
+
+        if (!optimizedResume) {
+            console.error("[BackgroundTask] AI Response Missing Valid Resume Data. Received:", Object.keys(result || {}));
             throw new Error("AI failed to generate an optimized resume. Please try again.");
         }
 
-        const optimizedResume = result.optimizedResume || result.optimized_resume;
         const rawChanges = result.changes || result.refinements || [];
+
+        // MERGE LOGIC: Ensure we don't lose data if the AI returns partial result (COPIED FROM resumeOptimization.ts)
+        const mergedResume = optimizedResume ? {
+            ...resume, // Start with original
+            ...optimizedResume, // Overwrite with AI result
+            contactInfo: (optimizedResume && optimizedResume.contactInfo && Object.keys(optimizedResume.contactInfo).length > 0)
+                ? optimizedResume.contactInfo
+                : (resume.contactInfo || {}), // Prioritize original contact info if AI missed it or returned empty
+            experience: (optimizedResume.experience || resume.experience || []).map((optExp: any, idx: number) => {
+                const origExp = resume.experience?.[idx] || {};
+                return {
+                    ...origExp,
+                    ...optExp,
+                    bullets: optExp.bullets || optExp.bulletPoints || optExp.description || origExp.bullets || []
+                };
+            }),
+            education: (optimizedResume.education && optimizedResume.education.length > 0)
+                ? optimizedResume.education
+                : (resume.education || []),
+            skills: (optimizedResume.skills && optimizedResume.skills.length > 0)
+                ? optimizedResume.skills
+                : (resume.skills || []),
+            summary: (optimizedResume.summary && optimizedResume.summary.length > 10)
+                ? optimizedResume.summary
+                : (resume.summary || "")
+        } : null;
+
+        if (mergedResume) {
+            console.log(`[BackgroundTask] Merged Resume Keys: ${Object.keys(mergedResume).join(', ')}`);
+            if (mergedResume.contactInfo) console.log(`[BackgroundTask] Merged Contact Info: ${JSON.stringify(mergedResume.contactInfo)}`);
+            if (!mergedResume.skills || mergedResume.skills.length === 0) console.warn("[BackgroundTask] Merged Skills are EMPTY!");
+        } else {
+            console.error("[BackgroundTask] Merged Resume is NULL!");
+        }
 
         // Normalize changes to ensure they have {type, reason} structure
         const changes = rawChanges.map((c: any) => {
+            const timestamp = new Date().toISOString();
             if (typeof c === 'string') {
-                return { type: 'optimization', reason: c };
+                return { type: 'optimization', reason: c, timestamp };
             }
             return {
                 type: c.type || 'optimization',
                 reason: c.reason || c.description || JSON.stringify(c),
                 section: c.section || undefined,
+                timestamp
             };
         });
 
         // Sanitize data to remove any undefined values that Firestore rejects
-        const sanitizedResume = optimizedResume ? JSON.parse(JSON.stringify(optimizedResume)) : null;
+        const sanitizedResume = mergedResume ? JSON.parse(JSON.stringify(mergedResume)) : null;
         const sanitizedChanges = changes ? JSON.parse(JSON.stringify(changes)) : [];
 
         if (historyId || analysis.id) {
-            await db.collection("user_analyses").doc(historyId || analysis.id).update({
-                draftOptimizedResumeData: sanitizedResume,
-                draftChangesData: sanitizedChanges,
-                draftAtsScore: calibratedScore,
+            const updatePayload: any = {
                 updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-            });
+            };
+
+            // Only update draft data if we actually have it. Don't wipe existing with null.
+            if (sanitizedResume) updatePayload.draftOptimizedResumeData = sanitizedResume;
+            if (sanitizedChanges && sanitizedChanges.length > 0) updatePayload.draftChangesData = sanitizedChanges;
+            if (calibratedScore) updatePayload.draftAtsScore = calibratedScore;
+
+            await db.collection("user_analyses").doc(historyId || analysis.id).update(updatePayload);
         }
 
         await taskRef.update({
@@ -209,6 +268,10 @@ Return JSON:
             progress: 90
         });
         await analysisTaskRef.update({ status: "completed", progress: 100, currentStep: "Complete" });
+
+        // Send Push Notification
+        // Send Push Notification - REMOVED (Handled by notifications.ts trigger)
+        // if (userId) { ... }
     } catch (error: any) {
         console.error(`[OptimizeResume] Failed for ${analysisTaskId}:`, error);
         await analysisTaskRef.update({
@@ -247,23 +310,39 @@ async function processAddSkill(task: any, taskRef: any, openai: any, db: any, pe
         const systemInstruction = `You are an expert ATS Resume Editor. Add the skill "${skill}" to the resume naturally.
 You MUST return a JSON object with two properties:
 1. "optimizedResume" - the COMPLETE resume object with the SAME structure as the input, with the skill integrated
-2. "changes" - array of objects describing what you changed, each with "type" and "reason" fields
+2. "changes" - array of objects describing what you changed, each with "type", "reason", and "section" fields
 
 CRITICAL: Return the ENTIRE resume in "optimizedResume", not just the modified sections. The structure must match the original exactly.
 You must respond with valid JSON only, no other text or markdown.`;
 
-        const prompt = `TASK: Naturally integrate the skill "${skill}" into the following sections: ${targetSections.join(', ')}.
+        // Helper to map section IDs to human-readable names
+        const readableSections = targetSections.map((sectionId: string) => {
+            if (sectionId === 'summary') return "Professional Summary";
+            if (sectionId === 'skills_list') return "Skills Section";
+            if (sectionId.startsWith('experience_')) {
+                const expId = sectionId.replace('experience_', '');
+                const exp = resume.experience?.find((e: any) => String(e.id) === String(expId));
+                if (exp) return `Experience: ${exp.title} at ${exp.company}`;
+            }
+            return sectionId;
+        }).filter(Boolean);
+
+        const prompt = `TASK: Naturally integrate the skill "${skill}" into the following sections: ${readableSections.join(', ')}.
 
 RESUME:
 ${JSON.stringify(resume, null, 2)}
 
-RULES:
-- Add "${skill}" naturally into the specified sections
-- Keep all other content exactly the same
-- In the experience section, enhance 1-2 bullet points to reference "${skill}" where relevant
-- Add "${skill}" to the skills section if it exists and the skill isn't already there
-- Return the COMPLETE resume object in "optimizedResume" with all sections intact
-- List all changes made in the "changes" array`;
+CRITICAL RULES:
+1. **TARGETED CHANGE ONLY**: You are ONLY allowed to modify the specific experience roles listed above (e.g., "${readableSections.filter((s: string) => s.startsWith('Experience:')).join('", "') || 'None'}").
+2. **COPY-PASTE MANDATE**: For every other experience role NOT listed, you MUST copy the original object EXACTLY as is. Do not change a single character, bullet point, or whitespace.
+3. **SKILLS SECTION**: Add "${skill}" to the skills list if not present.
+4. **MANDATORY EVIDENCE**: For EACH targeted Experience role, you MUST add a NEW bullet point or SIGNIFICANTLY rewrite an existing one to demonstrate this skill with a concrete achievement or responsibility. Merely mentioning the skill is not enough.
+5. **NO HALLUCINATIONS**: Do not invent new bullets for unselected roles.
+6. **OUTPUT**: Return the COMPLETE resume. If a section is not targeted, return it identical to the input.
+7. **CHANGES ARRAY**: For every change you make, add an entry to the "changes" array with:
+   - "type": "experience_update" or "skill_addition"
+   - "section": The specific section name (e.g. "Experience: [Role]")
+   - "reason": A brief explanation of the change.`;
 
         await analysisTaskRef.update({ progress: 50, currentStep: `AI is integrating "${skill}"...` });
 
@@ -295,17 +374,25 @@ RULES:
 
         const rawChanges = result.changes || [];
         const aiChanges = rawChanges.map((c: any) => {
-            if (typeof c === 'string') return { type: 'skill_addition', skill, reason: c };
+            const timestamp = new Date().toISOString();
+            if (typeof c === 'string') return { type: 'skill_addition', skill, reason: c, timestamp };
             return {
                 type: c.type || 'skill_addition',
                 skill: c.skill || skill,
                 reason: c.reason || c.description || JSON.stringify(c),
                 section: c.section || undefined,
+                timestamp
             };
         });
 
         // Always prepend an explicit tracking entry for the SkillsComparison component
-        const trackingEntry = { type: 'skill_addition', skill, reason: `Added "${skill}" to resume` };
+        const trackingEntry = {
+            type: 'skill_addition',
+            skill,
+            reason: `Added "${skill}" to resume`,
+            section: 'Skills Section',
+            timestamp: new Date().toISOString()
+        };
 
         // Accumulate changes: fetch existing draft or finalized changes from Firestore and append new ones
         let existingChanges: any[] = [];
@@ -366,6 +453,8 @@ RULES:
 
         console.log(`[AddSkill] Successfully added "${skill}" for task ${resolvedTaskId}. New score: ${calibratedScore}`);
 
+        // Redundant sendPush removed to avoid duplicates (handled by trigger in notifications.ts)
+
     } catch (error: any) {
         console.error(`[AddSkill] Failed for ${resolvedTaskId}:`, error);
         await analysisTaskRef.update({
@@ -382,7 +471,7 @@ async function processPrepGuide(task: any, taskRef: any, openai: any, db: any, p
     const userId = task.userId;
     const appRef = db.collection("user_applications").doc(applicationId);
 
-    console.log(`[PrepGuide] Starting for ${resolvedCompany} (appId: ${applicationId})`);
+    console.log(`[PrepGuide] Starting for ${resolvedCompany}(appId: ${applicationId})`);
 
     try {
 
@@ -397,15 +486,15 @@ async function processPrepGuide(task: any, taskRef: any, openai: any, db: any, p
         });
 
         const sections: Record<string, string> = {};
-        const resumeContext = optimizedResume ? `\nCANDIDATE RESUME:\n${optimizedResume}` : '';
-        const skillsContext = matchedSkills?.length ? `\nMATCHED SKILLS: ${matchedSkills.join(', ')}` : '';
-        const missingContext = missingSkills?.length ? `\nSKILL GAPS: ${missingSkills.join(', ')}` : '';
+        const resumeContext = optimizedResume ? `\nCANDIDATE RESUME: \n${optimizedResume} ` : '';
+        const skillsContext = matchedSkills?.length ? `\nMATCHED SKILLS: ${matchedSkills.join(', ')} ` : '';
+        const missingContext = missingSkills?.length ? `\nSKILL GAPS: ${missingSkills.join(', ')} ` : '';
 
         // 1. Company Intelligence (Perplexity for real-time web research)
         sections.companyIntelligence = await callPerplexity(
             perplexityKey,
             "You are a company research analyst providing detailed, CURRENT information for interview preparation.",
-            `Research ${resolvedCompany} for a ${jobTitle} candidate. Include:\n- Company mission, values, and culture\n- Key products/services and recent developments (last 90 days)\n- Competitive landscape\n- Interview process and culture\n- Recent news and announcements`,
+            `Research ${resolvedCompany} for a ${jobTitle} candidate.Include: \n - Company mission, values, and culture\n - Key products / services and recent developments(last 90 days) \n - Competitive landscape\n - Interview process and culture\n - Recent news and announcements`,
             false
         );
         await appRef.update({ "prepGuide.progress": 15, "prepGuide.sections.companyIntelligence": sections.companyIntelligence });
@@ -413,21 +502,21 @@ async function processPrepGuide(task: any, taskRef: any, openai: any, db: any, p
         // 2. Role Analysis & Strategy
         await appRef.update({ "prepGuide.progress": 20, "prepGuide.currentStep": "Analyzing role requirements..." });
         sections.roleAnalysis = await callAiWithFallback(openai, perplexityKey, "You are an expert interview coach.",
-            `Provide a detailed role analysis for ${jobTitle} at ${resolvedCompany}.\nJOB DESCRIPTION: ${jobDescription || "Not provided"}\n\nInclude:\n- Key responsibilities breakdown\n- Required vs nice-to-have qualifications\n- What the hiring manager is likely looking for\n- How this role fits within the organization\n- Career growth potential`,
+            `Provide a detailed role analysis for ${jobTitle} at ${resolvedCompany}.\nJOB DESCRIPTION: ${jobDescription || "Not provided"} \n\nInclude: \n - Key responsibilities breakdown\n - Required vs nice - to - have qualifications\n - What the hiring manager is likely looking for\n - How this role fits within the organization\n - Career growth potential`,
             { maxTokens: 3000, jsonMode: false });
         await appRef.update({ "prepGuide.progress": 30, "prepGuide.sections.roleAnalysis": sections.roleAnalysis });
 
         // 3. Technical Preparation
         await appRef.update({ "prepGuide.progress": 35, "prepGuide.currentStep": "Building technical prep..." });
         sections.technicalPrep = await callAiWithFallback(openai, perplexityKey, "You are a senior technical interviewer.",
-            `Create a technical preparation guide for ${jobTitle} at ${resolvedCompany}.\nJOB DESCRIPTION: ${jobDescription || "Not provided"}${skillsContext}${missingContext}\n\nInclude:\n- Core technical concepts to review\n- Likely coding/system design topics\n- Technical questions with sample answers\n- Hands-on exercises to practice\n- Common pitfalls to avoid`,
+            `Create a technical preparation guide for ${jobTitle} at ${resolvedCompany}.\nJOB DESCRIPTION: ${jobDescription || "Not provided"}${skillsContext}${missingContext} \n\nInclude: \n - Core technical concepts to review\n - Likely coding / system design topics\n - Technical questions with sample answers\n - Hands - on exercises to practice\n - Common pitfalls to avoid`,
             { maxTokens: 4000, jsonMode: false });
         await appRef.update({ "prepGuide.progress": 45, "prepGuide.sections.technicalPrep": sections.technicalPrep });
 
         // 4. Behavioral Framework
         await appRef.update({ "prepGuide.progress": 50, "prepGuide.currentStep": "Crafting behavioral framework..." });
         sections.behavioralFramework = await callAiWithFallback(openai, perplexityKey, "You are an expert interview coach specializing in behavioral interviews.",
-            `Create a behavioral interview framework for ${jobTitle} at ${resolvedCompany}.\nJOB DESCRIPTION: ${jobDescription || "Not provided"}\n\nInclude:\n- Top 10 likely behavioral questions with explanation of what interviewers look for\n- STAR method templates for each question\n- Tips for structuring compelling answers\n- Red flags to avoid\n- How to handle curveball questions`,
+            `Create a behavioral interview framework for ${jobTitle} at ${resolvedCompany}.\nJOB DESCRIPTION: ${jobDescription || "Not provided"} \n\nInclude: \n - Top 10 likely behavioral questions with explanation of what interviewers look for\n - STAR method templates for each question\n - Tips for structuring compelling answers\n - Red flags to avoid\n - How to handle curveball questions`,
             { maxTokens: 4000, jsonMode: false });
         await appRef.update({ "prepGuide.progress": 60, "prepGuide.sections.behavioralFramework": sections.behavioralFramework });
 
@@ -441,7 +530,7 @@ async function processPrepGuide(task: any, taskRef: any, openai: any, db: any, p
         // 6. Questions to Ask
         await appRef.update({ "prepGuide.progress": 80, "prepGuide.currentStep": "Preparing strategic questions..." });
         sections.questionsToAsk = await callAiWithFallback(openai, perplexityKey, "You are a career strategist.",
-            `Generate thoughtful questions for a ${jobTitle} candidate to ask during interviews at ${resolvedCompany}.\nJOB DESCRIPTION: ${jobDescription || "Not provided"}\n\nCategories:\n- Role-specific questions (day-to-day work, team structure)\n- Growth and development questions\n- Company culture and values questions\n- Technical/product questions showing genuine interest\n- Strategic questions that demonstrate business acumen\n\nFor each question, explain WHY it's impressive and what insight it provides.`,
+            `Generate thoughtful questions for a ${jobTitle} candidate to ask during interviews at ${resolvedCompany}.\nJOB DESCRIPTION: ${jobDescription || "Not provided"} \n\nCategories: \n - Role - specific questions(day - to - day work, team structure) \n - Growth and development questions\n - Company culture and values questions\n - Technical / product questions showing genuine interest\n - Strategic questions that demonstrate business acumen\n\nFor each question, explain WHY it's impressive and what insight it provides.`,
             { maxTokens: 3000, jsonMode: false });
         await appRef.update({ "prepGuide.progress": 88, "prepGuide.sections.questionsToAsk": sections.questionsToAsk });
 
@@ -464,23 +553,8 @@ async function processPrepGuide(task: any, taskRef: any, openai: any, db: any, p
 
         await taskRef.update({ result: { sections }, progress: 100 });
 
-        // Send Push Notification directly
-        console.log(`[PrepGuide] Attempting to send push to userId: ${userId}`);
-        if (userId) {
-            try {
-                await sendPush(
-                    userId,
-                    "Interview Prep Guide Ready",
-                    `Your prep guide for ${jobTitle} at ${resolvedCompany} is ready.`,
-                    { applicationId, route: "/(tabs)/applications", action: "viewPrep" }
-                );
-                console.log(`[PrepGuide] Push notification sent successfully.`);
-            } catch (pushError) {
-                console.error(`[PrepGuide] FAILED to send push notification:`, pushError);
-            }
-        } else {
-            console.error(`[PrepGuide] Cannot send push: No userId found in task.`);
-        }
+        // Send Push Notification directly - REMOVED (Handled by notifications.ts trigger)
+        console.log(`[PrepGuide] Completed for userId: ${userId}`);
 
     } catch (error: any) {
         console.error(`[PrepGuide] Failed for ${applicationId}:`, error);
@@ -538,6 +612,8 @@ JD: ${jobDescription || "Not provided"}`;
         }, { merge: true });
 
         await taskRef.update({ result: { content: coverLetterText }, progress: 100 });
+
+        // Send Push Notification - REMOVED (Handled by notifications.ts trigger)
 
     } catch (error: any) {
         console.error(`[CoverLetter] Failed to generate for ${applicationId}:`, error);
@@ -601,12 +677,117 @@ async function processAnalyzeResume(task: any, taskRef: any, openai: any, db: an
             const [structuredJob, structuredResume] = await Promise.all([
                 (async () => {
                     const jobPrompt = `
-                        Extract structured job info from this text.
-                        Job Text: ${(initialJob.description || initialJob.text || jobText || '').substring(0, 15000)}
-                        Known Title: ${initialJob.title || jobTitle}
-                        Known Company: ${initialJob.company || jobCompany}
-                        
-                        Return JSON: { "title": "...", "company": "...", "description": "verbatim text", "requirements": { "mustHaveSkills": [{ "name": "...", "importance": "high", "category": "tech" }], "niceToHaveSkills": [], "keywords": [] } }
+Perform a COMPREHENSIVE, EXHAUSTIVE extraction of ALL requirements and information from this job description. Treat every sentence as potentially containing a requirement or keyword that an ATS system might scan for.
+
+Job Description Text:
+"""
+${(initialJob.description || initialJob.text || jobText || '').substring(0, 15000)}
+"""
+
+Known Title: ${initialJob.title || jobTitle || ""}
+Known Company: ${initialJob.company || jobCompany || ""}
+
+EXHAUSTIVE EXTRACTION RULES:
+1. READ EVERY SENTENCE: Requirements are often buried in the "About the Role," "Responsibilities," and "Who You Are" sections — not just the "Requirements" section. Scan the ENTIRE posting.
+2. SKILL EXTRACTION: Extract every technology, tool, platform, framework, language, protocol, methodology, and concept mentioned. Include version numbers if specified (e.g., "Python 3.x", "Kubernetes 1.27+").
+3. SOFT SKILLS & TRAITS: Extract leadership qualities, communication skills, collaboration expectations, and personality traits (e.g., "self-starter," "cross-functional collaboration," "executive communication").
+4. EXPERIENCE REQUIREMENTS: Capture years of experience (overall and per-skill), industry-specific experience, team size managed, budget managed, and scope (e.g., "enterprise-scale," "Fortune 500").
+5. EDUCATION & CERTS: Capture required and preferred degrees, fields of study, certifications, and clearances.
+6. IMPLICIT REQUIREMENTS: If the role says "manage CI/CD pipelines," the implicit requirements include tools like Jenkins, GitLab CI, GitHub Actions, etc. Flag these as "implied" so they can be matched against.
+7. RESPONSIBILITY-DERIVED SKILLS: For each listed responsibility, infer what skills are needed to perform it. List these as "impliedSkills."
+8. KEYWORDS FOR ATS: Extract exact phrases and terminology that an ATS would likely scan for — preserve the employer's exact wording alongside normalized versions.
+9. IMPORTANCE CLASSIFICATION for every requirement:
+   - "critical": Explicitly stated as required, must-have, or minimum qualification
+   - "high": Strongly emphasized, repeated multiple times, or in core responsibilities
+   - "medium": Listed as preferred, nice-to-have, or "bonus"
+   - "low": Implied by role context or industry norms but not explicitly stated
+10. CATEGORIZATION for every skill:
+   - "technical": Programming, tools, platforms, infrastructure
+   - "domain": Industry knowledge, compliance, regulations
+   - "methodology": Agile, DevOps, ITIL, frameworks
+   - "soft_skill": Communication, leadership, collaboration
+   - "certification": Specific certs or clearances
+   - "experience": Years, scope, scale requirements
+
+MISSING DATA RULES — THIS IS CRITICAL:
+- If ANY field is not found in the job description, you MUST still include the key with a safe default value.
+- Use "" (empty string) for missing text fields.
+- Use [] (empty array) for missing list fields.
+- Use {} (empty object) for missing object fields.
+- Use 0 for missing numeric fields.
+- NEVER omit a key from the JSON. Every key shown in the schema MUST be present in your response.
+- If the JD doesn't specify education, return the education object with all empty strings.
+- If the JD doesn't specify clearance, return "clearanceRequirements": [].
+- If no nice-to-have skills are found, return "niceToHaveSkills": [].
+- If title/company aren't in the JD, use the Known Title / Known Company provided. If those are also empty, use "".
+
+Return this EXACT JSON structure (all keys mandatory):
+{
+  "title": "",
+  "company": "",
+  "location": "",
+  "employmentType": "",
+  "salaryRange": "",
+  "description": "verbatim full job description text",
+  "responsibilities": [],
+  "requirements": {
+    "mustHaveSkills": [
+      {
+        "name": "",
+        "normalizedName": "",
+        "importance": "critical",
+        "category": "technical",
+        "context": "",
+        "synonyms": []
+      }
+    ],
+    "niceToHaveSkills": [
+      {
+        "name": "",
+        "normalizedName": "",
+        "importance": "medium",
+        "category": "",
+        "context": "",
+        "synonyms": []
+      }
+    ],
+    "impliedSkills": [
+      {
+        "name": "",
+        "derivedFrom": "",
+        "importance": "low",
+        "category": ""
+      }
+    ],
+    "experienceRequirements": {
+      "totalYears": "",
+      "specificExperience": [
+        {
+          "skill": "",
+          "years": "",
+          "importance": ""
+        }
+      ],
+      "industryExperience": [],
+      "scaleExperience": ""
+    },
+    "educationRequirements": {
+      "requiredDegree": "",
+      "preferredDegree": "",
+      "acceptableFields": [],
+      "certifications": []
+    },
+    "clearanceRequirements": [],
+    "keywords": []
+  },
+  "extractionMetadata": {
+    "totalRequirementsExtracted": 0,
+    "mustHaveCount": 0,
+    "niceToHaveCount": 0,
+    "impliedCount": 0,
+    "totalUniqueKeywords": 0
+  }
+}
                     `;
                     try {
                         const res = await callAiWithFallback(openai, perplexityKey, "You are a job parser.", jobPrompt, { maxTokens: 1000, jsonMode: true });
@@ -618,14 +799,85 @@ async function processAnalyzeResume(task: any, taskRef: any, openai: any, db: an
                     }
                 })(),
                 (async () => {
-                    const resumePrompt = `
-                        Extract structured resume info from this text.
-                        Resume Text: ${(initialResume.text || resumeText || '').substring(0, 15000)}
-                        
-                        Return JSON: { "contactInfo": {}, "summary": "...", "experience": [], "education": [], "skills": [{ "name": "...", "category": "..." }] }
-                    `;
+                    // TRUSTED CLIENT DATA BYPASS: If client sent structured data (even if experience is empty but present), use it directly.
+                    // Relaxed check: We trust parsedResumeData from client.
+                    if (initialResume && typeof initialResume === 'object' && Array.isArray(initialResume.experience)) {
+                        console.log("[Background] Using trusted client-side parsed resume data. Skipping AI re-parsing.");
+                        return initialResume;
+                    }
+
+                    const systemInstruction = `You are an expert resume parser. Extract structured information from the provided resume text.
+If multiple pages (images) are provided, combine the information intelligently.
+
+Extract and return JSON with the following structure:
+{
+  "contactInfo": {
+    "name": "full name",
+    "email": "email",
+    "phone": "phone number",
+    "location": "city, state",
+    "linkedin": "linkedin URL",
+    "portfolio": "portfolio URL",
+    "github": "github URL"
+  },
+  "summary": "professional summary if present",
+  "experience": [
+    {
+      "company": "company name",
+      "title": "job title",
+      "location": "city, state",
+      "startDate": "MM/YYYY",
+      "endDate": "MM/YYYY or null if current",
+      "current": true|false,
+      "bullets": ["bullet point 1", "bullet point 2"]
+    }
+  ],
+  "education": [
+    {
+      "institution": "school name",
+      "degree": "degree type",
+      "field": "field of study",
+      "startDate": "YYYY",
+      "endDate": "YYYY",
+      "gpa": "GPA if mentioned"
+    }
+  ],
+  "skills": [
+    {
+      "name": "skill name",
+      "category": "technical|soft|language|tool|framework",
+      "proficiency": "beginner|intermediate|advanced|expert (infer from context)"
+    }
+  ],
+  "certifications": [
+    {
+      "name": "certification name",
+      "issuer": "issuing organization",
+      "date": "MM/YYYY"
+    }
+  ],
+  "projects": [
+    {
+      "name": "project name",
+      "description": "brief description",
+      "technologies": ["tech1", "tech2"],
+      "url": "project URL if available"
+    }
+  ]
+}
+
+Guidelines:
+- Extract ALL information present. Do not summarize or truncate bullets.
+- Infer skill proficiency from experience context if not explicit.
+- Standardize date formats to MM/YYYY or YYYY.
+- Clean up bullet points (remove extra symbols like • or -).
+- Categorize skills accurately.
+- If a section is missing, return an empty array for lists or empty string for text fields.`;
+
+                    const userContent = `Resume Content:\n${(initialResume.text || resumeText || '').substring(0, 15000)}`;
+
                     try {
-                        const res = await callAiWithFallback(openai, perplexityKey, "You are a resume parser.", resumePrompt, { maxTokens: 2000, jsonMode: true });
+                        const res = await callAiWithFallback(openai, perplexityKey, systemInstruction, userContent, { maxTokens: 4000, jsonMode: true });
                         const parsed = JSON.parse(res.replace(/```json/g, '').replace(/```/g, '').trim());
                         return { ...initialResume, ...parsed, experience: addIds(parsed.experience), education: addIds(parsed.education) };
                     } catch (e) {
@@ -752,6 +1004,13 @@ ${finalJob.description || ''}
             isLatest: true,
             type: 'gap_analysis'
         };
+
+        console.log("[Background] Saving Analysis Data - Resume Keys:", Object.keys(finalResume || {}));
+        if (finalResume && finalResume.experience) {
+            console.log("[Background] Saving Experience Count:", finalResume.experience.length);
+        } else {
+            console.error("[Background] WARNING: Saving EMPTY experience/resume data!");
+        }
 
         const historyRef = await db.collection("user_analyses").add(savedAnalysisData);
         const savedId = historyRef.id;

@@ -34,7 +34,7 @@ export default function PurchaseHistoryScreen() {
                     // Fallback to data in context, or implicit 0 for legacy records
                     amount: act.contextData?.amount || 0,
                     tokens: act.contextData?.tokens || 0,
-                    status: act.status === 'completed' ? 'succeeded' : act.status as any,
+                    status: (act.status === 'completed' || !act.status) ? 'succeeded' : act.status as any,
                     type: act.description.toLowerCase().includes('bonus') ? 'bonus' : 'purchase'
                 }));
 
@@ -76,7 +76,7 @@ export default function PurchaseHistoryScreen() {
                         {item.amount > 0 ? `$${item.amount.toFixed(2)}` : 'FREE'}
                     </Text>
                     <Text variant="labelSmall" style={{ color: item.status === 'succeeded' ? '#4CAF50' : '#F44336' }}>
-                        {item.status.toUpperCase()}
+                        {(item.status || 'unknown').toUpperCase()}
                     </Text>
                 </View>
             </Card.Content>

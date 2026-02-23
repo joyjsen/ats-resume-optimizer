@@ -89,9 +89,9 @@ async function sendPush(uid, title, body, data) {
         }
         const expoTokens = (Array.isArray(rawTokens) ? rawTokens : [rawTokens])
             .filter((t) => typeof t === 'string' && t.startsWith('ExponentPushToken'));
-        if (expoTokens.length > 0) {
-            // Always also send via Expo for iOS reliability and as Android fallback
-            console.log(`[sendPush] Sending via Expo Push API to ${expoTokens.length} token(s)${fcmSent ? ' (as additional delivery path)' : ' (primary delivery)'}...`);
+        if (expoTokens.length > 0 && !fcmSent) {
+            // Only send via Expo if FCM failed or no FCM tokens (prevent duplicates on Android)
+            console.log(`[sendPush] Sending via Expo Push API to ${expoTokens.length} token(s) (fallback)...`);
             for (const token of expoTokens) {
                 try {
                     const message = {
@@ -138,7 +138,10 @@ async function sendPush(uid, title, body, data) {
             }
         }
         if (!fcmSent && expoTokens.length === 0) {
-            console.warn(`[sendPush] User ${uid} has no valid push tokens (FCM or Expo).`);
+            console.warn(`[sendPush] User ${uid} has NO valid push tokens. Firestore check: FCM count=${fcmTokens.length}, Expo count=${expoTokens.length}`);
+        }
+        else {
+            console.log(`[sendPush] Finish: FCM Sent=${fcmSent}, Expo Count=${expoTokens.length}`);
         }
     }
     catch (error) {

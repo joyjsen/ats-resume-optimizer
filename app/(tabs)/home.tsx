@@ -12,6 +12,7 @@ import { applicationService } from "../../src/services/firebase/applicationServi
 import { SavedAnalysis } from "../../src/types/history.types";
 import { Application } from "../../src/types/application.types";
 import { auth } from "../../src/services/firebase/config";
+import { DAILY_TIPS } from "../../src/data/dailyTips";
 
 const isAndroid = Platform.OS === 'android';
 
@@ -169,6 +170,27 @@ const RiResumeHome = () => {
         },
     ];
 
+    // Daily Tip Logic
+    const [dailyTip, setDailyTip] = useState(DAILY_TIPS[0]);
+
+    useEffect(() => {
+        const updateDailyTip = () => {
+            // Calculate days since epoch to ensure 24-hour rotation
+            const now = new Date();
+            const daysSinceEpoch = Math.floor(now.getTime() / (1000 * 60 * 60 * 24));
+
+            // Use modulo to cycle through tips
+            const tipIndex = daysSinceEpoch % DAILY_TIPS.length;
+            setDailyTip(DAILY_TIPS[tipIndex]);
+        };
+
+        updateDailyTip();
+
+        // Optional: Update when app comes to foreground or date changes
+        const interval = setInterval(updateDailyTip, 1000 * 60 * 60); // Check every hour
+        return () => clearInterval(interval);
+    }, []);
+
     // Get 3 recent applications
     const recentApplications = history.slice(0, 3);
 
@@ -254,7 +276,7 @@ const RiResumeHome = () => {
 
                 {/* Stats Summary */}
                 <View style={styles.section}>
-                    <Text variant="titleMedium" style={styles.sectionTitle}>Overview</Text>
+                    <Text variant="titleMedium" style={styles.sectionTitle}>Overview - This Week</Text>
                     <View style={styles.statsGrid}>
                         {weeklyStats.map((stat, i) => (
                             <View key={i} style={[styles.statItem, { borderColor: theme.colors.outlineVariant, backgroundColor: theme.colors.elevation.level1 }, isAndroid && { padding: 8 }]}>
@@ -330,10 +352,10 @@ const RiResumeHome = () => {
                         <Card.Content>
                             <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
                                 <IconButton icon="lightbulb-on" size={20} iconColor={theme.colors.tertiary} style={{ margin: 0, marginRight: 8 }} />
-                                <Text variant="titleSmall" style={{ color: theme.colors.tertiary, fontWeight: 'bold' }}>Daily Tip</Text>
+                                <Text variant="titleSmall" style={{ color: theme.colors.tertiary, fontWeight: 'bold' }}>Daily Tip #{dailyTip.id}</Text>
                             </View>
                             <Text variant="bodyMedium" style={{ color: theme.colors.onTertiaryContainer }}>
-                                Tailoring your resume for each application can increase your interview rate by up to 3x. Use the Optimize feature to match job-specific keywords.
+                                {dailyTip.tip}
                             </Text>
                         </Card.Content>
                     </Card>

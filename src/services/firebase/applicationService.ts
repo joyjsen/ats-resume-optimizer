@@ -342,7 +342,7 @@ export class ApplicationService {
             analysisStatus: data.analysisStatus,
             isReadOnly: data.analysisStatus === 'pending_resume_update' || data.analysisStatus === 'draft_ready' || data.analysisStatus === 'pending_skill_update',
 
-            submittedResumeData: data.submittedResumeData ? JSON.parse(data.submittedResumeData) : undefined,
+            submittedResumeData: data.submittedResumeData ? (typeof data.submittedResumeData === 'string' ? JSON.parse(data.submittedResumeData) : data.submittedResumeData) : undefined,
             lastResumeUpdateAt: (data.lastResumeUpdateAt as any)?.toDate?.(),
             coverLetter: data.coverLetter ? (() => {
                 const status = data.coverLetter.status || (data.coverLetter.content ? 'completed' : 'failed');

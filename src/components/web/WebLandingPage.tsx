@@ -1,16 +1,27 @@
 import React from 'react';
 import { View, ScrollView, useWindowDimensions } from 'react-native';
-import { Text, useTheme, Icon } from 'react-native-paper';
+import { Text, useTheme, Icon, TextInput, Button } from 'react-native-paper'; // Added TextInput, Button
 import { useRouter } from 'expo-router';
-import { WebLoginForm } from './WebLoginForm';
+import { WebLoginForm } from './WebLoginForm'; // Restored
 import { webStyles } from '../../styles/web.styles';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useState } from 'react';
+import { useResumeStore } from '../../store/resumeStore';
 
 export const WebLandingPage: React.FC = () => {
     const theme = useTheme();
     const router = useRouter();
     const { width } = useWindowDimensions();
     const isSmallScreen = width < 768;
+    const [jobUrl, setJobUrl] = useState('');
+    const setPendingSharedUrl = useResumeStore(state => state.setPendingSharedUrl);
+
+    const handleStartNow = () => {
+        if (jobUrl) {
+            setPendingSharedUrl(jobUrl);
+        }
+        router.push('/(auth)/sign-in');
+    };
 
     const features = [
         {
@@ -46,7 +57,7 @@ export const WebLandingPage: React.FC = () => {
                             { color: theme.colors.onBackground, fontSize: isSmallScreen ? 28 : 42 },
                         ]}
                     >
-                        ATS Resume Checker & Optimizer
+                        From Application to Interview in Days, Not Weeks
                     </Text>
                     <Text
                         style={[
@@ -54,12 +65,34 @@ export const WebLandingPage: React.FC = () => {
                             { color: theme.colors.onSurfaceVariant, fontSize: isSmallScreen ? 16 : 20 },
                         ]}
                     >
-                        Boost Your Job Application Score. Analyze, optimize, and land your dream job with AI-powered resume tools.
+                        RiResume uses AI to perfectly tailor your resume and cover letter, bridge your skill gaps, and create custom interview guides - all designed to help you land your dream job faster.
                     </Text>
+
+                    {/* Job URL Input Section */}
+                    <View style={{ marginTop: 32, maxWidth: 500 }}>
+                        <Text variant="titleMedium" style={{ marginBottom: 8, fontWeight: 'bold' }}>
+                            Ready to start? Paste a job link below
+                        </Text>
+                        <TextInput
+                            mode="outlined"
+                            placeholder="https://www.linkedin.com/jobs/view/..."
+                            value={jobUrl}
+                            onChangeText={setJobUrl}
+                            style={{ backgroundColor: theme.colors.surface, marginBottom: 16 }}
+                        />
+                        <Button
+                            mode="contained"
+                            onPress={handleStartNow}
+                            contentStyle={{ height: 48 }}
+                            labelStyle={{ fontSize: 16, fontWeight: 'bold' }}
+                        >
+                            Start Now
+                        </Button>
+                    </View>
                 </View>
 
-                {/* Login Form */}
-                <View style={{ width: isSmallScreen ? '100%' : 400 }}>
+                {/* Right Side - Login Form */}
+                <View style={{ width: isSmallScreen ? '100%' : 400, justifyContent: 'center' }}>
                     <WebLoginForm />
                 </View>
             </LinearGradient>

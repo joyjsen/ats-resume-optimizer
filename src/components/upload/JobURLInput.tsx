@@ -39,15 +39,6 @@ export const JobURLInput = ({ urlValue, textValue, mode, onModeChange, onUrlChan
                     autoCapitalize="none"
                     keyboardType="url"
                     dense={isAndroid}
-                    right={
-                        urlValue ? (
-                            <TextInput.Icon
-                                icon="close-circle-outline"
-                                onPress={() => onUrlChange('')}
-                                forceTextInputFocus={false}
-                            />
-                        ) : null
-                    }
                 />
             ) : null}
 

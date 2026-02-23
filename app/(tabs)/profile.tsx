@@ -140,7 +140,7 @@ export default function ProfileScreen() {
     };
 
     const handleGiveFeedback = () => {
-        const email = 'pjmarket1316@gmail.com';
+        const email = 'support@riresume.com';
         const userName = userProfile?.displayName || 'User';
         const subject = `RiResume App Feedback - ${userName}`;
         const body = `Dear RiResume Team,\n\nI would like to share my experience and feedback regarding the RiResume application.\n\n[Please enter your feedback here]\n\nSincerely,\n${userName}\n\n---\nUser Information:\n- Email: ${userProfile?.email}\n- User ID: ${userProfile?.uid}`;

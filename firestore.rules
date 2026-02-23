@@ -15,7 +15,7 @@ service cloud.firestore {
 
     // Helper function to check if user is admin
     function isAdmin() {
-      return isAuthenticated() && request.auth.token.email == 'pjmarket1316@gmail.com';
+      return isAuthenticated() && request.auth.token.email == 'support@riresume.com';
     }
 
     // Helper function to check if document belongs to anonymous user (for migration)

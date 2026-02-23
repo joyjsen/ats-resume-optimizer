@@ -11,6 +11,7 @@ import { DashboardFilters, SortOption, FilterState } from '../../src/components/
 import { auth } from '../../src/services/firebase/config';
 import { getATSScoreRecommendation } from '../../src/utils/scoreColors';
 import { UserHeader } from '../../src/components/layout/UserHeader';
+import { scaleFont } from '../../src/utils/responsive';
 
 export default function Dashboard() {
     const router = useRouter();
@@ -94,20 +95,9 @@ export default function Dashboard() {
 
     React.useLayoutEffect(() => {
         navigation.setOptions({
-            headerRight: () => (
-                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                    <IconButton
-                        icon="reload"
-                        onPress={() => {
-                            // Trigger refresh to reload data from Firestore
-                            handleRefresh();
-                        }}
-                    />
-                    <UserHeader />
-                </View>
-            ),
+            headerRight: () => <UserHeader />,
         });
-    }, [navigation, handleRefresh]);
+    }, [navigation]);
 
     // Filter Logic
     const filteredHistory = useMemo(() => {
@@ -229,14 +219,7 @@ export default function Dashboard() {
         <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
             <View style={[styles.header, Platform.OS === 'android' && { marginBottom: 8, marginTop: 4 }]}>
                 <Text
-                    variant={Platform.OS === 'android' ? "titleLarge" : "headlineMedium"}
-                    style={[styles.title, Platform.OS === 'android' && { fontSize: 22 }]}
-                >
-                    Optimize
-                </Text>
-                <Text
-                    variant={Platform.OS === 'android' ? "bodySmall" : "bodyLarge"}
-                    style={styles.subtitle}
+                    style={{ fontSize: 14, fontWeight: 'normal', marginBottom: 8, color: theme.colors.onSurface }}
                 >
                     Your career optimization history
                 </Text>
@@ -397,19 +380,26 @@ export default function Dashboard() {
                                             </Text>
 
                                             {/* Simplified Recommendation on Dashboard */}
-                                            <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: Platform.OS === 'android' ? 4 : 8 }}>
+                                            <View style={{ flexDirection: 'row', alignItems: 'flex-start', marginTop: Platform.OS === 'android' ? 4 : 8, flex: 1 }}>
                                                 <IconButton
                                                     icon={rec.icon}
                                                     size={Platform.OS === 'android' ? 12 : 16}
                                                     iconColor={rec.color}
-                                                    style={{ margin: 0, padding: 0, width: Platform.OS === 'android' ? 16 : 20, height: Platform.OS === 'android' ? 16 : 20 }}
+                                                    style={{ margin: 0, padding: 0, width: Platform.OS === 'android' ? 16 : 20, height: Platform.OS === 'android' ? 16 : 20, marginTop: 1 }}
                                                 />
-                                                <Text
-                                                    variant="labelSmall"
-                                                    style={{ color: rec.color, fontWeight: 'bold', fontSize: Platform.OS === 'android' ? 9 : undefined }}
-                                                >
-                                                    {rec.message}
-                                                </Text>
+                                                <View style={{ flex: 1, flexShrink: 1 }}>
+                                                    <Text
+                                                        variant="labelSmall"
+                                                        style={{
+                                                            color: rec.color,
+                                                            fontWeight: 'bold',
+                                                            fontSize: scaleFont(Platform.OS === 'android' ? 10 : 11),
+                                                            flexWrap: 'wrap'
+                                                        }}
+                                                    >
+                                                        {rec.message}
+                                                    </Text>
+                                                </View>
                                             </View>
                                         </View>
                                         <View style={{ alignItems: 'flex-end' }}>

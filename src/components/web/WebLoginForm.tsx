@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { View, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
 import { Text, Button, useTheme, Divider } from 'react-native-paper';
+import { useRouter } from 'expo-router'; // Added
 import { authService } from '../../services/firebase/authService';
 
 interface Props {
@@ -9,6 +10,7 @@ interface Props {
 
 export const WebLoginForm: React.FC<Props> = ({ onSuccess }) => {
     const theme = useTheme();
+    const router = useRouter(); // Added
     const [isSignUp, setIsSignUp] = useState(false);
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
@@ -75,6 +77,18 @@ export const WebLoginForm: React.FC<Props> = ({ onSuccess }) => {
                 contentStyle={styles.googleButtonContent}
             >
                 Continue with Google
+            </Button>
+
+            <Button
+                mode="outlined"
+                icon="cellphone"
+                onPress={() => {
+                    // Redirect to full sign-in page with phone mode active
+                    router.push('/(auth)/sign-in?phone=true' as any);
+                }}
+                style={styles.googleButton}
+            >
+                Continue with Phone
             </Button>
 
             <View style={styles.dividerContainer}>

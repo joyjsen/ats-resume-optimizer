@@ -1,5 +1,6 @@
 import React from 'react';
-import { Image, TouchableOpacity, StyleSheet, Alert } from 'react-native';
+import { Image, TouchableOpacity, StyleSheet } from 'react-native';
+import { moderateScale } from '../../utils/responsive';
 import { useRouter } from 'expo-router';
 import { useResumeStore } from '../../store/resumeStore';
 
@@ -51,8 +52,9 @@ export const AppLogo = () => {
 
 const styles = StyleSheet.create({
     container: {
-        marginLeft: 16,
-        paddingVertical: 8,
+        marginLeft: moderateScale(16),
+        justifyContent: 'center',
+        alignItems: 'center',
     },
     logo: {
         width: 40,

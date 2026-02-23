@@ -1,6 +1,7 @@
 ﻿import React, { useState } from 'react';
 import { View, StyleSheet, TouchableOpacity, Alert, Platform } from 'react-native';
 import { Card, Text, Chip, Button, IconButton, Menu, Divider, useTheme, ProgressBar, Portal, Dialog, TextInput } from 'react-native-paper';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Application, ApplicationStage, TimelineEvent } from '../../types/application.types';
 import { format } from 'date-fns';
 import { getATSScoreColor } from '../../utils/scoreColors';
@@ -234,44 +235,79 @@ export const ApplicationCardComponent = ({
                             >
                                 Resume
                             </Button>
-                            <Button
-                                mode={!isReadOnly && (application.coverLetter?.status === 'completed' || !!application.coverLetter?.content) ? "contained-tonal" : "outlined"}
-                                icon={(application.coverLetter?.status === 'completed' || !!application.coverLetter?.content) ? "text-box-check-outline" : "text-box-outline"}
-                                onPress={() => !isReadOnly && application.coverLetter?.status !== 'generating' && onGenerateCoverLetter(application.id)}
-                                style={[styles.actionBtn, isReadOnly && styles.disabledBtn]}
-                                labelStyle={{ fontSize: isAndroid ? 11 : 12 }}
-                                textColor={!isReadOnly && (application.coverLetter?.status === 'completed' || !!application.coverLetter?.content) ? theme.colors.primary : undefined}
-                                loading={!isReadOnly && application.coverLetter?.status === 'generating'}
-                                disabled={isReadOnly || application.coverLetter?.status === 'generating'}
-                                compact={isAndroid}
-                            >
-                                {application.coverLetter?.status === 'generating' ? 'Generating...' :
-                                    (application.coverLetter?.status === 'completed' || application.coverLetter?.content) ? 'View Cover Letter' : 'Cover Letter'}
-                            </Button>
-                            <Button
-                                mode={!isReadOnly && (application.prepGuide?.status === 'completed' && application.prepGuide.sections) ? "contained-tonal" : "outlined"}
-                                icon={(application.prepGuide?.status === 'completed' && application.prepGuide.sections) ? "book-open-variant" : "school-outline"}
-                                onPress={() => !isReadOnly && onGeneratePrep(application.id)}
-                                style={[styles.actionBtn, isReadOnly && styles.disabledBtn]}
-                                labelStyle={{ fontSize: isAndroid ? 11 : 12 }}
-                                loading={!isReadOnly && application.prepGuide?.status === 'generating'}
-                                disabled={isReadOnly || application.prepGuide?.status === 'generating'}
-                                compact={isAndroid}
-                            >
-                                {application.prepGuide?.status === 'completed' && application.prepGuide.sections ? 'View Prep Guide' : 'Prep Guide'}
-                            </Button>
-                            <Button
-                                mode="text"
-                                icon="refresh"
-                                onPress={() => !isReadOnly && onRegeneratePrep(application.id)}
-                                style={[styles.actionBtn, isReadOnly && styles.disabledBtn]}
-                                labelStyle={{ fontSize: isAndroid ? 10 : 11 }}
-                                disabled={isReadOnly || application.prepGuide?.status !== 'completed' || !isResumeUpdated || (application.prepGuide?.status as any) === 'generating'}
-                                textColor={!isReadOnly && isResumeUpdated && application.prepGuide?.status === 'completed' ? theme.colors.primary : theme.colors.outline}
-                                compact={isAndroid}
-                            >
-                                Re-Gen Prep Guide
-                            </Button>
+                            <View style={[styles.actionBtn, isReadOnly && styles.disabledBtn, { position: 'relative' }]}>
+                                <Button
+                                    mode={!isReadOnly && (application.coverLetter?.status === 'completed' || !!application.coverLetter?.content) ? "contained-tonal" : "outlined"}
+                                    icon={(application.coverLetter?.status === 'completed' || !!application.coverLetter?.content) ? "text-box-check-outline" : "text-box-outline"}
+                                    onPress={() => !isReadOnly && application.coverLetter?.status !== 'generating' && onGenerateCoverLetter(application.id)}
+                                    style={{ width: '100%', marginVertical: 0 }}
+                                    labelStyle={{ fontSize: isAndroid ? 11 : 12 }}
+                                    textColor={!isReadOnly && (application.coverLetter?.status === 'completed' || !!application.coverLetter?.content) ? theme.colors.primary : undefined}
+                                    loading={!isReadOnly && application.coverLetter?.status === 'generating'}
+                                    disabled={isReadOnly || application.coverLetter?.status === 'generating'}
+                                    compact={isAndroid}
+                                >
+                                    {application.coverLetter?.status === 'generating' ? 'Generating...' :
+                                        (application.coverLetter?.status === 'completed' || application.coverLetter?.content) ? 'View Cover Letter' : 'Cover Letter'}
+                                </Button>
+                                {(!isReadOnly && !(application.coverLetter?.status === 'completed' || !!application.coverLetter?.content) && application.coverLetter?.status !== 'generating') && (
+                                    <TouchableOpacity
+                                        style={styles.infoIcon}
+                                        onPress={() => Alert.alert("Token Cost", "Each cover letter generation costs 30 tokens")}
+                                        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                                    >
+                                        <MaterialCommunityIcons name="information" size={14} color={theme.colors.primary} />
+                                    </TouchableOpacity>
+                                )}
+                            </View>
+
+                            <View style={[styles.actionBtn, isReadOnly && styles.disabledBtn, { position: 'relative' }]}>
+                                <Button
+                                    mode={!isReadOnly && (application.prepGuide?.status === 'completed' && application.prepGuide.sections) ? "contained-tonal" : "outlined"}
+                                    icon={(application.prepGuide?.status === 'completed' && application.prepGuide.sections) ? "book-open-variant" : "school-outline"}
+                                    onPress={() => !isReadOnly && onGeneratePrep(application.id)}
+                                    style={{ width: '100%', marginVertical: 0 }}
+                                    labelStyle={{ fontSize: isAndroid ? 11 : 12 }}
+                                    loading={!isReadOnly && application.prepGuide?.status === 'generating'}
+                                    disabled={isReadOnly || application.prepGuide?.status === 'generating'}
+                                    compact={isAndroid}
+                                >
+                                    {application.prepGuide?.status === 'completed' && application.prepGuide.sections ? 'View Prep Guide' : 'Prep Guide'}
+                                </Button>
+                                {(!isReadOnly && !(application.prepGuide?.status === 'completed' && application.prepGuide.sections) && application.prepGuide?.status !== 'generating') && (
+                                    <TouchableOpacity
+                                        style={styles.infoIcon}
+                                        onPress={() => Alert.alert("Token Cost", "Each Prep Guide generation costs 40 tokens")}
+                                        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                                    >
+                                        <MaterialCommunityIcons name="information" size={14} color={theme.colors.primary} />
+                                    </TouchableOpacity>
+                                )}
+                            </View>
+
+                            <View style={[styles.actionBtn, isReadOnly && styles.disabledBtn, { position: 'relative' }]}>
+                                <Button
+                                    mode="text"
+                                    icon="refresh"
+                                    onPress={() => !isReadOnly && onRegeneratePrep(application.id)}
+                                    style={{ width: '100%', marginVertical: 0 }}
+                                    labelStyle={{ fontSize: isAndroid ? 10 : 11 }}
+                                    disabled={isReadOnly || application.prepGuide?.status !== 'completed' || !isResumeUpdated || (application.prepGuide?.status as any) === 'generating'}
+                                    textColor={!isReadOnly && isResumeUpdated && application.prepGuide?.status === 'completed' ? theme.colors.primary : theme.colors.outline}
+                                    compact={isAndroid}
+                                >
+                                    Re-Gen Prep Guide
+                                </Button>
+                                {(!isReadOnly && isResumeUpdated && application.prepGuide?.status === 'completed') && (
+                                    <TouchableOpacity
+                                        style={styles.infoIcon}
+                                        onPress={() => Alert.alert("Token Cost", "Each Prep Guide re-generation costs 40 tokens")}
+                                        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                                    >
+                                        <MaterialCommunityIcons name="information" size={14} color={theme.colors.primary} />
+                                    </TouchableOpacity>
+                                )}
+                            </View>
                         </View>
 
 
@@ -533,5 +569,11 @@ const styles = StyleSheet.create({
         borderRadius: 4,
         marginTop: 6,
         marginRight: 12
+    },
+    infoIcon: {
+        position: 'absolute',
+        top: -4,
+        right: -4,
+        zIndex: 10,
     }
 });

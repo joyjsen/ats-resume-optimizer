@@ -207,7 +207,7 @@ export class HistoryService {
                     jobTitle: data.jobTitle,
                     company: data.company,
                     atsScore: data.draftAtsScore || data.atsScore,
-                    jobData: JSON.parse(data.jobData),
+                    jobData: typeof data.jobData === 'string' ? JSON.parse(data.jobData) : data.jobData,
                 } as SavedAnalysis;
 
                 const appId = await applicationService.createApplicationFromAnalysis(analysisForApp);

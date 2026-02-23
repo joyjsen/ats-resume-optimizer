@@ -100,7 +100,7 @@ export default function AboutScreen() {
 
                 <View style={styles.footer}>
                     <Text variant="bodySmall" style={styles.copyright}>
-                        © 2026 Antigravity. All rights reserved.
+                        © 2026 RiResume. All rights reserved.
                     </Text>
                     <Text variant="bodySmall" style={styles.copyright}>
                         RiResume - Your AI Career Companion

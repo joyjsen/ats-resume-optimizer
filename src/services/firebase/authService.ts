@@ -272,6 +272,7 @@ export class AuthService {
     // Phone Auth - Note: This requires a RecaptchaVerifier on web
     // On mobile, this is handled differently (usually requiring a Recaptcha Modal)
     async signInWithPhoneNumber(phoneNumber: string, recaptchaVerifier?: RecaptchaVerifier): Promise<void> {
+        console.log("[AuthService] signInWithPhoneNumber called for:", phoneNumber, "Verifier provided:", !!recaptchaVerifier);
         try {
             let verifier = recaptchaVerifier;
 
@@ -280,22 +281,27 @@ export class AuthService {
                 console.log("[AuthService] Initializing invisible reCAPTCHA for web...");
                 let container = document.getElementById('recaptcha-container');
                 if (!container) {
+                    console.log("[AuthService] Creating recaptcha-container div...");
                     container = document.createElement('div');
                     container.id = 'recaptcha-container';
                     document.body.appendChild(container);
+                } else {
+                    console.log("[AuthService] Found existing recaptcha-container.");
                 }
 
                 // Clear any existing verifier to prevent re-initialization errors
                 try {
+                    console.log("[AuthService] Instantiating RecaptchaVerifier...");
                     verifier = new RecaptchaVerifier(auth, 'recaptcha-container', {
                         size: 'invisible',
                         callback: () => {
-                            console.log('[AuthService] reCAPTCHA verified');
+                            console.log('[AuthService] reCAPTCHA verified successfully');
                         },
                         'expired-callback': () => {
-                            console.log('[AuthService] reCAPTCHA expired');
+                            console.warn('[AuthService] reCAPTCHA expired');
                         }
                     });
+                    console.log("[AuthService] RecaptchaVerifier instantiated.");
                 } catch (recaptchaError) {
                     console.error("[AuthService] Failed to create invisible reCAPTCHA:", recaptchaError);
                 }
@@ -308,10 +314,12 @@ export class AuthService {
                 console.warn("[AuthService] No RecaptchaVerifier provided. Phone auth might fail on this platform.");
             }
 
+            console.log("[AuthService] Calling Firebase signInWithPhoneNumber...");
             const confirmation = await signInWithPhoneNumber(auth, phoneNumber, verifier as any);
+            console.log("[AuthService] Firebase signInWithPhoneNumber returned confirmation.");
             this.confirmationResult = confirmation;
         } catch (error: any) {
-            console.error('Phone Sign-In Error:', error);
+            console.error('[AuthService] Phone Sign-In Error:', error);
             if (error.code === 'auth/argument-error') {
                 throw new Error("Phone login failed: Missing reCAPTCHA verification. Please try again or use a different login method.");
             }

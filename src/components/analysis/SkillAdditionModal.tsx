@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, StyleSheet, ScrollView } from 'react-native';
+import { View, StyleSheet, ScrollView, Platform } from 'react-native';
 import { Portal, Modal, Text, Button, Checkbox, Divider, useTheme, IconButton } from 'react-native-paper';
 import { DatePickerModal, registerTranslation, en } from 'react-native-paper-dates';
 import { format } from 'date-fns';
@@ -51,6 +51,8 @@ export const SkillAdditionModal = ({
     const [showDatePicker, setShowDatePicker] = useState(false);
     const [existingLearning, setExistingLearning] = useState<LearningEntry | null>(null);
     const [loading, setLoading] = useState(false);
+    const [isSubmitting, setIsSubmitting] = useState(false);
+    const submittingRef = React.useRef(false);
     const [optInAI, setOptInAI] = useState(false);
     const router = useRouter();
     const { checkTokens } = useTokenCheck();
@@ -61,6 +63,8 @@ export const SkillAdditionModal = ({
             setStep('confirm');
             setSelectedSections([]);
             setDisclaimerAccepted(false);
+            submittingRef.current = false;
+            setIsSubmitting(false);
             setSelectedDate(new Date());
             setShowDatePicker(false);
             setExistingLearning(null);
@@ -190,11 +194,17 @@ export const SkillAdditionModal = ({
                                     mode="contained"
                                     onPress={() => isOptimized ? setStep('warning') : (onOptimize?.(), onDismiss())}
                                     style={{ flex: 1 }}
+                                    labelStyle={{ fontSize: Platform.OS === 'android' ? 11 : 14 }}
                                 >
                                     {isOptimized ? "Yes, Continue" : "Optimize Now"}
                                 </Button>
                             )}
                         </View>
+                        {!isMatched && isOptimized && (
+                            <Text variant="labelSmall" style={{ textAlign: 'center', marginTop: 12, color: theme.colors.outline }}>
+                                Each skill addition costs 15 tokens
+                            </Text>
+                        )}
                     </View>
                 );
             case 'warning':
@@ -443,6 +453,9 @@ export const SkillAdditionModal = ({
                             AI-Assisted Learning (Teach me)
                         </Button>
 
+                        <Text variant="labelSmall" style={{ color: theme.colors.primary, marginBottom: 4, textAlign: 'center', fontWeight: 'bold' }}>
+                            AI-Assisted Learning Slideshow generation for each skill costs 30 tokens
+                        </Text>
                         <Text variant="labelSmall" style={{ color: '#666', marginBottom: 16, textAlign: 'center' }}>
                             You can directly add to resume if you prefer, but tracking helps your profile.
                         </Text>
@@ -587,8 +600,15 @@ export const SkillAdditionModal = ({
                             </Button>
                             <Button
                                 mode="contained"
-                                onPress={handleConfirm}
-                                disabled={selectedSections.length === 0}
+                                loading={isSubmitting}
+                                onPress={() => {
+                                    if (!submittingRef.current) {
+                                        submittingRef.current = true;
+                                        setIsSubmitting(true); // Keep for UI update
+                                        handleConfirm();
+                                    }
+                                }}
+                                disabled={selectedSections.length === 0 || isSubmitting}
                                 style={{ flex: 1 }}
                             >
                                 Add to Selected

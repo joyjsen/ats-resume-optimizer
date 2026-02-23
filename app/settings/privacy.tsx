@@ -9,7 +9,7 @@ const PRIVACY_CONTENT = `
 **Last Updated:** January 27, 2026
 **Effective Date:** January 27, 2026
 
-[Your Company Name] ("we," "us," or "our") operates the RiResume mobile application (the "Service"). This Privacy Policy explains how we collect, use, disclose, and safeguard your information when you use our Service.
+RiResume ("we," "us," or "our") operates the RiResume mobile application (the "Service"). This Privacy Policy explains how we collect, use, disclose, and safeguard your information when you use our Service.
 
 Please read this Privacy Policy carefully. By using the Service, you agree to the collection and use of information in accordance with this policy. If you do not agree with the terms of this Privacy Policy, please do not access the Service.
 
@@ -237,7 +237,7 @@ Your continued use of the Service after changes take effect constitutes acceptan
 
 ## 14. How to Contact Us
 If you have questions, concerns, or requests regarding this Privacy Policy or our data practices:
-* Email: pjmarket1316@gmail.com
+* Email: support@riresume.com
 * In-App: Profile → Help & Support → Privacy Inquiry
 `;
 

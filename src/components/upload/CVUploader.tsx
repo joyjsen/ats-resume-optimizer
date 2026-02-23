@@ -4,11 +4,6 @@ import { Button, Text, Card, IconButton, useTheme } from 'react-native-paper';
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
 
-interface Props {
-    onFileSelected: (uris: string[]) => void;
-    isTextModeActive?: boolean;
-}
-
 export interface UploadedFile {
     uri: string;
     name: string;
@@ -18,11 +13,12 @@ export interface UploadedFile {
 interface Props {
     onFileSelected: (files: UploadedFile[]) => void;
     isTextModeActive?: boolean;
+    disabled?: boolean;
 }
 
 const isAndroid = Platform.OS === 'android';
 
-export const CVUploader = ({ onFileSelected, isTextModeActive }: Props) => {
+export const CVUploader = ({ onFileSelected, isTextModeActive, disabled }: Props) => {
     const theme = useTheme();
     const [files, setFiles] = useState<UploadedFile[]>([]);
 
@@ -165,6 +161,7 @@ export const CVUploader = ({ onFileSelected, isTextModeActive }: Props) => {
                             onPress={pickImages}
                             style={styles.button}
                             compact={isAndroid}
+                            disabled={disabled}
                         >
                             Gallery
                         </Button>
@@ -174,6 +171,7 @@ export const CVUploader = ({ onFileSelected, isTextModeActive }: Props) => {
                             onPress={pickDocument}
                             style={styles.button}
                             compact={isAndroid}
+                            disabled={disabled}
                         >
                             Files
                         </Button>
@@ -199,6 +197,7 @@ export const CVUploader = ({ onFileSelected, isTextModeActive }: Props) => {
                                 icon="close"
                                 onPress={() => removeFile(f.uri)}
                                 size={isAndroid ? 20 : 24}
+                                disabled={disabled}
                             />
                         )}
                         titleStyle={isAndroid ? { fontSize: 14 } : undefined}

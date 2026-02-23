@@ -8,7 +8,7 @@ import { notificationService } from '../src/services/firebase/notificationServic
 import { useProfileStore } from '../src/store/profileStore';
 import { TaskQueueProvider } from '../src/context/TaskQueueContext';
 import { UserHeader } from '../src/components/layout/UserHeader';
-import { WebLandingPage } from '../src/components/web/WebLandingPage';
+import { WebLandingPage } from '../src/components/web/landing/WebLandingPage';
 import { WebAppLayout } from '../src/components/web/WebAppLayout';
 import { StripeProviderWrapper } from '../src/components/providers/StripeProviderWrapper';
 import { ShareIntentProvider } from "expo-share-intent";
@@ -81,15 +81,12 @@ function RootLayoutContent() {
 
     // Global Share Intent handling
     useEffect(() => {
-        console.log("[Root] Global Share Intent Effect triggered. sharedUrl:", sharedUrl, "isMounted:", isMounted.current);
         if (sharedUrl && isMounted.current) {
             console.log("[Root] VALID Share Intent detected. Dispatching to store:", sharedUrl);
             setPendingSharedUrl(sharedUrl);
             if (sharedContent) {
-                console.log("[Root] ALSO Dispatching shared CONTENT to store. Length:", sharedContent.length);
                 setPendingSharedText(sharedContent);
             }
-            console.log("[Root] Clearing sharedUrl from hook via clearSharedUrl()");
             clearSharedUrl();
 
             // If logged in and profile complete, immediately redirect to Analyze
@@ -98,18 +95,14 @@ function RootLayoutContent() {
                 const isProfileComplete = !!(userProfile.profileCompleted || (hasNameInfo && userProfile.targetJobTitle && (userProfile.targetIndustry || userProfile.industry)));
 
                 if (isProfileComplete) {
-                    // Only redirect if NOT already on the analyze screen
                     const isAlreadyOnAnalyze = segments.some(s => s === 'analyze');
-                    console.log("[Root] isAlreadyOnAnalyze:", isAlreadyOnAnalyze, "segments:", segments);
                     if (!isAlreadyOnAnalyze) {
                         router.replace('/(tabs)/analyze' as any);
-                    } else {
-                        console.log("[Root] Already on Analyze screen, skipping navigation to preserve state.");
                     }
                 }
             }
         }
-    }, [sharedUrl, userProfile, isInitialized]);
+    }, [sharedUrl, userProfile, isInitialized, segments]);
 
     useEffect(() => {
         if (!isInitialized || !isMounted.current) return;
@@ -119,7 +112,7 @@ function RootLayoutContent() {
         const atRoot = segments.length < 1 || (segments.length === 1 && segments[0] === "");
 
         if (!userProfile) {
-            if (!inAuthGroup && !atRoot) {
+            if (!inAuthGroup && !atRoot && !isPublicRoute) {
                 setTimeout(() => router.replace('/' as any), 0);
             }
         } else {
@@ -129,10 +122,14 @@ function RootLayoutContent() {
             if (isProfileComplete) {
                 if (inAuthGroup || atRoot) {
                     const pendingUrl = useResumeStore.getState().pendingSharedUrl;
-                    const isOnDeepScreen = segments.length > 1 && !segments.includes('(tabs)');
+                    const isOnDeepScreen = segments.length > 1 && !segments.includes('(tabs)') && !segments.includes('(auth)');
+
+                    // Check if we have an incoming share intent either in the store or currently in the hook
+                    const isProcessingShare = !!pendingUrl || !!sharedUrl;
 
                     setTimeout(() => {
-                        if (pendingUrl) {
+                        if (isProcessingShare) {
+                            console.log("[Root] Holding off Home redirect - Share Intent processing.");
                             router.replace('/(tabs)/analyze' as any);
                         } else if (!isOnDeepScreen) {
                             router.replace('/(tabs)/home' as any);
@@ -143,7 +140,7 @@ function RootLayoutContent() {
                 setTimeout(() => router.replace('/(auth)/onboarding' as any), 0);
             }
         }
-    }, [userProfile, segments, isInitialized]);
+    }, [userProfile, segments, isInitialized, sharedUrl]);
 
     if (!isInitialized) {
         return (
@@ -170,10 +167,11 @@ function RootLayoutContent() {
         }
     }
 
-    const publicRoutes = ['settings/terms', 'settings/privacy'];
+    const publicRoutes = ['settings/terms', 'settings/privacy', 'settings/about', 'settings/help'];
     const isPublicRoute = publicRoutes.some(route => segments.join('/').includes(route));
+    const isAuthRoute = segments[0] === '(auth)';
 
-    if (Platform.OS === 'web' && !userProfile && !isPublicRoute) {
+    if (Platform.OS === 'web' && !userProfile && !isPublicRoute && !isAuthRoute) {
         return (
             <PaperProvider theme={theme}>
                 <WebLandingPage />
@@ -192,9 +190,17 @@ function RootLayoutContent() {
             <Stack.Screen name="resume-preview" options={{ title: 'Preview', presentation: 'modal' }} />
             <Stack.Screen name="purchase" options={{ title: 'Refill Tokens', presentation: 'modal' }} />
             <Stack.Screen name="purchase-history" options={{ title: 'Purchase History', presentation: 'modal' }} />
-            <Stack.Screen name="analytics" options={{ title: 'Usage Analytics', headerBackTitle: '' }} />
-            <Stack.Screen name="history-details" options={{ headerBackTitle: '', title: '' }} />
-            <Stack.Screen name="user-activity" options={{ title: 'Activity History' }} />
+            <Stack.Screen name="analytics" options={{ title: 'Usage Analytics', headerBackTitle: 'Back' }} />
+            <Stack.Screen name="history-details" options={{ headerBackTitle: 'Back', title: '' }} />
+
+            <Stack.Screen name="user-activity" options={{ title: 'Activity History', headerBackTitle: 'Back' }} />
+
+            {/* Settings Pages */}
+            <Stack.Screen name="settings/about" options={{ title: 'About This App', headerBackTitle: 'Back' }} />
+            <Stack.Screen name="settings/help" options={{ title: 'Help & Support', headerBackTitle: 'Back' }} />
+            <Stack.Screen name="settings/privacy" options={{ title: 'Privacy Policy', headerBackTitle: 'Back' }} />
+            <Stack.Screen name="settings/terms" options={{ title: 'Terms of Service', headerBackTitle: 'Back' }} />
+
             <Stack.Screen name="admin" options={{ headerShown: false }} />
         </Stack>
     );
@@ -207,11 +213,11 @@ function RootLayoutContent() {
                 {Platform.OS === 'web' && userProfile ? (
                     <WebAppLayout>{appContent}</WebAppLayout>
                 ) : (
-                    <View style={{ flex: 1 }}>
+                    <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
                         {isTabRoute ? (
                             appContent
                         ) : (
-                            <SafeAreaView style={{ flex: 1 }} edges={['bottom']}>
+                            <SafeAreaView style={{ flex: 1, backgroundColor: theme.colors.background }} edges={['bottom']}>
                                 {appContent}
                             </SafeAreaView>
                         )}

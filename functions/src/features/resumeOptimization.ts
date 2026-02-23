@@ -62,10 +62,17 @@ ANALYSIS INSIGHTS:
 Missing Keywords: ${analysis.matchAnalysis?.missingSkills?.map((s: any) => s.skill).join(', ') || 'None'}
 Current ATS Score: ${analysis.atsScore}%
 
+CRITICAL: Return a DETAILED array of 'changes' explaining EVERY major improvement made to bullets, summary, or skills.
+
+SELF-HEALING INSTRUCTIONS:
+If the original resume JSON is missing 'contactInfo' (name, email, phone) or 'summary', you MUST extract this information from the 'text' field (if present) and populate it in the 'optimizedResume'. Do NOT return empty fields if the data exists in the text.
+
 Return JSON:
 {
   "optimizedResume": { ... },
-  "changes": [{ "type": "...", "reason": "..." }]
+  "changes": [
+    { "type": "REWRITE_BULLET", "section": "Experience", "reason": "Quantified achievement to increase ATS impact" }
+  ]
 }`.trim();
 
             const aiResult = await callAiWithFallback(
@@ -78,6 +85,36 @@ Return JSON:
 
             const result = JSON.parse(aiResult);
 
+            // Helper to find the resume object
+            const aiGeneratedResume = result.optimizedResume || result.optimized_resume || (result.experience ? result : {});
+
+            // MERGE LOGIC: Ensure we don't lose data if the AI returns partial result
+            const optimizedResume = {
+                ...resume, // Start with original
+                ...aiGeneratedResume, // Overwrite with AI result
+                contactInfo: (resume.contactInfo && Object.keys(resume.contactInfo).length > 0)
+                    ? resume.contactInfo
+                    : (aiGeneratedResume?.contactInfo || {}), // Prioritize original contact info if present
+                experience: (resume.experience || []).map((origExp: any, idx: number) => {
+                    const optExp = aiGeneratedResume?.experience?.[idx] || {};
+                    return {
+                        ...origExp,
+                        ...optExp,
+                        title: optExp.title || optExp.role || origExp.title,
+                        bullets: optExp.bullets || optExp.bulletPoints || optExp.description || origExp.bullets || []
+                    };
+                }),
+                education: (aiGeneratedResume?.education && aiGeneratedResume.education.length > 0)
+                    ? aiGeneratedResume.education
+                    : (resume.education || []),
+                skills: (aiGeneratedResume?.skills && aiGeneratedResume.skills.length > 0)
+                    ? aiGeneratedResume.skills
+                    : (resume.skills || []),
+                summary: (aiGeneratedResume?.summary && aiGeneratedResume.summary.length > 10)
+                    ? aiGeneratedResume.summary
+                    : (resume.summary || "")
+            };
+
             await taskRef.update({
                 progress: 90,
                 currentStep: "Optimization complete",
@@ -86,7 +123,7 @@ Return JSON:
 
             return {
                 success: true,
-                optimizedResume: result.optimizedResume,
+                optimizedResume,
                 changes: result.changes || [],
             };
 

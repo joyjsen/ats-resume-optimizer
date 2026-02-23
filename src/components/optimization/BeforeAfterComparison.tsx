@@ -1,16 +1,20 @@
 import React, { useState } from 'react';
-import { View, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+import { View, StyleSheet, ScrollView, TouchableOpacity, Platform } from 'react-native';
 import { Card, Text, Divider, useTheme } from 'react-native-paper';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { ParsedResume, OptimizationChange, Experience } from '../../types/resume.types';
 
 interface Props {
     original: ParsedResume;
     optimized: ParsedResume;
     changes: OptimizationChange[];
+    isUnsaved?: boolean; // New prop for controlling badge visibility
 }
 
-export const BeforeAfterComparison = ({ original, optimized, changes }: Props) => {
+export const BeforeAfterComparison = ({ original, optimized, changes, isUnsaved }: Props) => {
     const theme = useTheme();
+    // ... (existing code omitted for brevity) ...
+    const [isCollapsed, setIsCollapsed] = useState(false);
 
     // Helper: Normalize text for comparison (ignore case, punctuation, whitespace)
     const normalize = (text: string) => {
@@ -189,10 +193,14 @@ export const BeforeAfterComparison = ({ original, optimized, changes }: Props) =
                 orgRole = original.experience[index];
             }
 
-            const modifiedBullets = optRole.bullets.filter(bullet => {
-                if (!orgRole || !orgRole.bullets) return true;
+            const modifiedBullets = (optRole.bullets || optRole.bulletPoints || []).filter(bullet => {
+                if (!orgRole) return true; // If no original role found, everything is new/modified
+
+                const orgBullets = orgRole.bullets || orgRole.bulletPoints || [];
+                if (orgBullets.length === 0) return true;
+
                 const nBullet = normalize(bullet);
-                return !orgRole.bullets.some(orgBullet => normalize(orgBullet) === nBullet);
+                return !orgBullets.some(orgBullet => normalize(orgBullet) === nBullet);
             });
 
             return {
@@ -214,8 +222,17 @@ export const BeforeAfterComparison = ({ original, optimized, changes }: Props) =
                     const { optRole, hasChanges, modifiedBullets } = diff;
                     const isExpanded = expandedRoles.has(index);
 
+                    // Find explicit AI change logs for this role
+                    const roleSpecificChanges = changes.filter(c => {
+                        if (!c.section) return false;
+                        const sectionLower = c.section.toLowerCase();
+                        const titleLower = optRole.title?.toLowerCase() || '';
+                        const companyLower = optRole.company?.toLowerCase() || '';
+                        return sectionLower.includes(titleLower) || sectionLower.includes(companyLower);
+                    });
+
                     return (
-                        <View key={index} style={{ marginBottom: 12, borderWidth: 1, borderColor: theme.colors.outline, borderRadius: 8, overflow: 'hidden' }}>
+                        <View key={index} style={{ marginBottom: 12, borderWidth: hasChanges || roleSpecificChanges.length > 0 ? 1 : 1, borderColor: hasChanges || roleSpecificChanges.length > 0 ? theme.colors.primary : theme.colors.outline, borderRadius: 8, overflow: 'hidden' }}>
                             <TouchableOpacity
                                 onPress={() => toggleRole(index)}
                                 style={{ padding: 12, backgroundColor: theme.colors.elevation.level1, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}
@@ -228,9 +245,10 @@ export const BeforeAfterComparison = ({ original, optimized, changes }: Props) =
                                         {optRole.company}
                                     </Text>
                                 </View>
-                                {hasChanges && (
-                                    <View style={{ backgroundColor: theme.dark ? '#1B5E20' : '#E8F5E9', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 12, marginRight: 8 }}>
-                                        <Text style={{ color: theme.dark ? '#A5D6A7' : '#2E7D32', fontSize: 10, fontWeight: 'bold' }}>UPDATED</Text>
+                                {/* Only show UPDATED badge if we have actual diffs AND the change is recent (not saved) */}
+                                {hasChanges && isUnsaved && (
+                                    <View style={{ backgroundColor: theme.colors.primaryContainer, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 12, marginRight: 8 }}>
+                                        <Text style={{ color: theme.colors.onPrimaryContainer, fontSize: 10, fontWeight: 'bold' }}>UPDATED</Text>
                                     </View>
                                 )}
                                 <Text style={{ fontSize: 18, color: theme.colors.onSurface }}>{isExpanded ? '−' : '+'}</Text>
@@ -238,20 +256,78 @@ export const BeforeAfterComparison = ({ original, optimized, changes }: Props) =
 
                             {isExpanded && (
                                 <View style={{ padding: 12, paddingTop: 4 }}>
-                                    {modifiedBullets.length > 0 ? (
-                                        modifiedBullets.map((bullet, bIndex) => (
-                                            <View key={bIndex} style={[styles.bulletRow, { backgroundColor: theme.dark ? '#333' : '#f0f0f0', borderRadius: 4 }]}>
-                                                <Text style={{ lineHeight: 20, color: theme.colors.onSurface }}>
-                                                    <Text style={{ fontWeight: 'bold', color: theme.dark ? '#81C784' : '#2E7D32' }}>• </Text>
-                                                    {bullet}
-                                                </Text>
-                                            </View>
-                                        ))
-                                    ) : (
-                                        <Text style={{ fontStyle: 'italic', color: theme.colors.onSurfaceDisabled, paddingVertical: 8 }}>
-                                            No significant content changes detected in this role.
-                                        </Text>
+                                    {/* Explicit Change Logs */}
+                                    {roleSpecificChanges.length > 0 && (
+                                        <View style={{ marginBottom: 8, padding: 8, backgroundColor: theme.colors.secondaryContainer, borderRadius: 4 }}>
+                                            <Text variant="labelSmall" style={{ color: theme.colors.onSecondaryContainer, fontWeight: 'bold', marginBottom: 4 }}>AI CHANGES:</Text>
+                                            {roleSpecificChanges.map((change, cIdx) => (
+                                                <View key={cIdx} style={{ marginBottom: 4 }}>
+                                                    <Text variant="bodySmall" style={{ color: theme.colors.onSecondaryContainer }}>• {change.reason}</Text>
+
+                                                    {/* Timestamp Display */}
+                                                    <Text variant="labelSmall" style={{ color: theme.colors.outline, fontSize: 10, marginLeft: 8, marginTop: 2 }}>
+                                                        {change.timestamp ? new Date(change.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', month: 'short', day: 'numeric' }) : 'Just now'}
+                                                    </Text>
+                                                </View>
+                                            ))}
+                                        </View>
                                     )}
+
+                                    {/* Combined Logic: Modified Bullets + Skill Bullets */}
+                                    {(() => {
+                                        // 1. Identify bullets explicitly containing added skills
+                                        const skillBullets: { text: string, timestamp?: string | Date }[] = [];
+                                        const newlyAddedSkills = changes
+                                            .filter(c => c.type === 'skill_addition' && c.skill)
+                                            .map(c => ({ name: c.skill!.toLowerCase(), timestamp: c.timestamp }));
+
+                                        if (newlyAddedSkills.length > 0) {
+                                            const allBullets = optRole.bullets || optRole.bulletPoints || [];
+                                            allBullets.forEach(bullet => {
+                                                const bulletLower = bullet.toLowerCase();
+                                                const matchingSkill = newlyAddedSkills.find(s => bulletLower.includes(s.name));
+
+                                                // Check if this bullet is NOT in original (it's new) AND contains the skill
+                                                const isNewBullet = !original.experience?.find(e => e.id === optRole.id)?.bullets?.includes(bullet); // Simple check first
+
+                                                if (matchingSkill && isNewBullet) {
+                                                    skillBullets.push({ text: bullet, timestamp: matchingSkill.timestamp });
+                                                }
+                                            });
+                                        }
+
+                                        // 2. Merge with general modified bullets (avoid duplicates)
+                                        const displayBullets: { text: string, timestamp?: string | Date }[] = [...modifiedBullets].map(b => ({ text: b, timestamp: undefined }));
+
+                                        // Add skill bullets that aren't already in modifiedBullets
+                                        skillBullets.forEach(sb => {
+                                            const existingIndex = displayBullets.findIndex(db => db.text === sb.text);
+                                            if (existingIndex === -1) {
+                                                displayBullets.push(sb);
+                                            } else {
+                                                // Update timestamp if existing
+                                                displayBullets[existingIndex].timestamp = sb.timestamp;
+                                            }
+                                        });
+
+                                        return displayBullets.length > 0 ? (
+                                            displayBullets.map((item, bIndex) => (
+                                                <View key={bIndex} style={[styles.bulletRow, { backgroundColor: theme.dark ? '#333' : '#f0f0f0', borderRadius: 4 }]}>
+                                                    <View>
+                                                        <Text style={{ lineHeight: 20, color: theme.colors.onSurface }}>
+                                                            <Text style={{ fontWeight: 'bold', color: theme.dark ? '#81C784' : '#2E7D32' }}>• </Text>
+                                                            {item.text}
+                                                        </Text>
+                                                        {item.timestamp && (
+                                                            <Text variant="labelSmall" style={{ color: theme.colors.outline, fontSize: 10, alignSelf: 'flex-end', marginTop: 2 }}>
+                                                                Added {new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                                            </Text>
+                                                        )}
+                                                    </View>
+                                                </View>
+                                            ))
+                                        ) : null;
+                                    })()}
                                 </View>
                             )}
                         </View>
@@ -275,44 +351,59 @@ export const BeforeAfterComparison = ({ original, optimized, changes }: Props) =
     return (
         <Card style={styles.card}>
             <Card.Content>
-                <Text variant="titleMedium" style={styles.title}>Optimization Preview</Text>
+                <TouchableOpacity
+                    onPress={() => setIsCollapsed(!isCollapsed)}
+                    style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: isCollapsed ? 0 : 12 }}
+                    activeOpacity={0.7}
+                >
+                    <Text variant="titleMedium">Optimization Preview</Text>
+                    <MaterialCommunityIcons
+                        name={isCollapsed ? "chevron-down" : "chevron-up"}
+                        size={24}
+                        color={theme.colors.onSurfaceVariant}
+                    />
+                </TouchableOpacity>
 
-                <View style={[styles.toggle, { flexDirection: 'row', borderRadius: 8, borderWidth: 1, borderColor: theme.colors.outline, overflow: 'hidden' }]}>
-                    {availableSections.map((s, idx) => (
-                        <TouchableOpacity
-                            key={s}
-                            onPress={() => setSection(s)}
-                            style={{
-                                flex: 1,
-                                paddingVertical: 10,
-                                paddingHorizontal: 16,
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                backgroundColor: section === s ? theme.colors.secondaryContainer : 'transparent',
-                                borderRightWidth: idx < availableSections.length - 1 ? 1 : 0,
-                                borderRightColor: theme.colors.outline,
-                            }}
-                        >
-                            <Text
-                                style={{
-                                    fontSize: 14,
-                                    fontWeight: section === s ? 'bold' : '500',
-                                    color: section === s ? theme.colors.onSecondaryContainer : theme.colors.onSurface,
-                                }}
-                                numberOfLines={1}
-                            >
-                                {s.charAt(0).toUpperCase() + s.slice(1)}
-                            </Text>
-                        </TouchableOpacity>
-                    ))}
-                </View>
+                {!isCollapsed && (
+                    <>
+                        <View style={[styles.toggle, { flexDirection: 'row', borderRadius: 8, borderWidth: 1, borderColor: theme.colors.outline, overflow: 'hidden' }]}>
+                            {availableSections.map((s, idx) => (
+                                <TouchableOpacity
+                                    key={s}
+                                    onPress={() => setSection(s)}
+                                    style={{
+                                        flex: 1,
+                                        paddingVertical: 10,
+                                        paddingHorizontal: 16,
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        backgroundColor: section === s ? theme.colors.secondaryContainer : 'transparent',
+                                        borderRightWidth: idx < availableSections.length - 1 ? 1 : 0,
+                                        borderRightColor: theme.colors.outline,
+                                    }}
+                                >
+                                    <Text
+                                        style={{
+                                            fontSize: Platform.OS === 'android' ? 11 : 14, // 20% smaller on Android
+                                            fontWeight: section === s ? 'bold' : '500',
+                                            color: section === s ? theme.colors.onSecondaryContainer : theme.colors.onSurface,
+                                        }}
+                                        numberOfLines={1}
+                                    >
+                                        {s.charAt(0).toUpperCase() + s.slice(1)}
+                                    </Text>
+                                </TouchableOpacity>
+                            ))}
+                        </View>
 
-                {renderContent()}
+                        {renderContent()}
 
-                <View style={styles.legend}>
-                    <View style={[styles.legendDot, { backgroundColor: '#E8F5E9', borderWidth: 1, borderColor: '#4CAF50' }]} />
-                    <Text variant="bodySmall">AI Enhanced Content</Text>
-                </View>
+                        <View style={styles.legend}>
+                            <View style={[styles.legendDot, { backgroundColor: '#E8F5E9', borderWidth: 1, borderColor: '#4CAF50' }]} />
+                            <Text variant="bodySmall">AI Enhanced Content</Text>
+                        </View>
+                    </>
+                )}
             </Card.Content>
         </Card>
     );

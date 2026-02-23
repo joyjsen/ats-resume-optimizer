@@ -4,11 +4,21 @@ import axios from "axios";
 const PERPLEXITY_API_URL = "https://api.perplexity.ai/chat/completions";
 
 export interface MatchAnalysis {
-    matchedSkills: Array<{ skill: string; importance: string; confidence: number; userHas?: boolean }>;
-    partialMatches: Array<{ skill: string; importance: string; confidence: number }>;
+    matchedSkills: Array<{ skill: string; importance: string; confidence: number; evidence?: string | string[]; userHas?: boolean }>;
+    partialMatches: Array<{ skill: string; importance: string; confidence: number; candidateSkill?: string; transferability?: string }>;
     missingSkills: Array<{ skill: string; importance: string; confidence: number }>;
+
+    // DETAILED FIELDS FOR UI
+    strongMatches?: any[];
+    weakMatches?: any[];
+    noMatches?: any[];
+    atsKeywordAnalysis?: any;
+    executiveSummary?: string;
+
     keywordDensity: number;
     experienceMatch: { match: number };
+    readinessVerdict?: string;
+    verdictSummary?: string;
 }
 
 /**

@@ -431,7 +431,11 @@ export default function ApplicationsScreen() {
     };
 
     const generateLetter = async (application: Application, onDismissModal?: () => void) => {
-        if (!checkTokens(15, onDismissModal)) return;
+        if (!checkTokens(30, onDismissModal)) return;
+
+        // Close modal if checks pass
+        if (onDismissModal) onDismissModal();
+
         setLoading(true);
         try {
             // Get necessary data for the background task
@@ -913,7 +917,9 @@ export default function ApplicationsScreen() {
         <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
             {/* Header Content */}
             <View style={styles.header}>
-                <Text variant={isAndroid ? "headlineSmall" : "headlineMedium"} style={{ fontWeight: 'bold', marginBottom: 8 }}>My Applications</Text>
+                <Text style={{ fontSize: 14, fontWeight: 'normal', marginBottom: 16, color: theme.colors.onSurface }}>
+                    For each applications, preview updated resume, generate customized cover letter and prep guides.
+                </Text>
 
                 <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
                     <SegmentedButtons

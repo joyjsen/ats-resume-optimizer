@@ -47,6 +47,38 @@ class BackgroundTaskService {
         const user = auth.currentUser;
         if (!user) throw new Error('User not authenticated');
 
+        const { query, where, getDocs, limit } = require('firebase/firestore');
+
+        // Deduplication Check: Look for existing active tasks of the same type and analysis ID
+        // This prevents double-execution if multiple clients (e.g. iOS + Android simulators) try to start it
+        if (payload.analysisTaskId) {
+            try {
+                const q = query(
+                    collection(db, 'background_tasks'),
+                    where('type', '==', type),
+                    where('payload.analysisTaskId', '==', payload.analysisTaskId),
+                    where('status', 'in', ['pending', 'processing']), // Only check active tasks
+                    limit(1)
+                );
+
+                const snapshot = await getDocs(q);
+                if (!snapshot.empty) {
+                    const existingTask = snapshot.docs[0];
+                    const existingId = existingTask.id;
+                    console.log(`[BackgroundTaskService] Found existing ${type} task ${existingId}. Reusing.`);
+
+                    // Attach listeners to the EXISTING task
+                    if (onComplete || onError) {
+                        this.listenToTask(existingId, onComplete, onError);
+                    }
+                    return existingId;
+                }
+            } catch (e) {
+                console.warn("[BackgroundTaskService] Deduplication check failed, proceeding with new task:", e);
+                // Proceed to create if query fails (e.g. missing index)
+            }
+        }
+
         const taskId = `${type}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
         const taskRef = doc(collection(db, 'background_tasks'), taskId);
 

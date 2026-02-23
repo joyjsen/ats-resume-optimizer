@@ -204,25 +204,27 @@ export const onBackgroundTaskUpdated = functionsV1
             let data: any = { taskId, type };
 
             if (type === "optimize_resume") {
-                title = "Resume Optimized ✨";
-                body = "Your resume has been rewritten and optimized for the job. Tap to review.";
                 emailSubject = "Resume Optimization Complete";
                 emailBody = `<p>Your resume rewrite and optimization is complete.</p><a href="https://riresume.web.app/analysis-result?id=${payload.analysisTaskId || ''}">Review Optimized Resume</a>`;
                 data.resultId = payload.analysisTaskId || payload.historyId;
                 data.route = '/analysis-result';
                 data.params = { id: data.resultId };
             } else if (type === "add_skill" || type === "skill_addition") {
-                title = "Skill Added to Resume";
-                body = "The new skill has been incorporated into your optimized resume.";
+                const skill = payload.skill || "Skill";
+                const jobTitle = payload.jobTitle || payload.job?.title || "your target role";
+                const score = after.result?.calibratedScore || "updated";
+
+                title = `Skill Added: ${skill}`;
+                body = `Added to resume for ${jobTitle}. ATS Score updated to ${score}%. Tap to view changes.`;
+
                 emailSubject = "Skill Addition Complete";
-                emailBody = `<p>We've successfully added the new skill to your resume and updated your ATS score.</p>`;
+                emailBody = `<p>We've successfully added <strong>${skill}</strong> to your resume for <strong>${jobTitle}</strong>.</p><p>Your new ATS Score is <strong>${score}%</strong>.</p>`;
                 data.resultId = payload.analysisTaskId || payload.historyId;
                 data.route = '/analysis-result';
                 data.params = { id: data.resultId };
-
             } else if (type === "cover_letter") {
-                title = "Cover Letter Generated";
-                body = `Your tailored cover letter for ${payload.company || 'the position'} is ready.`;
+                title = "Cover Letter Ready!";
+                body = `Your cover letter for ${payload.company || 'your application'} is ready to view.`;
                 emailSubject = "Cover Letter Generated";
                 emailBody = `<p>Your cover letter for ${payload.company || 'the position'} is ready.</p>`;
                 data.applicationId = payload.applicationId;
@@ -260,7 +262,7 @@ export const onUserDocUpdated = functionsV1
                 await sendEmail(
                     userRec.email,
                     "Security Alert: Password Changed",
-                    "<p>Your password was recently updated. If this wasn't you, contact support immediately at pjmarket1316@gmail.com.</p>"
+                    "<p>Your password was recently updated. If this wasn't you, contact support immediately at support@riresume.com.</p>"
                 );
             }
         }
@@ -508,7 +510,7 @@ export const restoreUserAuth = functionsV1
     .region("us-central1")
     .https.onCall(async (data: any, context: any) => {
         // 1. Security Check
-        const primaryAdmin = "pjmarket1316@gmail.com";
+        const primaryAdmin = "support@riresume.com";
         const currentUserEmail = context.auth?.token?.email;
         const isAdmin = context.auth && (currentUserEmail === primaryAdmin || context.auth.token.admin === true);
 
@@ -593,7 +595,7 @@ export const deleteUserAuth = functionsV1
     .region("us-central1")
     .https.onCall(async (data: any, context: any) => {
         // 1. Security Check
-        const isAdmin = context.auth && context.auth.token.email === "pjmarket1316@gmail.com";
+        const isAdmin = context.auth && context.auth.token.email === "support@riresume.com";
         if (!isAdmin) {
             throw new functionsV1.https.HttpsError("permission-denied", "Only administrators can delete accounts.");
         }

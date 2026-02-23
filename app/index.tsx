@@ -146,19 +146,19 @@ export default function LandingPage() {
 
                         <View style={styles.footer}>
                             <View style={styles.footerLinks}>
-                                <TouchableOpacity onPress={() => Linking.openURL('https://trinationalnexus.com/support')}>
+                                <TouchableOpacity onPress={() => Linking.openURL('https://riresume.com/support')}>
                                     <Text variant="labelMedium" style={styles.footerLink}>Help & Support</Text>
                                 </TouchableOpacity>
                                 <Text variant="labelMedium" style={styles.footerDivider}>•</Text>
-                                <TouchableOpacity onPress={() => Linking.openURL('https://trinationalnexus.com/privacy')}>
+                                <TouchableOpacity onPress={() => Linking.openURL('https://riresume.com/privacy')}>
                                     <Text variant="labelMedium" style={styles.footerLink}>Privacy Policy</Text>
                                 </TouchableOpacity>
                                 <Text variant="labelMedium" style={styles.footerDivider}>•</Text>
-                                <TouchableOpacity onPress={() => Linking.openURL('https://trinationalnexus.com/terms')}>
+                                <TouchableOpacity onPress={() => Linking.openURL('https://riresume.com/terms')}>
                                     <Text variant="labelMedium" style={styles.footerLink}>Terms of Service</Text>
                                 </TouchableOpacity>
                                 <Text variant="labelMedium" style={styles.footerDivider}>•</Text>
-                                <TouchableOpacity onPress={() => Linking.openURL('https://trinationalnexus.com/blog')}>
+                                <TouchableOpacity onPress={() => Linking.openURL('https://riresume.com/blog')}>
                                     <Text variant="labelMedium" style={styles.footerLink}>Blog</Text>
                                 </TouchableOpacity>
                             </View>
@@ -188,7 +188,7 @@ export default function LandingPage() {
                             </View>
 
                             <Text variant="labelSmall" style={styles.copyright}>
-                                © 2026 TriNational Nexus LLC. All Rights Reserved.
+                                © 2026 RiResume. All rights reserved.
                             </Text>
                         </View>
                     </ScrollView>

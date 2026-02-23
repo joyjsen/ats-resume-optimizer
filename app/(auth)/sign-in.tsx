@@ -47,6 +47,9 @@ export default function SignIn() {
             if (provider === 'google') await authService.signInWithGoogle();
             else if (provider === 'apple') await authService.signInWithApple();
             else if (provider === 'microsoft') await authService.signInWithMicrosoft();
+
+            // Explicitly redirect to avoid getting stuck
+            router.replace('/(tabs)/home' as any);
         } catch (error: any) {
             console.error(`${provider} Login Error:`, error);
             const isInactive = error instanceof UserInactiveError ||
@@ -76,6 +79,8 @@ export default function SignIn() {
         setLoading(true);
         try {
             await authService.loginWithEmail(email, password);
+            // Explicitly redirect to avoid getting stuck
+            router.replace('/(tabs)/home' as any);
         } catch (error: any) {
             console.error("Login Error:", error);
             const isInactive = error instanceof UserInactiveError ||
@@ -97,18 +102,38 @@ export default function SignIn() {
     };
 
     const handleSendVerification = async () => {
+        console.log("[SignIn] handleSendVerification called with:", phoneNumber);
         if (!phoneNumber) {
             Alert.alert("Error", "Please enter a valid phone number (e.g. +1...)");
             return;
         }
+
+        // Basic formatting/validation
+        let formattedNumber = phoneNumber.replace(/\s+/g, '').replace(/-/g, '').replace(/\(|\)/g, '');
+        if (!formattedNumber.startsWith('+')) {
+            // Suggest adding country code or auto-add + if user typed 1...
+            if (formattedNumber.length === 10) {
+                // Assume US (+1) for 10-digit numbers for better UX
+                formattedNumber = '+1' + formattedNumber;
+            } else if (formattedNumber.startsWith('1') && formattedNumber.length === 11) {
+                formattedNumber = '+' + formattedNumber;
+            } else {
+                Alert.alert("Invalid Format", "Please include your country code (e.g. +1 for USA).");
+                return;
+            }
+        }
+
         setLoading(true);
         try {
-            // Updated to pass the verifier
-            await authService.signInWithPhoneNumber(phoneNumber, recaptchaVerifier.current || undefined);
+            // Updated to pass the verifier (undefined on web to trigger auto-init)
+            const verifier = Platform.OS === 'web' ? undefined : recaptchaVerifier.current;
+            console.log("[SignIn] Calling signInWithPhoneNumber. Platform:", Platform.OS, "Verifier:", verifier, "Number:", formattedNumber);
+            await authService.signInWithPhoneNumber(formattedNumber, verifier || undefined);
+            console.log("[SignIn] Code sent successfully.");
             setConfirming(true);
             Alert.alert("Success", "Verification code sent!");
         } catch (error: any) {
-            console.error("Phone Auth Error", error);
+            console.error("[SignIn] Phone Auth Error caught:", error);
             Alert.alert("Error", error.message || "Failed to send code.");
             setConfirming(false);
         } finally {
@@ -124,9 +149,8 @@ export default function SignIn() {
         setLoading(true);
         try {
             await authService.confirmPhoneCode(verificationCode);
-            // Navigation handled by auth listener in RootLayout actually, 
-            // but usually we might want to explicity redirect or wait.
-            // But RootLayout will see the user change and redirect.
+            // Explicitly redirect to avoid getting stuck
+            router.replace('/(tabs)/home' as any);
         } catch (error: any) {
             Alert.alert("Error", error.message || "Invalid code.");
         } finally {

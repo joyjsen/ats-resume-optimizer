@@ -19,7 +19,7 @@ const HELP_CONTENT: HelpSection[] = [
         items: [
             {
                 question: "What is RiResume?",
-                answer: "RiResume is an AI-powered ATS Resume Optimizer that helps you create job-specific resumes, prepare for interviews, and manage your entire job application lifecycle. Unlike traditional resume scanners, RiResume actually rewrites and optimizes your resume content using advanced AI technology."
+                answer: "RiResume is an AI-powered ATS Resume Optimizer available on web, Android, and iOS. It helps you create job-specific resumes, prepare for interviews, and manage your entire job application lifecycle. Unlike traditional resume scanners that just give you a score, RiResume actively rewrites and optimizes your resume content using advanced AI technology."
             },
             {
                 question: "How do I create an account?",
@@ -45,22 +45,39 @@ const HELP_CONTENT: HelpSection[] = [
                     "",
                     "You get 110 tokens to begin with, which should be enough for you to Analyze one resume against your job description, rewrite and optimize it, create a cover letter, and learn basics of a missing skill. Take advantage of adding a personalized and comprehensive prep guide too.",
                     "",
+                    "Token packages are available for purchase:",
+                    "• 100 tokens — $4.99",
+                    "• 250 tokens — $9.99",
+                    "• 500 tokens — $14.99",
+                    "",
                     "You can purchase token packages through the Profile section using Stripe payment processing."
+                ]
+            },
+            {
+                question: "How do I share a job posting into RiResume?",
+                answer: [
+                    "RiResume supports job URL sharing from multiple platforms:",
+                    "• LinkedIn job postings",
+                    "• Indeed job postings",
+                    "• Any valid job URL from other job boards",
+                    "",
+                    "Simply copy the job URL and paste it into the app. RiResume will automatically scan and extract the job details. If you're not satisfied with what was parsed, you can manually edit the job description before proceeding."
                 ]
             }
         ]
     },
     {
-        title: "Resume Analysis & Optimization",
+        title: "Resume Analysis",
         items: [
             {
                 question: "How do I analyze my resume?",
                 answer: [
                     "1. Go to the Dashboard",
                     "2. Tap \"Analyze Resume\"",
-                    "3. Paste a LinkedIn job URL",
-                    "4. Upload your resume (supported formats: image files, .txt, .docx)",
-                    "5. Tap \"Start Analysis\"",
+                    "3. Paste a job URL (LinkedIn, Indeed, or any valid job posting URL)",
+                    "4. Review the extracted job details — edit manually if needed",
+                    "5. Upload your resume (supported formats: image files, .txt, .docx)",
+                    "6. Tap \"Start Analysis\"",
                     "The analysis takes about 40 seconds and costs 8 tokens. You'll receive a push notification when complete."
                 ]
             },
@@ -71,7 +88,9 @@ const HELP_CONTENT: HelpSection[] = [
                     "• Matching Skills: Skills you have that match the job requirements",
                     "• Partially Matching Skills: Skills you have that are somewhat relevant",
                     "• Missing Skills: Skills the job requires that aren't on your resume",
-                    "• Initial ATS Score: Your baseline score before optimization"
+                    "• Initial ATS Score: Your baseline score before optimization",
+                    "",
+                    "This helps you understand where you stand for the role and what improvements are possible."
                 ]
             },
             {
@@ -80,11 +99,21 @@ const HELP_CONTENT: HelpSection[] = [
             },
             {
                 question: "What if I leave the app during analysis?",
-                answer: "No problem! You'll receive a push notification prompting you to return to the app. If the task takes longer than expected, we'll notify you to check back."
+                answer: "No problem! The analysis continues running in the background. You'll receive a push notification prompting you to return to the app when it's ready. If the task takes longer than expected, we'll notify you to check back."
             },
             {
                 question: "What if my analysis fails due to an error?",
-                answer: "If the analysis fails due to request timeout or system errors (not user cancellation), please contact our admin team through Help & Support with your transaction details. We'll review your case for a potential token refund."
+                answer: "If the analysis fails due to request timeout or system errors (not user cancellation), please contact our support team through Help & Support with your transaction details. We'll review your case for a potential token refund."
+            },
+            {
+                question: "Where does my analysis appear after completion?",
+                answer: [
+                    "Once analysis is complete:",
+                    "• The application appears on your Dashboard under recent analyses",
+                    "• It also appears in My Applications with a \"Locked\" status",
+                    "• The application remains locked until you complete the optimization process",
+                    "• Your Dashboard shows the application status as \"Pending Resume Update\""
+                ]
             }
         ]
     },
@@ -106,6 +135,9 @@ const HELP_CONTENT: HelpSection[] = [
                     },
                     "2. Tap \"Complete Optimization\" or \"Rewrite & Optimize Resume\"",
                     "3. Wait for the optimization to complete (~60 seconds, 15 tokens)",
+                    "",
+                    "The optimization runs in the background — you'll receive a push notification when it's done. If it's still not completed in 60 seconds, a push notification will ask you to go back to the app to continue.",
+                    "",
                     "Your application status will change from \"Pending Resume Update\" to \"Draft Ready.\""
                 ]
             },
@@ -116,7 +148,9 @@ const HELP_CONTENT: HelpSection[] = [
                     "• Professional Summary: Tailored to the specific job",
                     "• Experience Sections: Optimized bullet points with relevant keywords",
                     "• Skills Section: Added relevant skills from the job description",
-                    "• Overall Content: Improved for ATS compatibility"
+                    "• Overall Content: Improved for ATS compatibility",
+                    "",
+                    "This guarantees an increase in your ATS score. Further improvement is possible by adding additional skills."
                 ]
             },
             {
@@ -132,15 +166,15 @@ const HELP_CONTENT: HelpSection[] = [
                 question: "What are my options after optimization?",
                 answer: [
                     "You have four choices:",
-                    "1. Review & Edit Changes: Make manual adjustments. Your edits will appear in the preview resume.",
-                    "2. Preview Resume: View the full resume with changes (you cannot save from here until you validate).",
+                    "1. Review & Edit Changes: Make manual adjustments for free. Your edits will appear in the preview resume.",
+                    "2. Preview & Download Resume: View and download the full resume in .docx format (you cannot save from here until you validate).",
                     "3. Reject Changes & Revert: Go back to your original resume and start over. ⚠️ Warning: Tokens already used cannot be refunded.",
                     "4. Validate & Save to Dashboard: Accept the changes and unlock the application in \"My Applications\". Status changes to \"Optimized\"."
                 ]
             },
             {
-                question: "Can I edit my resume after validating?",
-                answer: "Yes! Even after validation, you can continue editing your resume in \"My Applications.\" The resume remains flexible for your needs."
+                question: "Can I edit my resume manually?",
+                answer: "Yes! Manual editing is always free. At each and every optimization step, you get a chance to manually update your resume at no cost. Even after validation, you can continue editing your resume in \"My Applications.\""
             }
         ]
     },
@@ -153,8 +187,20 @@ const HELP_CONTENT: HelpSection[] = [
                     "1. Open an analyzed application",
                     "2. Review the \"Partially Matching\" or \"Missing Skills\" sections",
                     "3. Tap on a skill you want to add",
-                    "4. Choose where in your resume to add it (e.g., Skills section, specific experience)",
-                    "Adding a skill triggers automatic re-optimization (15 tokens) to integrate it naturally into your resume."
+                    "4. Choose which section of your resume to add it to (e.g., Skills section, a specific work experience entry)",
+                    "Adding a skill triggers automatic re-optimization (15 tokens) to surgically integrate it into the selected section of your resume."
+                ]
+            },
+            {
+                question: "How does surgical skill insertion work?",
+                answer: [
+                    "When you add a skill, RiResume doesn't just append it to a list. The AI:",
+                    "• Surgically inserts the skill into your chosen resume section",
+                    "• Shows you visual indicators of exactly where and how the skill was integrated",
+                    "• Displays original vs updated content so you can see the changes",
+                    "• Recalculates your ATS score to reflect the improvement",
+                    "",
+                    "You can review, manually edit (free), reject, or validate — just like the initial optimization."
                 ]
             },
             {
@@ -166,18 +212,8 @@ const HELP_CONTENT: HelpSection[] = [
                 answer: [
                     "When you add a skill, you'll see three options:",
                     "1. Self-Learning (Free): Declare that you've learned this skill on your own. Entry saved in your Learning Hub.",
-                    "2. AI-Assisted Learning (30 tokens): Get personalized training materials tailored to the job position. Access resources in the Learning Hub.",
+                    "2. AI-Assisted Learning (30 tokens): Get a personalized learning pathway presented as an interactive slideshow, tailored to the job position. Access resources in the Learning Hub.",
                     "3. Add Without Declaration (Free): Add the skill to your resume without recording it in Learning Hub."
-                ]
-            },
-            {
-                question: "What happens during re-optimization?",
-                answer: [
-                    "After adding a skill:",
-                    "• The AI re-optimizes your resume with the new skill (15 tokens)",
-                    "• You'll see visual indicators showing exactly where and how the skill was integrated",
-                    "• Original vs updated content is displayed",
-                    "• You can review, edit, reject, or validate just like the initial optimization"
                 ]
             },
             {
@@ -205,7 +241,7 @@ const HELP_CONTENT: HelpSection[] = [
             },
             {
                 question: "Can I regenerate a cover letter?",
-                answer: "Yes! If you're not satisfied with the result, tap \"Regenerate\" to create a new version. Each generation costs 15 tokens."
+                answer: "Yes! If you're not satisfied with the result, tap \"Regenerate\" to create a new version. Each regeneration also costs 15 tokens."
             },
             {
                 question: "Can I edit the cover letter?",
@@ -219,11 +255,12 @@ const HELP_CONTENT: HelpSection[] = [
             {
                 question: "What is a Prep Guide?",
                 answer: [
-                    "A Prep Guide is a comprehensive interview preparation document that includes:",
-                    "• Company Intelligence: Research and insights about the employer",
+                    "A Prep Guide is a comprehensive, personalized interview preparation document that includes:",
+                    "• Company Intelligence: Research and insights about the employer (powered by real-time web data)",
                     "• Role Analysis: Deep dive into the position requirements",
                     "• Technical Preparation: Relevant technical topics and questions",
-                    "• Behavioral Frameworks: STAR method examples mapped to your experiences",
+                    "• Behavioral Frameworks: STAR method examples mapped to your actual experiences",
+                    "• Story Mapping: Personalized STAR framework outlines drawn from your real resume content to help you craft compelling interview answers",
                     "• Strategic Interview Guidance: Tips specific to this opportunity"
                 ]
             },
@@ -232,13 +269,25 @@ const HELP_CONTENT: HelpSection[] = [
                 answer: [
                     "1. Open an optimized application",
                     "2. Tap \"Generate Prep Guide\"",
-                    "3. Wait for generation (~40 tokens)",
-                    "The prep guide is personalized based on your resume content and the job requirements."
+                    "3. Wait for generation (~10 minutes, 40 tokens)",
+                    "The prep guide is personalized based on your resume content and the job requirements. You'll receive a push notification when it's ready."
                 ]
             },
             {
                 question: "When can I regenerate a Prep Guide?",
-                answer: "The \"Regenerate\" option becomes active when you update skills in your resume. This ensures your prep guide stays aligned with your latest resume content. Each generation costs 40 tokens."
+                answer: "The \"Regenerate\" option becomes active when you update skills in your resume. This ensures your prep guide stays aligned with your latest resume content. Each regeneration costs 40 tokens."
+            },
+            {
+                question: "What is Story Mapping?",
+                answer: [
+                    "Story Mapping is a key section of your Prep Guide that uses the STAR framework (Situation, Task, Action, Result) to help you prepare interview answers:",
+                    "• It pulls directly from your actual resume experiences",
+                    "• Creates structured outlines for behavioral interview questions",
+                    "• Maps your real accomplishments to likely interview questions for the role",
+                    "• Helps you articulate your experiences clearly and compellingly",
+                    "",
+                    "This is one of the most valuable sections of the Prep Guide — it turns your resume bullet points into interview-ready stories."
+                ]
             }
         ]
     },
@@ -247,14 +296,15 @@ const HELP_CONTENT: HelpSection[] = [
         items: [
             {
                 question: "What is the Learning Hub?",
-                answer: "The Learning Hub is where you access AI-generated training materials for skills you're developing. It tracks your learning journey and provides personalized resources."
+                answer: "The Learning Hub is where you access AI-generated training materials for skills you're developing. It tracks your learning journey and provides personalized resources presented as interactive slideshows."
             },
             {
                 question: "How do I access learning materials?",
                 answer: [
                     "1. Add a skill to your resume from the analysis results",
                     "2. Select \"AI-Assisted Learning\" (30 tokens)",
-                    "3. Access your personalized training materials in the Learning Hub"
+                    "3. The AI generates a personalized learning pathway as an interactive slideshow",
+                    "4. Access all your generated learning materials anytime in the Learning tab"
                 ]
             },
             {
@@ -277,9 +327,18 @@ const HELP_CONTENT: HelpSection[] = [
                 answer: [
                     "This is your central hub for managing all analyzed and optimized resumes. Each application card shows:",
                     "• Company name and position",
-                    "• Current status (Locked, Pending, Draft Ready, Optimized)",
+                    "• Current status (Locked, Pending Resume Update, Draft Ready, Optimized)",
                     "• Date analyzed",
                     "• Quick actions available"
+                ]
+            },
+            {
+                question: "What do the application statuses mean?",
+                answer: [
+                    "• Locked: Analysis complete but optimization not yet started. You cannot use the resume yet.",
+                    "• Pending Resume Update: You've initiated but not yet completed the optimization.",
+                    "• Draft Ready: Optimization complete. Review, edit, or validate your resume.",
+                    "• Optimized: You've validated and saved. Full access to resume, cover letter, prep guide, and skill additions."
                 ]
             },
             {
@@ -289,8 +348,8 @@ const HELP_CONTENT: HelpSection[] = [
             {
                 question: "What can I do from \"My Applications\"?",
                 answer: [
-                    "• View and edit optimized resumes",
-                    "• Download resumes in various formats",
+                    "• View and edit optimized resumes (manual editing is always free)",
+                    "• Preview and download resumes in .docx format",
                     "• Generate cover letters",
                     "• Create prep guides",
                     "• Add more skills and re-optimize",
@@ -300,16 +359,41 @@ const HELP_CONTENT: HelpSection[] = [
         ]
     },
     {
-        title: "Dashboard & Activity Tracking",
+        title: "App Navigation",
+        items: [
+            {
+                question: "What are the main sections of the app?",
+                answer: [
+                    "RiResume has 5 main tabs:",
+                    "1. Home (Dashboard): Your central hub with recent analyses, status cards, and quick actions",
+                    "2. Applications: Manage all your analyzed and optimized resumes",
+                    "3. Learning: Access your Learning Hub with AI-generated skill training materials",
+                    "4. Analytics: Track your job search progress and token usage",
+                    "5. Profile: Manage your account, purchase tokens, access settings, and get help"
+                ]
+            }
+        ]
+    },
+    {
+        title: "Dashboard & Analytics",
         items: [
             {
                 question: "What's on my Dashboard?",
                 answer: [
                     "Your Dashboard provides:",
                     "• Recent Analyses: Quick access to your latest resume analyses",
-                    "• Application Status Cards: Overview of pending and completed optimizations",
+                    "• Application Status Cards: Overview of pending and completed optimizations with current status",
                     "• Quick Actions: Fast access to analyze new resumes",
                     "• Activity Summary: Recent token usage and tasks"
+                ]
+            },
+            {
+                question: "What's in the Analytics tab?",
+                answer: [
+                    "The Analytics tab gives you insights into your job search journey:",
+                    "• Overview of all your applications and their statuses",
+                    "• Token usage breakdown by activity type",
+                    "• Progress tracking across your job search"
                 ]
             },
             {
@@ -335,14 +419,21 @@ const HELP_CONTENT: HelpSection[] = [
                 answer: [
                     "1. Go to Profile",
                     "2. Tap \"Purchase Tokens\"",
-                    "3. Select a token package",
+                    "3. Select a token package:",
+                    "   • 100 tokens — $4.99",
+                    "   • 250 tokens — $9.99",
+                    "   • 500 tokens — $14.99",
                     "4. Complete payment through Stripe",
                     "Tokens are added to your account immediately."
                 ]
             },
             {
+                question: "Why tokens instead of a subscription?",
+                answer: "We believe in transparent, pay-as-you-go pricing. With tokens, you only pay for what you use — no recurring charges, no hidden fees, and no surprise upsells. You stay in full control of your spending."
+            },
+            {
                 question: "Is my payment information secure?",
-                answer: "Yes! RiResume uses Stripe, a industry-leading secure payment processor. We never store your credit card information on our servers."
+                answer: "Yes! RiResume uses Stripe, an industry-leading secure payment processor. We never store your credit card information on our servers. All transactions are PCI compliant."
             },
             {
                 question: "What happens if I run out of tokens?",
@@ -359,11 +450,11 @@ const HELP_CONTENT: HelpSection[] = [
             },
             {
                 question: "Can I change the app's appearance?",
-                answer: "Yes! Go to Profile → Settings → Appearance to switch between Light and Dark mode."
+                answer: "Yes! Go to Profile → Settings → Appearance to switch between Light and Dark mode. The entire app adapts to your preference."
             },
             {
                 question: "How do I delete my account?",
-                answer: "Go to Profile, scroll to bottom, and tap \"Delete Account\". ⚠️ Warning: Account deletion is permanent. All your data will be lost."
+                answer: "Go to Profile, scroll to bottom, and tap \"Delete Account\". ⚠️ Warning: Account deletion is permanent after the 30-day grace period. All your data, tokens, and history will be lost."
             }
         ]
     },
@@ -372,15 +463,26 @@ const HELP_CONTENT: HelpSection[] = [
         items: [
             {
                 question: "I was reactivated but can't log in with my old password",
-                answer: "If your account was recently reactivated by an admin, you might encounter a login error on the first attempt due to local caching. Please try logging in with the same password a second time—this typically clears the cache and allows you to enter successfully."
+                answer: "If your account was recently reactivated by an admin, you might encounter a login error on the first attempt due to local caching. Please try logging in with the same password a second time — this typically clears the cache and allows you to enter successfully."
             },
             {
                 question: "Can I restore a deleted account?",
                 answer: [
                     "Yes! You have a 30-day window to change your mind after deleting your account. If you contact support and an admin restores your profile:",
-                    "• You may need to click \"Forgot Password\" to re-verify your access and set a new password.",
+                    "• You may need to tap \"Forgot Password\" to re-verify your access and set a new password.",
                     "• Your account will be restored to the exact state it was in at the time of deletion, preserving all your tokens, resume history, and optimized applications.",
                     "After 30 days, all data is permanently purged and cannot be recovered."
+                ]
+            },
+            {
+                question: "I forgot my password",
+                answer: [
+                    "1. Tap \"Forgot Password\" on the login screen",
+                    "2. Enter the email address associated with your account",
+                    "3. Check your inbox for a password reset link",
+                    "4. Follow the link to set a new password",
+                    "",
+                    "Note: If you signed up with Google or Apple, you don't have a password — just use the corresponding sign-in button."
                 ]
             }
         ]
@@ -392,34 +494,45 @@ const HELP_CONTENT: HelpSection[] = [
                 question: "My analysis is stuck or taking too long",
                 answer: [
                     "• Check your internet connection",
-                    "• Wait for the notification (some tasks take up to 60s)",
-                    "• Return to the app if prompted",
-                    "• Contact support if issue persists > 2 mins"
+                    "• Wait for the push notification (analysis takes ~40 seconds, optimization ~60 seconds)",
+                    "• Return to the app if prompted by a notification",
+                    "• Contact support if the issue persists beyond 2 minutes"
                 ]
             },
             {
                 question: "I didn't receive my tokens after purchase",
                 answer: [
-                    "• Check Purchase History to verify transaction",
-                    "• Refresh the app",
+                    "• Check Purchase History to verify the transaction",
+                    "• Refresh the app by pulling down on the screen",
                     "• Wait 1-2 minutes for processing",
-                    "• Contact support if tokens don't appear within 5 mins"
+                    "• Contact support if tokens don't appear within 5 minutes"
                 ]
             },
             {
                 question: "The job URL isn't working",
                 answer: [
-                    "• LinkedIn URLs only: Currently, we only support LinkedIn job postings",
-                    "• Check the URL format: Ensure you've copied the complete URL",
-                    "• Try copying again"
+                    "RiResume supports LinkedIn, Indeed, and other valid job posting URLs. If a URL isn't working:",
+                    "• Ensure you've copied the complete URL including https://",
+                    "• Try copying the URL again directly from the job posting",
+                    "• If the URL still doesn't parse correctly, you can manually edit the extracted job description after pasting",
+                    "• Some job boards use dynamic URLs that may not parse well — in these cases, try copying the job description text manually"
                 ]
             },
             {
                 question: "Changes aren't saving",
                 answer: [
                     "• Complete the validation: Ensure you tapped \"Validate & Save to Dashboard\"",
-                    "• Check your connection",
+                    "• Check your internet connection",
                     "• Try again: Close and reopen the application"
+                ]
+            },
+            {
+                question: "I'm not receiving push notifications",
+                answer: [
+                    "• Make sure notifications are enabled for RiResume in your device settings",
+                    "• On iOS: Settings → Notifications → RiResume → Allow Notifications",
+                    "• On Android: Settings → Apps → RiResume → Notifications → Enable",
+                    "• Ensure the app is not in \"Do Not Disturb\" exceptions if DND is active"
                 ]
             }
         ]
@@ -434,7 +547,8 @@ const HELP_CONTENT: HelpSection[] = [
                     "• All data is encrypted in transit and at rest",
                     "• We use Firebase secure authentication",
                     "• Payment processing through Stripe (PCI compliant)",
-                    "• We never share your personal information with third parties"
+                    "• We never share your personal information with third parties",
+                    "• Resume data is used solely for analysis and optimization purposes"
                 ]
             },
             {
@@ -442,9 +556,9 @@ const HELP_CONTENT: HelpSection[] = [
                 answer: [
                     "• Account information (name, email)",
                     "• Resume content (for analysis and optimization)",
-                    "• Job URLs (for matching)",
+                    "• Job URLs and descriptions (for matching)",
                     "• Usage analytics (to improve the service)",
-                    "• Payment information (processed securely by Stripe)"
+                    "• Payment information (processed securely by Stripe — we never store card details)"
                 ]
             },
             {
@@ -498,7 +612,7 @@ const HELP_CONTENT: HelpSection[] = [
                     "1. Go to Help & Support",
                     "2. Select \"Request Token Refund\"",
                     "3. Provide transaction details and error description",
-                    "4. Our admin team will review within 48 hours"
+                    "4. Our team will review within 48 hours"
                 ]
             }
         ]
@@ -512,14 +626,21 @@ const HELP_CONTENT: HelpSection[] = [
                     "Unlike traditional resume scanners that just give you a score, RiResume:",
                     "• Actually rewrites your content using advanced AI",
                     "• Optimizes for specific jobs, not generic templates",
+                    "• Surgically inserts missing skills into chosen resume sections",
                     "• Manages your entire job search lifecycle in one place",
-                    "• Provides interview prep mapped to your actual experiences",
-                    "• Mobile-first design for job searching on the go"
+                    "• Provides interview prep with Story Mapping based on your actual experiences",
+                    "• Offers AI-powered learning slideshows for skill development",
+                    "• Uses transparent token-based pricing — no subscriptions or hidden fees",
+                    "• Available on web, Android, and iOS"
                 ]
             },
             {
                 question: "What AI technology does RiResume use?",
                 answer: "RiResume uses state-of-the-art language models optimized for resume writing, skill matching, and career content generation. We've carefully selected cost-efficient models that maintain high quality while keeping token prices affordable."
+            },
+            {
+                question: "Does RiResume fabricate information?",
+                answer: "No. RiResume is built on ethical AI principles — we help you present your real experiences more effectively. The AI enhances how your existing skills and accomplishments are worded and positioned, but it never fabricates qualifications or experiences you don't have."
             },
             {
                 question: "How often is RiResume updated?",
@@ -529,10 +650,10 @@ const HELP_CONTENT: HelpSection[] = [
                 question: "What's coming next?",
                 answer: [
                     "Upcoming features include:",
+                    "• Additional job board API integrations",
                     "• Multiple file format support for downloads",
                     "• Certificate uploads in Learning Hub",
-                    "• Affiliate course integration",
-                    "• Advanced payment method management",
+                    "• Localized pricing for international markets",
                     "• Enhanced analytics and insights"
                 ]
             }
@@ -557,14 +678,15 @@ const HELP_CONTENT: HelpSection[] = [
                     "• Analyze first: Review the analysis before optimizing to see if the job is a good fit",
                     "• Batch skill additions: Add multiple skills in one session if possible",
                     "• Review carefully before rejecting: Rejecting costs you the tokens already spent",
-                    "• Use prep guides strategically: Generate them for your most important applications"
+                    "• Use prep guides strategically: Generate them for your most important applications",
+                    "• Take advantage of free manual editing: Polish your resume at no extra cost after each optimization"
                 ]
             },
             {
                 question: "Interview Preparation Best Practices",
                 answer: [
                     "• Study your prep guide thoroughly: It's personalized to your situation",
-                    "• Practice STAR responses: Use the frameworks provided",
+                    "• Practice STAR responses: Use the Story Mapping frameworks provided in your prep guide",
                     "• Research the company: Go beyond what's in the prep guide",
                     "• Review your optimized resume: Be ready to discuss everything on it",
                     "• Track your learning: Use the Learning Hub to document your progress"
@@ -580,8 +702,8 @@ const HELP_CONTENT: HelpSection[] = [
                 answer: [
                     "If you couldn't find what you're looking for, please contact us through Profile → Help & Support. We're here to help you succeed in your job search!",
                     "",
-                    "Version: 1.0",
-                    "Last Updated: 01/28/2026"
+                    "Version: 1.0.1",
+                    "Last Updated: 02/16/2026"
                 ]
             }
         ]
@@ -593,7 +715,7 @@ export default function HelpSupportScreen() {
     const router = useRouter();
 
     const handleEmailSupport = () => {
-        const email = 'pjmarket1316@gmail.com';
+        const email = 'support@riresume.com';
         const subject = 'Support Request: RiResume';
         const body = 'Please describe your issue here...';
         const url = `mailto:${email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
@@ -644,7 +766,7 @@ export default function HelpSupportScreen() {
     };
 
     const handlePrivacyEnquiry = () => {
-        const email = 'pjmarket1316@gmail.com';
+        const email = 'support@riresume.com';
         const subject = 'Privacy Enquiry: RiResume App';
         const body = 'Hello,\n\nI have a privacy-related enquiry regarding the RiResume app:\n\n[Please detail your enquiry here]\n\nAccount Email: [Your account email if different]\nDate: ' + new Date().toLocaleDateString();
         const url = `mailto:${email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
@@ -717,7 +839,7 @@ export default function HelpSupportScreen() {
                             Email Support
                         </Button>
                         <Text variant="bodySmall" style={{ textAlign: 'center', marginTop: 4, color: theme.colors.outline }}>
-                            pjmarket1316@gmail.com
+                            support@riresume.com
                         </Text>
                     </Card.Content>
                 </Card>

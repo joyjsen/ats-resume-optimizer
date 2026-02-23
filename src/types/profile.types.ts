@@ -121,7 +121,8 @@ export type ActivityType =
     | 'pdf_export'
     | 'application_status_update'
     | 'analysis_deleted'
-    | 'learning_completion';
+    | 'learning_completion'
+    | 'resume_parsing_failed';
 
 export type ActivityStatus = 'completed' | 'failed' | 'cancelled' | 'in_progress';
 export type AIProvider = 'openai-gpt4o-mini' | 'perplexity-sonar-pro' | 'none';
@@ -192,4 +193,5 @@ export const ACTIVITY_COSTS: Record<ActivityType, number> = {
     application_status_update: 0,
     analysis_deleted: 0,
     learning_completion: 0,
+    resume_parsing_failed: 0,
 };
