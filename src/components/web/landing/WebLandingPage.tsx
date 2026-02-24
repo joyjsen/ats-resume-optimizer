@@ -280,13 +280,35 @@ const FeaturesSection: React.FC = () => (
             <View style={ls.featuresGrid}>
                 {FEATURES.map((feat, i) => (
                     <View key={i} style={ls.featureCard}>
-                        <View style={[ls.featureCardIcon, { backgroundColor: feat.accentColor + '12' }]}>
-                            <MaterialCommunityIcons name={feat.icon as any} size={26} color={feat.accentColor} />
+                        {/* Upper content area for icon */}
+                        <View style={ls.featureCardContent}>
+                            <View style={[ls.featureCardIcon, { backgroundColor: feat.accentColor + '12' }]}>
+                                <MaterialCommunityIcons name={feat.icon as any} size={22} color={feat.accentColor} />
+                            </View>
                         </View>
-                        <Text style={ls.featureCardTitle}>{feat.title}</Text>
-                        <Text style={ls.featureCardDesc}>{feat.description}</Text>
-                        <View style={ls.featureCardPlaceholder}>
-                            <Text style={ls.featureCardPlaceholderText}>📸 Screenshot Placeholder</Text>
+
+                        {/* 9:16 Mobile Screen Placeholder */}
+                        <View style={ls.featureCardVisual}>
+                            {/* Sleek Text Overlay (Integrated existing texts) */}
+                            <View style={ls.featureCardOverlayText}>
+                                <Text style={ls.featureCardTitle}>{feat.title}</Text>
+                                <Text style={ls.featureCardDesc}>{feat.description}</Text>
+                            </View>
+
+                            {/* Mobile Screen Frame */}
+                            <View style={ls.featureCardScreen}>
+                                {feat.image ? (
+                                    <Image
+                                        source={feat.image}
+                                        style={{ width: '100%', height: '100%', borderTopLeftRadius: 16, borderTopRightRadius: 16 }}
+                                        resizeMode="cover"
+                                    />
+                                ) : (
+                                    <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#1a1a1a', borderTopLeftRadius: 16, borderTopRightRadius: 16 }}>
+                                        <MaterialCommunityIcons name={feat.icon as any} size={48} color="rgba(255,255,255,0.1)" />
+                                    </View>
+                                )}
+                            </View>
                         </View>
                     </View>
                 ))}
