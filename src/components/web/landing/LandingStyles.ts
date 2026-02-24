@@ -64,7 +64,7 @@ export const ls = StyleSheet.create({
     heroInput: { flex: 1, paddingHorizontal: 18, paddingVertical: 14, color: C.white, fontSize: 15, outlineWidth: 0 },
     heroInputBtn: { backgroundColor: C.primary, paddingHorizontal: 28, justifyContent: 'center', alignItems: 'center' },
     heroInputBtnText: { color: C.white, fontWeight: '700', fontSize: 15 },
-    heroMockup: { width: '100%', maxWidth: 480, height: 340, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.06)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)', alignItems: 'center', justifyContent: 'center' },
+    heroMockup: { width: '100%', maxWidth: 520, height: 320, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.06)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
     heroMockupText: { color: 'rgba(255,255,255,0.35)', fontSize: 15, fontWeight: '500' },
 
     // ==================== SOCIAL PROOF ====================

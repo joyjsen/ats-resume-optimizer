@@ -242,8 +242,8 @@ const HeroSection: React.FC<{ jobUrl: string; setJobUrl: (v: string) => void; on
                 <View style={ls.heroRight}>
                     <View style={ls.heroMockup}>
                         <Image
-                            source={require('../../../../assets/hero-mockup.png')}
-                            style={{ width: '100%', height: '100%', borderRadius: 16 }}
+                            source={require('../../../../assets/hero-mockup-final.png')}
+                            style={{ width: '100%', height: '100%' }}
                             resizeMode="cover"
                         />
                     </View>
