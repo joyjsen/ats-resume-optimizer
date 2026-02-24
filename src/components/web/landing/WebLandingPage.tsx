@@ -15,6 +15,7 @@ import {
 } from './LandingData';
 import Head from 'expo-router/head';
 import { ls } from './LandingStyles';
+import { AuthModal } from './AuthModal';
 
 // ============================================================
 // HEADER COMPONENT
@@ -606,14 +607,20 @@ export const WebLandingPage: React.FC = () => {
     const [jobUrl, setJobUrl] = useState('');
     const [activeDropdown, setActiveDropdown] = useState<DropdownKey>(null);
     const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+    const [authModalVisible, setAuthModalVisible] = useState(false);
+    const [authModalMode, setAuthModalMode] = useState<'signin' | 'signup'>('signin');
     const setPendingSharedUrl = useResumeStore(state => state.setPendingSharedUrl);
 
     const handleStart = useCallback(() => {
         if (jobUrl) setPendingSharedUrl(jobUrl);
-        router.push('/(auth)/sign-in');
-    }, [jobUrl]);
+        setAuthModalMode('signup');
+        setAuthModalVisible(true);
+    }, [jobUrl, setPendingSharedUrl]);
 
-    const handleSignIn = useCallback(() => router.push('/(auth)/sign-in'), []);
+    const handleSignIn = useCallback(() => {
+        setAuthModalMode('signin');
+        setAuthModalVisible(true);
+    }, []);
 
     const scrollToSection = useCallback((sectionId?: string) => {
         if (!sectionId) return;
@@ -758,6 +765,12 @@ export const WebLandingPage: React.FC = () => {
                 <FAQSection />
                 <LandingFooter onSectionScroll={scrollToSection} />
             </ScrollView>
+
+            <AuthModal
+                visible={authModalVisible}
+                onClose={() => setAuthModalVisible(false)}
+                initialMode={authModalMode}
+            />
         </View>
     );
 };

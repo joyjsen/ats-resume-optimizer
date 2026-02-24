@@ -1,5 +1,5 @@
 import { initializeApp, getApps, getApp, FirebaseApp } from 'firebase/app';
-import { initializeAuth, getAuth, Auth, browserLocalPersistence } from 'firebase/auth';
+import { initializeAuth, getAuth, Auth, browserLocalPersistence, browserPopupRedirectResolver } from 'firebase/auth';
 import { getFirestore, Firestore } from 'firebase/firestore';
 import { getFunctions, Functions } from 'firebase/functions';
 import { Platform } from 'react-native';
@@ -29,17 +29,26 @@ if (getApps().length === 0) {
 // Initialize Auth with platform-specific persistence
 let auth: Auth;
 if (Platform.OS === 'web') {
-    // Web: use browser localStorage persistence
-    auth = initializeAuth(app, {
-        persistence: browserLocalPersistence
-    });
+    // Web: use browser localStorage persistence with popup resolver
+    try {
+        auth = getAuth(app);
+    } catch (e) {
+        auth = initializeAuth(app, {
+            persistence: browserLocalPersistence,
+            popupRedirectResolver: browserPopupRedirectResolver
+        });
+    }
 } else {
     // Native: use AsyncStorage persistence
-    const { getReactNativePersistence } = require('firebase/auth');
-    const AsyncStorage = require('@react-native-async-storage/async-storage').default;
-    auth = initializeAuth(app, {
-        persistence: getReactNativePersistence(AsyncStorage)
-    });
+    try {
+        auth = getAuth(app);
+    } catch (e) {
+        const { getReactNativePersistence } = require('firebase/auth');
+        const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+        auth = initializeAuth(app, {
+            persistence: getReactNativePersistence(AsyncStorage)
+        });
+    }
 }
 
 // Initialize Firestore

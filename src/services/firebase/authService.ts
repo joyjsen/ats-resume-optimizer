@@ -13,8 +13,11 @@ import {
     User,
     ConfirmationResult,
     signInWithPhoneNumber,
-    RecaptchaVerifier
+    RecaptchaVerifier,
+    signInWithPopup,
+    getAuth
 } from 'firebase/auth';
+import { Platform } from 'react-native';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { GoogleSignin } from '@react-native-google-signin/google-signin';
 import * as AppleAuthentication from 'expo-apple-authentication';
@@ -146,19 +149,28 @@ export class AuthService {
 
     async signInWithGoogle(): Promise<UserProfile> {
         try {
-            await GoogleSignin.hasPlayServices();
-            const response = await GoogleSignin.signIn();
-            const idToken = response.data?.idToken || (response as any).idToken;
+            if (Platform.OS === 'web') {
+                const authInstance = getAuth();
+                const provider = new GoogleAuthProvider();
+                const { user } = await signInWithPopup(authInstance, provider);
+                const profile = await userService.syncUserProfile(user, 'google');
+                await this.checkAccountStatus(profile);
+                return profile;
+            } else {
+                await GoogleSignin.hasPlayServices();
+                const response = await GoogleSignin.signIn();
+                const idToken = response.data?.idToken || (response as any).idToken;
 
-            if (!idToken) {
-                throw new Error('No ID token received from Google Sign-In');
+                if (!idToken) {
+                    throw new Error('No ID token received from Google Sign-In');
+                }
+
+                const googleCredential = GoogleAuthProvider.credential(idToken);
+                const { user } = await signInWithCredential(auth, googleCredential);
+                const profile = await userService.syncUserProfile(user, 'google');
+                await this.checkAccountStatus(profile);
+                return profile;
             }
-
-            const googleCredential = GoogleAuthProvider.credential(idToken);
-            const { user } = await signInWithCredential(auth, googleCredential);
-            const profile = await userService.syncUserProfile(user, 'google');
-            await this.checkAccountStatus(profile);
-            return profile;
         } catch (error) {
             console.error('Google Sign-In Error:', error);
             throw error;
@@ -167,36 +179,45 @@ export class AuthService {
 
     async signInWithApple(): Promise<UserProfile> {
         try {
-            const csrf = Math.random().toString(36).substring(2, 15);
-            const nonce = await crypto.digestStringAsync(
-                crypto.CryptoDigestAlgorithm.SHA256,
-                csrf
-            );
+            if (Platform.OS === 'web') {
+                const authInstance = getAuth();
+                const provider = new OAuthProvider('apple.com');
+                const { user } = await signInWithPopup(authInstance, provider);
+                const profile = await userService.syncUserProfile(user, 'apple');
+                await this.checkAccountStatus(profile);
+                return profile;
+            } else {
+                const csrf = Math.random().toString(36).substring(2, 15);
+                const nonce = await crypto.digestStringAsync(
+                    crypto.CryptoDigestAlgorithm.SHA256,
+                    csrf
+                );
 
-            const appleCredential = await AppleAuthentication.signInAsync({
-                requestedScopes: [
-                    AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
-                    AppleAuthentication.AppleAuthenticationScope.EMAIL,
-                ],
-                nonce,
-            });
+                const appleCredential = await AppleAuthentication.signInAsync({
+                    requestedScopes: [
+                        AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
+                        AppleAuthentication.AppleAuthenticationScope.EMAIL,
+                    ],
+                    nonce,
+                });
 
-            const { identityToken } = appleCredential;
+                const { identityToken } = appleCredential;
 
-            if (!identityToken) {
-                throw new Error('No identity token received from Apple Sign-In');
+                if (!identityToken) {
+                    throw new Error('No identity token received from Apple Sign-In');
+                }
+
+                const provider = new OAuthProvider('apple.com');
+                const credential = provider.credential({
+                    idToken: identityToken,
+                    rawNonce: csrf,
+                });
+
+                const { user } = await signInWithCredential(auth, credential);
+                const profile = await userService.syncUserProfile(user, 'apple');
+                await this.checkAccountStatus(profile);
+                return profile;
             }
-
-            const provider = new OAuthProvider('apple.com');
-            const credential = provider.credential({
-                idToken: identityToken,
-                rawNonce: csrf,
-            });
-
-            const { user } = await signInWithCredential(auth, credential);
-            const profile = await userService.syncUserProfile(user, 'apple');
-            await this.checkAccountStatus(profile);
-            return profile;
         } catch (error) {
             console.error('Apple Sign-In Error:', error);
             throw error;
@@ -205,60 +226,69 @@ export class AuthService {
 
     async signInWithMicrosoft(): Promise<UserProfile> {
         try {
-            const clientId = process.env.EXPO_PUBLIC_MICROSOFT_CLIENT_ID || '8bcf3186-2eea-47e5-a927-eef743e5e3a0';
-            const redirectUri = AuthSession.makeRedirectUri({
-                scheme: 'msauth.com.jsn22.atsresumeoptimizer',
-                path: 'auth',
-            });
-
-            // DEBUG: Log the redirect URI - copy this exact value to Azure AD
-            console.log('=== MICROSOFT AUTH REDIRECT URI ===');
-            console.log(redirectUri);
-            console.log('===================================');
-
-            const discovery = {
-                authorizationEndpoint: 'https://login.microsoftonline.com/common/oauth2/v2.0/authorize',
-                tokenEndpoint: 'https://login.microsoftonline.com/common/oauth2/v2.0/token',
-            };
-
-            const nonce = Math.random().toString(36).substring(7);
-            const request = new AuthSession.AuthRequest({
-                clientId,
-                redirectUri,
-                scopes: ['openid', 'profile', 'email'],
-                responseType: AuthSession.ResponseType.IdToken,
-                usePKCE: false, // Disable PKCE for implicit flow (id_token)
-                extraParams: {
-                    nonce: nonce,
-                }
-            });
-
-            const result = await request.promptAsync(discovery);
-
-            // DEBUG: Log the full result
-            console.log('=== MICROSOFT AUTH RESULT ===');
-            console.log('Type:', result.type);
-            if (result.type === 'success') {
-                console.log('Params:', JSON.stringify(result.params, null, 2));
-            }
-            console.log('Error:', (result as any).error);
-            console.log('ErrorCode:', (result as any).errorCode);
-            console.log('Full result:', JSON.stringify(result, null, 2));
-            console.log('=============================');
-
-            if (result.type === 'success' && result.params.id_token) {
+            if (Platform.OS === 'web') {
+                const authInstance = getAuth();
                 const provider = new OAuthProvider('microsoft.com');
-                const credential = provider.credential({
-                    idToken: result.params.id_token,
-                    rawNonce: nonce, // Must match the nonce sent in the request
-                });
-
-                const { user } = await signInWithCredential(auth, credential);
+                const { user } = await signInWithPopup(authInstance, provider);
                 const profile = await userService.syncUserProfile(user, 'microsoft');
                 await this.checkAccountStatus(profile);
                 return profile;
             } else {
-                throw new Error('Microsoft Sign-In was cancelled or failed.');
+                const clientId = process.env.EXPO_PUBLIC_MICROSOFT_CLIENT_ID || '8bcf3186-2eea-47e5-a927-eef743e5e3a0';
+                const redirectUri = AuthSession.makeRedirectUri({
+                    scheme: 'msauth.com.jsn22.atsresumeoptimizer',
+                    path: 'auth',
+                });
+
+                // DEBUG: Log the redirect URI - copy this exact value to Azure AD
+                console.log('=== MICROSOFT AUTH REDIRECT URI ===');
+                console.log(redirectUri);
+                console.log('===================================');
+
+                const discovery = {
+                    authorizationEndpoint: 'https://login.microsoftonline.com/common/oauth2/v2.0/authorize',
+                    tokenEndpoint: 'https://login.microsoftonline.com/common/oauth2/v2.0/token',
+                };
+
+                const nonce = Math.random().toString(36).substring(7);
+                const request = new AuthSession.AuthRequest({
+                    clientId,
+                    redirectUri,
+                    scopes: ['openid', 'profile', 'email'],
+                    responseType: AuthSession.ResponseType.IdToken,
+                    usePKCE: false, // Disable PKCE for implicit flow (id_token)
+                    extraParams: {
+                        nonce: nonce,
+                    }
+                });
+
+                const result = await request.promptAsync(discovery);
+
+                // DEBUG: Log the full result
+                console.log('=== MICROSOFT AUTH RESULT ===');
+                console.log('Type:', result.type);
+                if (result.type === 'success') {
+                    console.log('Params:', JSON.stringify(result.params, null, 2));
+                }
+                console.log('Error:', (result as any).error);
+                console.log('ErrorCode:', (result as any).errorCode);
+                console.log('Full result:', JSON.stringify(result, null, 2));
+                console.log('=============================');
+
+                if (result.type === 'success' && result.params.id_token) {
+                    const provider = new OAuthProvider('microsoft.com');
+                    const credential = provider.credential({
+                        idToken: result.params.id_token,
+                        rawNonce: nonce, // Must match the nonce sent in the request
+                    });
+
+                    const { user } = await signInWithCredential(auth, credential);
+                    const profile = await userService.syncUserProfile(user, 'microsoft');
+                    await this.checkAccountStatus(profile);
+                    return profile;
+                } else {
+                    throw new Error('Microsoft Sign-In was cancelled or failed.');
+                }
             }
         } catch (error: any) {
             console.error('Microsoft Sign-In Error:', error);
