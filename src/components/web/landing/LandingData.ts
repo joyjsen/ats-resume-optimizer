@@ -139,7 +139,6 @@ export type FeatureItem = {
     title: string;
     description: string;
     accentColor: string;
-    image?: any;
 };
 
 export const FEATURES: FeatureItem[] = [
@@ -149,7 +148,6 @@ export const FEATURES: FeatureItem[] = [
         title: 'Resume Analysis',
         description: 'Upload your resume and paste a job link. Our AI identifies matching skills, gaps, and gives you a precise ATS compatibility score.',
         accentColor: '#7c3aed',
-        image: require('../../../../assets/resume-analysis-card.png'),
     },
     {
         icon: 'auto-fix',

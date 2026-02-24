@@ -74,25 +74,12 @@ export const ls = StyleSheet.create({
     statLabel: { fontSize: 13, color: C.textSecondary, textAlign: 'center', maxWidth: 180 },
 
     // ==================== FEATURES ====================
-    featuresGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 32, justifyContent: 'center' },
-    featureCard: { width: 340, backgroundColor: C.white, borderRadius: 24, padding: 0, borderWidth: 1, borderColor: C.cardBorder, overflow: 'hidden', shadowColor: '#000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.05, shadowRadius: 24 },
-    featureCardContent: { padding: 24, paddingBottom: 12 },
-    featureCardIcon: { width: 44, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginBottom: 16 },
-    featureCardTitle: { fontSize: 20, fontWeight: '600', color: C.textPrimary, marginBottom: 8, letterSpacing: -0.4 },
-    featureCardDesc: { fontSize: 14, color: C.textSecondary, lineHeight: 22, marginBottom: 20 },
-    featureCardVisual: {
-        width: '100%',
-        height: 520, // 9:16 ratio approximately for 340px width is ~600, but we'll use a balanced height
-        backgroundColor: C.offWhite,
-        borderTopWidth: 1,
-        borderTopColor: C.borderLight,
-        alignItems: 'center',
-        justifyContent: 'center',
-        overflow: 'hidden',
-        position: 'relative'
-    },
-    featureCardScreen: { width: '85%', height: '100%', backgroundColor: '#000', borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingTop: 10, shadowColor: '#000', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.2, shadowRadius: 20 },
-    featureCardOverlayText: { position: 'absolute', top: 0, left: 0, right: 0, padding: 24, zIndex: 10, backgroundColor: 'rgba(255,255,255,0.95)' },
+    featuresGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 24, justifyContent: 'center' },
+    featureCard: { width: 340, backgroundColor: C.white, borderRadius: 20, padding: 32, borderWidth: 1, borderColor: C.cardBorder, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.05, shadowRadius: 12 },
+    featureCardContent: { flex: 1 },
+    featureCardIcon: { width: 56, height: 56, borderRadius: 16, alignItems: 'center', justifyContent: 'center', marginBottom: 24 },
+    featureCardTitle: { fontSize: 20, fontWeight: '700', color: C.textPrimary, marginBottom: 12, letterSpacing: -0.4 },
+    featureCardDesc: { fontSize: 15, color: C.textSecondary, lineHeight: 24 },
 
     // ==================== HOW IT WORKS ====================
     stepsRow: { flexDirection: 'row', gap: 32, justifyContent: 'center', flexWrap: 'wrap' },
