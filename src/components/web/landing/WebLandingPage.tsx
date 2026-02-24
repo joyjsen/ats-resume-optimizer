@@ -204,8 +204,8 @@ const DropdownContent: React.FC<{ activeDropdown: DropdownKey; onItemClick: (sec
 const HeroSection: React.FC<{ jobUrl: string; setJobUrl: (v: string) => void; onStart: () => void; isSmall: boolean }> = ({ jobUrl, setJobUrl, onStart, isSmall }) => (
     <View style={ls.heroContainer}>
         <Image
-            source={{ uri: 'https://images.unsplash.com/photo-1451187580459-43490279c0fa?auto=format&fit=crop&q=80&w=2000' }}
-            style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, opacity: 0.4 }}
+            source={{ uri: 'https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?auto=format&fit=crop&q=80&w=2000' }}
+            style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, opacity: 0.35 }}
             resizeMode="cover"
         />
         <LinearGradient
@@ -241,9 +241,11 @@ const HeroSection: React.FC<{ jobUrl: string; setJobUrl: (v: string) => void; on
             {!isSmall && (
                 <View style={ls.heroRight}>
                     <View style={ls.heroMockup}>
-                        <MaterialCommunityIcons name="file-document-edit-outline" size={48} color="rgba(255,255,255,0.15)" />
-                        <Text style={ls.heroMockupText}>Product Screenshot Placeholder</Text>
-                        <Text style={{ color: 'rgba(255,255,255,0.2)', fontSize: 12, marginTop: 6 }}>Replace with app screenshots</Text>
+                        <img
+                            src={require('../../../../assets/hero-demo.gif')}
+                            style={{ width: '100%', height: '100%', borderRadius: 16, objectFit: 'cover' }}
+                            alt="RiResume App Demo"
+                        />
                     </View>
                 </View>
             )}
