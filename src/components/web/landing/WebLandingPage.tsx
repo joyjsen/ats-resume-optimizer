@@ -241,10 +241,10 @@ const HeroSection: React.FC<{ jobUrl: string; setJobUrl: (v: string) => void; on
             {!isSmall && (
                 <View style={ls.heroRight}>
                     <View style={ls.heroMockup}>
-                        <img
-                            src={require('../../../../assets/hero-demo.gif')}
-                            style={{ width: '100%', height: '100%', borderRadius: 16, objectFit: 'cover' }}
-                            alt="RiResume App Demo"
+                        <Image
+                            source={require('../../../../assets/hero-mockup.png')}
+                            style={{ width: '100%', height: '100%', borderRadius: 16 }}
+                            resizeMode="cover"
                         />
                     </View>
                 </View>
