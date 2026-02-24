@@ -97,10 +97,18 @@ export const AuthModal: React.FC<AuthModalProps> = ({ visible, onClose, initialM
     };
 
     const handleSocialLogin = async (provider: 'google' | 'apple' | 'microsoft') => {
+        if (provider === 'apple' && Platform.OS === 'web') {
+            Alert.alert(
+                "Apple Login on Web",
+                "To proceed on the web, please use the email address associated with your mobile account to Sign In or Sign Up directly."
+            );
+            return;
+        }
+
         setSocialLoading(provider);
         try {
             if (provider === 'google') await authService.signInWithGoogle();
-            else if (provider === 'apple') await authService.signInWithApple();
+            else if (provider === 'apple') await authService.signInWithApple(); // This will only hit on native if we kept the button
             else if (provider === 'microsoft') await authService.signInWithMicrosoft();
 
             onClose();
