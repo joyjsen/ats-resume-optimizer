@@ -202,7 +202,16 @@ const DropdownContent: React.FC<{ activeDropdown: DropdownKey; onItemClick: (sec
 // HERO SECTION
 // ============================================================
 const HeroSection: React.FC<{ jobUrl: string; setJobUrl: (v: string) => void; onStart: () => void; isSmall: boolean }> = ({ jobUrl, setJobUrl, onStart, isSmall }) => (
-    <LinearGradient colors={[C.heroBgStart, C.heroBgEnd, '#1a1050']} style={ls.heroContainer}>
+    <View style={ls.heroContainer}>
+        <Image
+            source={{ uri: 'https://images.unsplash.com/photo-1451187580459-43490279c0fa?auto=format&fit=crop&q=80&w=2000' }}
+            style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, opacity: 0.4 }}
+            resizeMode="cover"
+        />
+        <LinearGradient
+            colors={['transparent', 'rgba(26, 16, 80, 0.8)', '#1a1050']}
+            style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
+        />
         <View style={[ls.heroInner, isSmall && { flexDirection: 'column' }]}>
             <View style={ls.heroLeft}>
                 <Text style={[ls.heroTagline, isSmall && { fontSize: 36, lineHeight: 44 }]}>
@@ -239,7 +248,7 @@ const HeroSection: React.FC<{ jobUrl: string; setJobUrl: (v: string) => void; on
                 </View>
             )}
         </View>
-    </LinearGradient>
+    </View>
 );
 
 // ============================================================
