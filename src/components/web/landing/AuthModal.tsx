@@ -98,10 +98,14 @@ export const AuthModal: React.FC<AuthModalProps> = ({ visible, onClose, initialM
 
     const handleSocialLogin = async (provider: 'google' | 'apple' | 'microsoft') => {
         if (provider === 'apple' && Platform.OS === 'web') {
-            Alert.alert(
-                "Apple Login",
-                "To proceed on web, please use the email address as defined in your mobile app."
-            );
+            if (typeof window !== 'undefined') {
+                window.alert("Apple Login: To proceed on web, please use the email address as defined in your mobile app.");
+            } else {
+                Alert.alert(
+                    "Apple Login",
+                    "To proceed on web, please use the email address as defined in your mobile app."
+                );
+            }
             return;
         }
 
