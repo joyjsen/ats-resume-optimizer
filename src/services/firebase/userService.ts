@@ -14,7 +14,8 @@ import {
     Timestamp,
     deleteDoc
 } from 'firebase/firestore';
-import { db, auth } from './config';
+import { httpsCallable } from 'firebase/functions';
+import { db, auth, functions } from './config';
 import { ENV } from '../../config/env';
 import { UserProfile, AuthProvider } from '../../types/profile.types';
 
@@ -56,6 +57,9 @@ export class UserService {
                 photoURL: user.photoURL || '',
                 phoneNumber: user.phoneNumber || '',
                 provider: provider,
+                // SECURITY TODO: Admin role is determined by email comparison.
+                // This should be replaced with Firebase Custom Claims for proper
+                // server-side role enforcement. See: https://firebase.google.com/docs/auth/admin/custom-claims
                 role: user.email === ENV.ADMIN_EMAIL ? 'admin' : 'user',
                 emailVerified: user.emailVerified || false,
                 phoneVerified: !!user.phoneNumber,
@@ -101,6 +105,17 @@ export class UserService {
                 updatedAt: serverTimestamp(),
             };
 
+            // Sync critical info from Auth if it changed
+            if (user.email && user.email !== data.email) {
+                updates.email = user.email;
+            }
+            if (user.photoURL && user.photoURL !== data.photoURL) {
+                updates.photoURL = user.photoURL;
+            }
+            if (user.displayName && !data.displayName) {
+                updates.displayName = user.displayName;
+            }
+
             // RECOVERY & ENFORCEMENT:
             if (user.email === ENV.ADMIN_EMAIL) {
                 if (data.role !== 'admin') {
@@ -132,42 +147,27 @@ export class UserService {
      */
     async checkEmailExists(email: string): Promise<{ exists: boolean; status?: string; displayName?: string; provider?: string; uid?: string } | null> {
         try {
-            const emailLower = email.toLowerCase();
-
-            // Check main users collection
-            const usersQuery = query(this.usersCollection, where('email', '==', emailLower));
-            const usersSnapshot = await getDocs(usersQuery);
-
-            if (!usersSnapshot.empty) {
-                const userData = usersSnapshot.docs[0].data();
-                return {
-                    exists: true,
-                    status: userData.accountStatus || 'active',
-                    displayName: userData.displayName,
-                    provider: userData.provider || 'email',
-                    uid: userData.uid
-                };
-            }
-
-            // Also check deleted_accounts collection
-            const deletedQuery = query(collection(db, 'deleted_accounts'), where('email', '==', emailLower));
-            const deletedSnapshot = await getDocs(deletedQuery);
-
-            if (!deletedSnapshot.empty) {
-                const deletedData = deletedSnapshot.docs[0].data();
-                return {
-                    exists: true,
-                    status: 'deleted',
-                    displayName: deletedData.displayName,
-                    provider: deletedData.provider || 'unknown',
-                    uid: deletedData.uid
-                };
-            }
-
-            return { exists: false };
+            const checkUserProvider = httpsCallable(functions, 'checkUserProvider');
+            const result = await checkUserProvider({ email });
+            return result.data as any;
         } catch (error) {
             console.error('Error checking email existence:', error);
-            return null;
+            throw error;
+        }
+    }
+
+    /**
+     * Check if a phone number already exists in the database
+     * Returns the account status if found, null if not found
+     */
+    async checkPhoneExists(phone: string): Promise<{ exists: boolean; status?: string; displayName?: string; provider?: string; uid?: string } | null> {
+        try {
+            const checkPhoneProvider = httpsCallable(functions, 'checkPhoneProvider');
+            const result = await checkPhoneProvider({ phone });
+            return result.data as any;
+        } catch (error) {
+            console.error('Error checking phone existence:', error);
+            throw error;
         }
     }
 
@@ -237,12 +237,8 @@ export class UserService {
         try {
             // Debug: Check current auth state
             const currentUser = auth.currentUser;
-            console.log(`[Archive] Starting archive for uid: ${uid}`);
-            console.log(`[Archive] Current auth user: ${currentUser?.uid}`);
-            console.log(`[Archive] Auth UIDs match: ${currentUser?.uid === uid}`);
-
             const userRef = doc(db, this.collectionName, uid);
-            console.log(`[Archive] Step 1: Fetching user profile...`);
+            if (__DEV__) console.log(`[Archive] Fetching user profile for ${uid}...`);
             const userSnapshot = await getDoc(userRef);
 
             if (!userSnapshot.exists()) {
@@ -287,18 +283,34 @@ export class UserService {
             // 3. Create Archive Document (essential - will fail if permissions are wrong)
             console.log(`[Archive] Step 4: Creating archive document at deleted_accounts/${uid}...`);
             const archiveRef = doc(collection(db, 'deleted_accounts'), uid);
+
+            // Sanitize profile to remove undefined values (Firestore fails on undefined)
+            const sanitizeForFirestore = (obj: any) => {
+                const sanitized = { ...obj };
+                Object.keys(sanitized).forEach(key => {
+                    if (sanitized[key] === undefined) {
+                        delete sanitized[key];
+                    }
+                });
+                return sanitized;
+            };
+
+            const sanitizedProfile = sanitizeForFirestore(userData);
+            // Explicitly remove photoBase64 to keep archive sizes small
+            delete sanitizedProfile.photoBase64;
+
             await setDoc(archiveRef, {
                 uid: uid,
-                email: userData.email,
-                displayName: userData.displayName,
-                provider: userData.provider,
+                email: userData.email || '',
+                displayName: userData.displayName || 'User',
+                provider: userData.provider || 'unknown',
                 createdAt: userData.createdAt,
                 deletedAt: serverTimestamp(),
                 reason: reason,
                 totalSpent: totalSpent,
                 historyCount: historyCount,
                 tokenBalanceAtDeletion: userData.tokenBalance || 0,
-                fullProfile: userData, // Keep a snapshot for admin
+                fullProfile: sanitizedProfile,
             });
             console.log(`[Archive] Step 4 complete: Archive document created`);
 
@@ -329,6 +341,20 @@ export class UserService {
             });
         } catch (error) {
             console.error("Error deleting user account:", error);
+            throw error;
+        }
+    }
+
+    /**
+     * Hard delete a user account document from Firestore.
+     * Used during onboarding exit to ensure no partial profile remains.
+     */
+    async hardDeleteAccount(uid: string): Promise<void> {
+        try {
+            const userRef = doc(db, this.collectionName, uid);
+            await deleteDoc(userRef);
+        } catch (error) {
+            console.error("Error hard deleting user account:", error);
             throw error;
         }
     }
@@ -398,6 +424,8 @@ export class UserService {
 
     /**
      * Deduct tokens from user balance
+     * @deprecated Use `activityService.logActivity()` with a transaction instead
+     * to prevent race conditions where balance goes negative.
      */
     async deductTokens(uid: string, amount: number): Promise<void> {
         const userRef = doc(db, this.collectionName, uid);
@@ -422,6 +450,9 @@ export class UserService {
 
     /**
      * Get platform-wide statistics (Admin only)
+     * SECURITY TODO: This method runs client-side. Ensure Firestore security rules
+     * restrict the 'users' collection to admin-only reads for full collection scans.
+     * Consider migrating to a Cloud Function for admin operations.
      */
     async getPlatformStats(): Promise<any> {
         const usersSnapshot = await getDocs(this.usersCollection);
@@ -509,15 +540,9 @@ export class UserService {
             } as UserProfile;
         });
 
-        // Debug: Log user statuses
-        console.log('[getAllUsers] Total users from Firestore:', allUsers.length);
-        allUsers.forEach(u => {
-            console.log(`[getAllUsers] ${u.displayName}: accountStatus = "${u.accountStatus}"`);
-        });
-
         // Filter out deleted users - they appear in Deleted Users section
         const activeUsers = allUsers.filter(user => user.accountStatus !== 'deleted');
-        console.log('[getAllUsers] After filtering deleted:', activeUsers.length);
+        if (__DEV__) console.log('[getAllUsers] After filtering deleted:', activeUsers.length);
 
         return activeUsers;
     }

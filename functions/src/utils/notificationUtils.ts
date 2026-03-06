@@ -30,7 +30,11 @@ export async function sendPush(uid: string, title: string, body: string, data?: 
         let fcmSent = false;
         const fcmTokens = userData?.fcmTokens || [];
         const validFcmTokens = (Array.isArray(fcmTokens) ? fcmTokens : [fcmTokens])
-            .filter((t: any) => typeof t === 'string' && t.length > 20);
+            .filter((t: any) =>
+                typeof t === 'string' &&
+                t.length > 20 &&
+                !/^[0-9a-fA-F]{64}$/.test(t) // Skip raw APNs hex tokens (64 chars hex)
+            );
 
         if (validFcmTokens.length > 0) {
             console.log(`[sendPush] Trying direct FCM with ${validFcmTokens.length} token(s)...`);
@@ -93,11 +97,11 @@ export async function sendPush(uid: string, title: string, body: string, data?: 
         }
 
         const expoTokens = (Array.isArray(rawTokens) ? rawTokens : [rawTokens])
-            .filter((t: any) => typeof t === 'string' && t.startsWith('ExponentPushToken'));
+            .filter((t: any) => typeof t === 'string' && (t.startsWith('ExponentPushToken') || t.startsWith('ExpoPushToken')));
 
-        if (expoTokens.length > 0 && !fcmSent) {
-            // Only send via Expo if FCM failed or no FCM tokens (prevent duplicates on Android)
-            console.log(`[sendPush] Sending via Expo Push API to ${expoTokens.length} token(s) (fallback)...`);
+        if (expoTokens.length > 0) {
+            // Send via Expo Push API
+            console.log(`[sendPush] Sending via Expo Push API to ${expoTokens.length} token(s)...`);
 
             for (const token of expoTokens) {
                 try {
@@ -113,6 +117,7 @@ export async function sendPush(uid: string, title: string, body: string, data?: 
                         interruptionLevel: 'active',
                         badge: 1,
                         projectId: "3584d443-a654-4a9b-98bb-8344ba4c3110",
+                        experienceId: "@joyjsen1608/riresume", // Explicit for dev clients
                     };
 
                     const response = await fetch("https://exp.host/--/api/v2/push/send", {

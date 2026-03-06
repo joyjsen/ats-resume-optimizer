@@ -6,6 +6,8 @@ import { authService, UserInactiveError } from '../../src/services/firebase/auth
 import { auth } from '../../src/services/firebase/config';
 import RecaptchaVerifierModal from '../../src/components/auth/RecaptchaVerifierModal';
 import { LinearGradient } from 'expo-linear-gradient';
+import { CountryCodeSelector } from '../../src/components/auth/CountryCodeSelector';
+import { COUNTRY_CALLING_CODES, CountryCallingCode } from '../../src/constants/countries';
 
 export default function SignIn() {
     const router = useRouter();
@@ -16,6 +18,9 @@ export default function SignIn() {
     const [socialLoading, setSocialLoading] = useState<string | null>(null);
     const [showPhoneLogin, setShowPhoneLogin] = useState(false);
     const [phoneNumber, setPhoneNumber] = useState('');
+    const [selectedCountry, setSelectedCountry] = useState<CountryCallingCode>(
+        COUNTRY_CALLING_CODES.find(c => c.iso === 'US') || COUNTRY_CALLING_CODES[0]
+    );
     const [verificationCode, setVerificationCode] = useState('');
     const [confirming, setConfirming] = useState(false);
     const params = useLocalSearchParams();
@@ -76,6 +81,13 @@ export default function SignIn() {
             return;
         }
 
+        // Email format validation
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(email.trim())) {
+            Alert.alert("Error", "Please enter a valid email address.");
+            return;
+        }
+
         setLoading(true);
         try {
             await authService.loginWithEmail(email, password);
@@ -104,31 +116,29 @@ export default function SignIn() {
     const handleSendVerification = async () => {
         console.log("[SignIn] handleSendVerification called with:", phoneNumber);
         if (!phoneNumber) {
-            Alert.alert("Error", "Please enter a valid phone number (e.g. +1...)");
+            Alert.alert("Error", "Please enter a valid phone number.");
             return;
         }
 
-        // Basic formatting/validation
+        // Combine selected country code and phone number
         let formattedNumber = phoneNumber.replace(/\s+/g, '').replace(/-/g, '').replace(/\(|\)/g, '');
-        if (!formattedNumber.startsWith('+')) {
-            // Suggest adding country code or auto-add + if user typed 1...
-            if (formattedNumber.length === 10) {
-                // Assume US (+1) for 10-digit numbers for better UX
-                formattedNumber = '+1' + formattedNumber;
-            } else if (formattedNumber.startsWith('1') && formattedNumber.length === 11) {
-                formattedNumber = '+' + formattedNumber;
-            } else {
-                Alert.alert("Invalid Format", "Please include your country code (e.g. +1 for USA).");
-                return;
-            }
+
+        // Ensure the number doesn't already start with the country code if the user typed it
+        if (formattedNumber.startsWith(selectedCountry.code)) {
+            // If user typed +1... and selected +1, don't double it up
+            // However, selectedCountry.code already starts with +
+            // We want the final number to be in E.164 format: +[countryCode][number]
+            // Selected country code usually looks like "+1" or "+91"
         }
+
+        // Safe E.164 formatting
+        const cleanNumber = formattedNumber.startsWith('+') ? formattedNumber : `${selectedCountry.code}${formattedNumber}`;
 
         setLoading(true);
         try {
-            // Updated to pass the verifier (undefined on web to trigger auto-init)
             const verifier = Platform.OS === 'web' ? undefined : recaptchaVerifier.current;
-            console.log("[SignIn] Calling signInWithPhoneNumber. Platform:", Platform.OS, "Verifier:", verifier, "Number:", formattedNumber);
-            await authService.signInWithPhoneNumber(formattedNumber, verifier || undefined);
+            console.log("[SignIn] Calling signInWithPhoneNumber. Platform:", Platform.OS, "Verifier:", verifier, "Number:", cleanNumber);
+            await authService.signInWithPhoneNumber(cleanNumber, verifier || undefined);
             console.log("[SignIn] Code sent successfully.");
             setConfirming(true);
             Alert.alert("Success", "Verification code sent!");
@@ -278,15 +288,21 @@ export default function SignIn() {
 
                                 {!confirming ? (
                                     <>
-                                        <TextInput
-                                            label="Phone Number (e.g. +1...)"
-                                            value={phoneNumber}
-                                            onChangeText={setPhoneNumber}
-                                            mode="outlined"
-                                            keyboardType="phone-pad"
-                                            autoComplete="tel"
-                                            style={styles.input}
-                                        />
+                                        <View style={{ flexDirection: 'row', alignItems: 'flex-start', marginBottom: 16 }}>
+                                            <CountryCodeSelector
+                                                selectedCountry={selectedCountry}
+                                                onSelect={setSelectedCountry}
+                                            />
+                                            <TextInput
+                                                label="Phone Number"
+                                                value={phoneNumber}
+                                                onChangeText={setPhoneNumber}
+                                                mode="outlined"
+                                                keyboardType="phone-pad"
+                                                autoComplete="tel"
+                                                style={[styles.input, { flex: 1, marginBottom: 0 }]}
+                                            />
+                                        </View>
                                         <Button
                                             mode="contained"
                                             onPress={handleSendVerification}

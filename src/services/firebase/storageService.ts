@@ -3,9 +3,12 @@
 
 import { doc, updateDoc } from 'firebase/firestore';
 import { db } from './config';
-import * as FS from 'expo-file-system/legacy';
-const FileSystem = FS as any;
+import * as FileSystem from 'expo-file-system/legacy';
+import * as ImageManipulator from 'expo-image-manipulator';
 
+// ARCHITECTURE TODO: Profile photos are stored as base64 data URLs in Firestore.
+// This inflates document sizes (100KB-500KB per photo) and increases read costs.
+// Migrate to Firebase Storage and store only the download URL in Firestore.
 export class StorageService {
 
     /**
@@ -17,13 +20,16 @@ export class StorageService {
      */
     async uploadProfilePhoto(uid: string, uri: string): Promise<string> {
         try {
-            // Read file as base64
-            const base64 = await FileSystem.readAsStringAsync(uri, {
-                encoding: 'base64',
-            });
+            // 1. Resize and compress the image to keep base64 string small for Firestore
+            // Profile pictures don't need to be huge. 300x300 is plenty for mobile.
+            const manipulatedImage = await ImageManipulator.manipulateAsync(
+                uri,
+                [{ resize: { width: 300, height: 300 } }],
+                { compress: 0.6, format: ImageManipulator.SaveFormat.JPEG, base64: true }
+            );
 
-            // Create data URL
-            const dataUrl = `data:image/jpeg;base64,${base64}`;
+            // Create data URL from the manipulated result
+            const dataUrl = `data:image/jpeg;base64,${manipulatedImage.base64}`;
 
             // Store in user profile document
             const userRef = doc(db, 'users', uid);

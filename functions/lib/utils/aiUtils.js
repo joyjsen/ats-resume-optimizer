@@ -1,13 +1,13 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.calculateATSScore = exports.callAiWithFallback = exports.callPerplexity = void 0;
+exports.calculateATSScore = exports.extractJson = exports.callAiWithFallback = exports.callPerplexity = void 0;
 const axios_1 = require("axios");
 const PERPLEXITY_API_URL = "https://api.perplexity.ai/chat/completions";
 /**
  * Call Perplexity API as fallback or for research
  */
-async function callPerplexity(perplexityKey, systemContent, userContent, returnJson = true) {
-    console.log("[AI Fallback/Research] Calling Perplexity...");
+async function callPerplexity(perplexityKey, systemContent, userContent, returnJson = true, maxTokens = 4000) {
+    console.log(`[AI Fallback/Research] Calling Perplexity (maxTokens: ${maxTokens})...`);
     const finalUserContent = returnJson
         ? userContent + "\n\nIMPORTANT: Return ONLY valid JSON."
         : userContent + "\n\nFormat your response as clear, well-structured markdown with headings and bullet points.";
@@ -18,7 +18,7 @@ async function callPerplexity(perplexityKey, systemContent, userContent, returnJ
             { role: "user", content: finalUserContent }
         ],
         temperature: 0.3,
-        max_tokens: 4000,
+        max_tokens: maxTokens,
     }, {
         headers: {
             "Authorization": `Bearer ${perplexityKey}`,
@@ -55,17 +55,36 @@ async function callAiWithFallback(openai, perplexityKey, systemInstruction, user
     }
     catch (openaiError) {
         console.warn(`[AI Utils] OpenAI failed: ${openaiError.message}, trying Perplexity...`);
-        const result = await callPerplexity(perplexityKey, perplexitySystemInstruction || systemInstruction, userContent, jsonMode);
+        const result = await callPerplexity(perplexityKey, perplexitySystemInstruction || systemInstruction, userContent, jsonMode, maxTokens);
         if (jsonMode) {
-            return result
-                .replace(/```json\s*/gi, "")
-                .replace(/```\s*/g, "")
-                .trim();
+            return extractJson(result);
         }
         return result;
     }
 }
 exports.callAiWithFallback = callAiWithFallback;
+/**
+ * Robustly extract JSON from AI string results.
+ * Handles markdown fences, trailing text, and partial results.
+ */
+function extractJson(content) {
+    if (!content)
+        return "";
+    // Step 1: Remove markdown fences
+    let cleaned = content
+        .replace(/```json\s*/gi, "")
+        .replace(/```\s*/g, "")
+        .trim();
+    // Step 2: Extract the first balanced JSON object { ... }
+    const firstBrace = cleaned.indexOf('{');
+    const lastBrace = cleaned.lastIndexOf('}');
+    if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+        return cleaned.substring(firstBrace, lastBrace + 1);
+    }
+    // Step 3: Minimal fallback (return cleaned if no braces found, though likely invalid)
+    return cleaned;
+}
+exports.extractJson = extractJson;
 /**
  * Calculate ATS score from match analysis
  */

@@ -81,17 +81,23 @@ Analyze the candidate's resume against the provided job posting to determine app
 ## ANALYSIS METHODOLOGY
 
 ### Skill Discovery & Classification
-1. **READ THE FULL DESCRIPTION**: Do not rely only on structured requirements. Identify implied skills, tools, and methodologies mentioned anywhere in the job description.
-2. **Matched Skill**: The candidate explicitly demonstrates this skill through listed experience, projects, certifications, or their skills section. Evidence must be clear and direct.
-3. **Partial Match (CRITICAL)**: Actively look for transferable or adjacent skills. If a candidate has X and the job requires Y, and X is a common precursor or peer to Y (e.g., PostgreSQL for MySQL, React for Vue), classify it as a Partial Match. 
-   - **Explain transferability**: Explicitly state how the candidate's existing skill bridges the gap.
-4. **Missing Skill**: No evidence whatsoever in the resume — neither direct nor transferable.
+1. **READ THE FULL DESCRIPTION**: Identify ALL required and implied skills, tools, methodologies, and EDUCATIONAL requirements.
+2. **Matched Skill**: The candidate demonstrates this skill anywhere in their resume (Experience, Education, Certifications, Projects, or Skills list).
+   - **Cross-Section Evidence**: If a skill is found in Education (e.g., "Relevant Coursework") or Certifications, it is a MATCH, even if missing from Experience.
+3. **Partial Match (CRITICAL)**: Look for transferable skills. If the candidate has X (e.g., PostgreSQL) and the job requires Y (e.g., MySQL), explain the transferability.
+4. **Missing Skill**: Absolutely no evidence found in ANY section of the resume (Experience, Education, Certs, Projects, or Skills).
 
 ### Importance Classification
-- **critical**: Explicitly stated as "required," "must-have," or listed in minimum qualifications.
-- **high**: Strongly emphasized in the posting (mentioned multiple times, listed early).
-- **medium**: Listed as "preferred," "nice-to-have," or mentioned once without emphasis.
-- **low**: Implied by the role context or industry norms.
+- **critical**: Stated as "required," "must-have," or an educational degree/certification requirement essential for the role.
+- **high**: Strongly emphasized or listed early in the description.
+- **medium**: "Preferred" or "nice-to-have" qualifications.
+- **low**: Implied context or minor tools.
+
+### Degree Normalization (CRITICAL)
+- **Bachelor's**: Treat "BA", "B.A.", "BSc", "B.S.", "BS", "Undergraduate Degree", and "4-year degree" as a MATCH for "Bachelor's degree".
+- **Master's**: Treat "MA", "MS", "M.S.", "MBA", "MSc", and "Postgraduate Degree" as a MATCH for "Master's degree".
+- **Doctorate**: Treat "PhD", "Ph.D.", "D.Phil", and "Doctorate" as identical.
+- **Equivalency**: If the resume lists a higher degree (e.g., Master's) and the job requires a lower one (e.g., Bachelor's), this is a MATCH.
 
 ### Confidence Scoring (0-100)
 Rate how confident you are in each classification (90-100 for explicit, 50-89 for strong context/transferable, <50 for weak inference).

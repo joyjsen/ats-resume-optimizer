@@ -15,6 +15,7 @@ import { ShareIntentProvider } from "expo-share-intent";
 import { useResumeStore } from '../src/store/resumeStore';
 import { useShareIntentHandler } from '../src/hooks/useShareIntentHandler';
 import { auth } from '../src/services/firebase/config';
+import { iapService } from '../src/services/iap/iapService';
 import { ThemeProvider, useAppTheme } from '../src/context/ThemeContext';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 
@@ -40,6 +41,12 @@ function RootLayoutContent() {
     const { sharedUrl, sharedContent, clearSharedUrl } = useShareIntentHandler();
     const { theme } = useAppTheme();
     const isMounted = useRef(false);
+    const textPropsSet = useRef(false);
+
+    // Compute public/auth route status early so useEffect can reference them
+    const publicRoutes = ['settings/terms', 'settings/privacy', 'settings/about', 'settings/help'];
+    const isPublicRoute = publicRoutes.some(route => segments.join('/').includes(route));
+    const isAuthRoute = segments[0] === '(auth)';
 
     useEffect(() => {
         isMounted.current = true;
@@ -72,6 +79,13 @@ function RootLayoutContent() {
         if (userProfile && isInitialized) {
             const cleanupListeners = notificationService.setupNotificationListeners();
             notificationService.registerForPushNotificationsAsync().catch(console.error);
+
+            // 1. Initialize IAP early (iOS only)
+            if (Platform.OS === 'ios') {
+                iapService.initialize().catch(err => {
+                    console.warn('[Root] IAP initialization failed:', err);
+                });
+            }
 
             return () => {
                 cleanupListeners();
@@ -136,7 +150,7 @@ function RootLayoutContent() {
                         }
                     }, 0);
                 }
-            } else if (currentRoute !== 'onboarding') {
+            } else if (currentRoute !== 'onboarding' && currentRoute !== 'sign-up') {
                 setTimeout(() => router.replace('/(auth)/onboarding' as any), 0);
             }
         }
@@ -157,8 +171,9 @@ function RootLayoutContent() {
         headerTitleStyle: { color: theme.colors.onSurface },
     };
 
-    // Override Text default props on native platforms to prevent font scaling issues
-    if (Platform.OS !== 'web') {
+    // Override Text default props on native platforms (one-time)
+    if (Platform.OS !== 'web' && !textPropsSet.current) {
+        textPropsSet.current = true;
         const TextComponent = RNText as any;
         if (TextComponent.defaultProps) {
             TextComponent.defaultProps.maxFontSizeMultiplier = 1.3;
@@ -166,10 +181,6 @@ function RootLayoutContent() {
             TextComponent.defaultProps = { maxFontSizeMultiplier: 1.3 };
         }
     }
-
-    const publicRoutes = ['settings/terms', 'settings/privacy', 'settings/about', 'settings/help'];
-    const isPublicRoute = publicRoutes.some(route => segments.join('/').includes(route));
-    const isAuthRoute = segments[0] === '(auth)';
 
     if (Platform.OS === 'web' && !userProfile && !isPublicRoute && !isAuthRoute) {
         return (
@@ -192,14 +203,14 @@ function RootLayoutContent() {
             <Stack.Screen name="purchase-history" options={{ title: 'Purchase History', presentation: 'modal' }} />
             <Stack.Screen name="analytics" options={{ title: 'Usage Analytics', headerBackTitle: 'Back' }} />
             <Stack.Screen name="history-details" options={{ headerBackTitle: 'Back', title: '' }} />
-
             <Stack.Screen name="user-activity" options={{ title: 'Activity History', headerBackTitle: 'Back' }} />
+            <Stack.Screen name="profile/edit" options={{ title: 'Edit Profile', headerBackTitle: 'Back' }} />
 
             {/* Settings Pages */}
-            <Stack.Screen name="settings/about" options={{ title: 'About This App', headerBackTitle: 'Back' }} />
-            <Stack.Screen name="settings/help" options={{ title: 'Help & Support', headerBackTitle: 'Back' }} />
-            <Stack.Screen name="settings/privacy" options={{ title: 'Privacy Policy', headerBackTitle: 'Back' }} />
-            <Stack.Screen name="settings/terms" options={{ title: 'Terms of Service', headerBackTitle: 'Back' }} />
+            <Stack.Screen name="settings/about" options={{ title: 'About RiResume', headerBackTitle: 'Back', presentation: 'card' }} />
+            <Stack.Screen name="settings/help" options={{ title: 'Help & Support', headerBackTitle: 'Back', presentation: 'card' }} />
+            <Stack.Screen name="settings/privacy" options={{ title: 'Privacy Policy', headerBackTitle: 'Back', presentation: 'card' }} />
+            <Stack.Screen name="settings/terms" options={{ title: 'Terms of Service', headerBackTitle: 'Back', presentation: 'card' }} />
 
             <Stack.Screen name="admin" options={{ headerShown: false }} />
         </Stack>

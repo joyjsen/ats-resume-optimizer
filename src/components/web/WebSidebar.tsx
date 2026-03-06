@@ -1,9 +1,10 @@
 import React from 'react';
-import { View, TouchableOpacity, useWindowDimensions } from 'react-native';
+import { View, TouchableOpacity, useWindowDimensions, Image } from 'react-native';
 import { Text, useTheme, Icon, Divider } from 'react-native-paper';
 import { useRouter, useSegments } from 'expo-router';
 import { useProfileStore } from '../../store/profileStore';
 import { webStyles } from '../../styles/web.styles';
+import { authService } from '../../services/firebase/authService';
 
 interface NavItem {
     label: string;
@@ -34,6 +35,15 @@ export const WebSidebar: React.FC = () => {
         router.push(route as any);
     };
 
+    const handleLogout = async () => {
+        try {
+            await authService.logout();
+            router.replace('/' as any);
+        } catch (error) {
+            console.error('Logout error:', error);
+        }
+    };
+
     return (
         <View
             style={[
@@ -46,11 +56,15 @@ export const WebSidebar: React.FC = () => {
             ]}
         >
             {/* Logo / Brand */}
-            <View style={{ paddingHorizontal: 16, paddingBottom: 16, alignItems: isCollapsed ? 'center' : 'flex-start' }}>
-                <Icon source="briefcase-check" size={32} color={theme.colors.primary} />
+            <View style={{ paddingHorizontal: 16, paddingBottom: 16, alignItems: isCollapsed ? 'center' : 'flex-start', flexDirection: isCollapsed ? 'column' : 'row', gap: 10 }}>
+                <Image
+                    source={require('../../../assets/logo.png')}
+                    style={{ width: isCollapsed ? 36 : 40, height: isCollapsed ? 36 : 40, borderRadius: 8 }}
+                    resizeMode="contain"
+                />
                 {!isCollapsed && (
-                    <Text variant="titleMedium" style={{ color: theme.colors.onSurface, marginTop: 8, fontWeight: 'bold' }}>
-                        ATS Optimizer
+                    <Text variant="titleMedium" style={{ color: theme.colors.onSurface, fontWeight: 'bold' }}>
+                        RiResume
                     </Text>
                 )}
             </View>
@@ -99,6 +113,23 @@ export const WebSidebar: React.FC = () => {
                     )}
                 </View>
             </View>
+
+            {/* Logout Button */}
+            <Divider style={{ backgroundColor: theme.colors.outlineVariant }} />
+            <TouchableOpacity
+                onPress={handleLogout}
+                style={[
+                    webStyles.sidebarItem,
+                    { marginTop: 4, marginBottom: 8 },
+                ]}
+            >
+                <Icon source="logout" size={22} color={theme.colors.error} />
+                {!isCollapsed && (
+                    <Text style={[webStyles.sidebarItemText, { color: theme.colors.error }]}>
+                        Logout
+                    </Text>
+                )}
+            </TouchableOpacity>
         </View>
     );
 };

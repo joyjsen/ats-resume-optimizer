@@ -163,12 +163,13 @@ export interface TokenPackage {
     price: number;
     description: string;
     bonusPercent?: number;
+    appleProductId?: string; // App Store Connect IAP product ID (iOS only)
 }
 
 export const TOKEN_PACKAGES: TokenPackage[] = [
-    { id: 'starter', name: 'Starter Pack', tokens: 100, price: 4.99, description: 'Perfect for a single job application.' },
-    { id: 'pro', name: 'Pro Pack', tokens: 250, price: 9.99, description: '20% bonus tokens for multiple applications.', bonusPercent: 20 },
-    { id: 'premium', name: 'Premium Pack', tokens: 500, price: 14.99, description: '40% bonus tokens for the complete job search.', bonusPercent: 40 },
+    { id: 'starter', name: 'Starter Pack', tokens: 100, price: 4.99, description: 'Perfect for a single job application.', appleProductId: 'com.jsn22.atsresumeoptimizer.tokens.starter' },
+    { id: 'pro', name: 'Pro Pack', tokens: 250, price: 9.99, description: '20% bonus tokens for multiple applications.', bonusPercent: 20, appleProductId: 'com.jsn22.atsresumeoptimizer.tokens.pro' },
+    { id: 'premium', name: 'Premium Pack', tokens: 500, price: 14.99, description: '40% bonus tokens for the complete job search.', bonusPercent: 40, appleProductId: 'com.jsn22.atsresumeoptimizer.tokens.premium' },
 ];
 
 export const ACTIVITY_COSTS: Record<ActivityType, number> = {

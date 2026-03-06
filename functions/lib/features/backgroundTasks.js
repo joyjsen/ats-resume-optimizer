@@ -6,7 +6,7 @@ const admin = require("firebase-admin");
 const openai_1 = require("openai");
 const aiUtils_1 = require("../utils/aiUtils");
 const firestoreUtils_1 = require("../utils/firestoreUtils");
-const notificationUtils_1 = require("../utils/notificationUtils");
+// sendPush import removed — all push notifications centralized in notifications.ts onBackgroundTaskUpdated trigger
 /**
  * Check if an analysis task document exists
  */
@@ -143,23 +143,18 @@ Return JSON:
         // Use jsonMode: true to enforce valid JSON output from OpenAI
         const aiResult = await (0, aiUtils_1.callAiWithFallback)(openai, perplexityKey, systemInstruction, userContent, { maxTokens: 10000, jsonMode: true });
         console.log(`[BackgroundTask] Raw AI Result length: ${aiResult.length}`);
-        // Robust JSON extraction: strip markdown fences, find first { and last }
+        // Robust JSON extraction using centralized utility
         let result;
         try {
-            const cleaned = aiResult.replace(/```json\s*/gi, "").replace(/```\s*/g, "").trim();
-            const firstBrace = cleaned.indexOf('{');
-            const lastBrace = cleaned.lastIndexOf('}');
-            let jsonStr = cleaned;
-            if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
-                jsonStr = cleaned.substring(firstBrace, lastBrace + 1);
-            }
-            console.log(`[BackgroundTask] Extracted JSON length: ${jsonStr.length}`);
-            result = JSON.parse(jsonStr);
+            const extracted = (0, aiUtils_1.extractJson)(aiResult);
+            console.log(`[BackgroundTask] Extracted JSON length: ${extracted.length}`);
+            result = JSON.parse(extracted);
         }
         catch (e) {
             console.error(`[BackgroundTask] JSON Parse Error:`, e);
-            console.error(`[BackgroundTask] Failed Content (first 500):`, aiResult.substring(0, 500));
-            throw new Error("AI returned invalid JSON.");
+            const failedSnippet = aiResult.substring(0, 500).replace(/\n/g, ' ');
+            console.error(`[BackgroundTask] Failed Content Snippet:`, failedSnippet);
+            throw new Error(`AI returned invalid JSON. Content start: ${failedSnippet}...`);
         }
         // Calibration logic
         const baseScore = analysis.atsScore || 0;
@@ -325,22 +320,17 @@ CRITICAL RULES:
    - "reason": A brief explanation of the change.`;
         await analysisTaskRef.update({ progress: 50, currentStep: `AI is integrating "${skill}"...` });
         const aiResult = await (0, aiUtils_1.callAiWithFallback)(openai, perplexityKey, systemInstruction, prompt, { jsonMode: true, maxTokens: 10000 });
-        // Robust JSON extraction (matching processOptimizeResume pattern)
+        // Robust JSON extraction using centralized utility
         let result;
         try {
-            const cleaned = aiResult.replace(/```json\s*/gi, "").replace(/```\s*/g, "").trim();
-            const firstBrace = cleaned.indexOf('{');
-            const lastBrace = cleaned.lastIndexOf('}');
-            let jsonStr = cleaned;
-            if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
-                jsonStr = cleaned.substring(firstBrace, lastBrace + 1);
-            }
-            result = JSON.parse(jsonStr);
+            const extracted = (0, aiUtils_1.extractJson)(aiResult);
+            result = JSON.parse(extracted);
         }
         catch (e) {
             console.error(`[AddSkill] JSON Parse Error:`, e);
-            console.error(`[AddSkill] Failed Content (first 500):`, aiResult.substring(0, 500));
-            throw new Error("AI returned invalid JSON for skill addition.");
+            const failedSnippet = aiResult.substring(0, 500).replace(/\n/g, ' ');
+            console.error(`[AddSkill] Failed Content Snippet:`, failedSnippet);
+            throw new Error(`AI returned invalid JSON for skill addition. Content start: ${failedSnippet}...`);
         }
         const optimizedResume = result.optimizedResume || result.optimized_resume;
         if (!optimizedResume) {
@@ -681,8 +671,9 @@ Return this EXACT JSON structure (all keys mandatory):
 }
                     `;
                     try {
-                        const res = await (0, aiUtils_1.callAiWithFallback)(openai, perplexityKey, "You are a job parser.", jobPrompt, { maxTokens: 1000, jsonMode: true });
-                        const parsed = JSON.parse(res.replace(/```json/g, '').replace(/```/g, '').trim());
+                        const res = await (0, aiUtils_1.callAiWithFallback)(openai, perplexityKey, "You are a job parser.", jobPrompt, { maxTokens: 2000, jsonMode: true });
+                        const extracted = (0, aiUtils_1.extractJson)(res);
+                        const parsed = JSON.parse(extracted);
                         return { ...initialJob, ...parsed, id: initialJob.id || Date.now().toString(), parsedAt: new Date() };
                     }
                     catch (e) {
@@ -901,15 +892,8 @@ ${finalJob.description || ''}
             result: { savedId, atsScore },
             progress: 100
         });
-        // Send Notification
-        if (userId) {
-            try {
-                await (0, notificationUtils_1.sendPush)(userId, "Resume Analysis Complete", `Score: ${atsScore}% - ${finalJob.title} at ${finalJob.company}`, { route: "/analysis-result", params: { id: savedId } });
-            }
-            catch (ignored) {
-                console.error("Failed to send push:", ignored);
-            }
-        }
+        // Send Push Notification - REMOVED (Handled by onBackgroundTaskUpdated trigger in notifications.ts)
+        // Centralizing all push in the Firestore trigger prevents duplicate notifications.
     }
     catch (error) {
         console.error(`[AnalyzeResume] Failed:`, error);

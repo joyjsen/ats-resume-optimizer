@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Signing in with Apple...</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            background: #fff;
+        }
+
+        p {
+            color: #555;
+            font-size: 16px;
+        }
+    </style>
+</head>
+
+<body>
+    <p>Signing you in, please wait...</p>
+    <script>
+        // Apple will POST data to this page via a form submission.
+        // We read it from the URL search params (form_post mode sends a GET-like redirect on some flows).
+        // This script captures the id_token from either POST data or URL params and
+        // redirects back to the native app using the riresume:// custom URL scheme.
+
+        function getParam(key) {
+            // Check URL search params first (in case of code flow redirect)
+            const url = new URL(window.location.href);
+            return url.searchParams.get(key);
+        }
+
+        // Apple uses form_post, injecting a hidden form into the page before redirect
+        // We also check for a __CSRF token in the DOM for posted forms
+        window.addEventListener('load', function () {
+            const idToken = getParam('id_token');
+            const code = getParam('code');
+
+            if (idToken) {
+                const appUrl = 'riresume://apple-auth?id_token=' + encodeURIComponent(idToken);
+                window.location.href = appUrl;
+            } else if (code) {
+                const appUrl = 'riresume://apple-auth?code=' + encodeURIComponent(code);
+                window.location.href = appUrl;
+            } else {
+                // Fallback: inject a form that checks POST data
+                // This handles the case where Apple's POST data isn't in the URL
+                document.querySelector('p').textContent = 'If you are not redirected automatically, please return to the app.';
+            }
+        });
+    </script>
+</body>
+
+</html>

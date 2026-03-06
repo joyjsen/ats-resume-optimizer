@@ -84,6 +84,60 @@ export const ParsedResumeViewer = ({ visible, onClose, parsedData, rawText }: Pr
                     </Card.Content>
                 </Card>
 
+                {/* Education */}
+                <Card mode="outlined" style={styles.card}>
+                    <Card.Title title={`Education (${parsedData.education?.length || 0})`} left={(props) => <IconButton {...props} icon="school" />} />
+                    <Card.Content>
+                        {parsedData.education?.map((edu: any, idx: number) => (
+                            <View key={idx} style={{ marginBottom: 16 }}>
+                                <Text style={{ fontWeight: 'bold' }}>{edu.degree} in {edu.field}</Text>
+                                <Text variant="bodySmall">{edu.institution}</Text>
+                                <Text variant="bodySmall" style={{ color: theme.colors.secondary }}>{edu.startDate} - {edu.endDate}</Text>
+                                {edu.relevantCoursework?.length > 0 && (
+                                    <Text variant="bodySmall" style={{ marginTop: 4 }}>
+                                        <Text style={{ fontWeight: 'bold' }}>Coursework: </Text>
+                                        {edu.relevantCoursework.join(', ')}
+                                    </Text>
+                                )}
+                                <Divider style={{ marginTop: 8 }} />
+                            </View>
+                        ))}
+                    </Card.Content>
+                </Card>
+
+                {/* Certifications */}
+                <Card mode="outlined" style={styles.card}>
+                    <Card.Title title={`Certifications (${parsedData.certifications?.length || 0})`} left={(props) => <IconButton {...props} icon="certificate" />} />
+                    <Card.Content>
+                        <View style={{ gap: 8 }}>
+                            {parsedData.certifications?.map((cert: any, idx: number) => (
+                                <View key={idx}>
+                                    <Text style={{ fontWeight: 'bold' }}>{cert.name}</Text>
+                                    <Text variant="bodySmall">{cert.issuer} • {cert.date}</Text>
+                                </View>
+                            ))}
+                        </View>
+                    </Card.Content>
+                </Card>
+
+                {/* Projects */}
+                <Card mode="outlined" style={styles.card}>
+                    <Card.Title title={`Projects (${parsedData.projects?.length || 0})`} left={(props) => <IconButton {...props} icon="folder-account" />} />
+                    <Card.Content>
+                        {parsedData.projects?.map((proj: any, idx: number) => (
+                            <View key={idx} style={{ marginBottom: 12 }}>
+                                <Text style={{ fontWeight: 'bold' }}>{proj.name}</Text>
+                                <Text variant="bodySmall">{proj.description}</Text>
+                                {proj.technologies && (
+                                    <Text variant="bodySmall" style={{ color: theme.colors.primary, marginTop: 2 }}>
+                                        {proj.technologies.join(' • ')}
+                                    </Text>
+                                )}
+                            </View>
+                        ))}
+                    </Card.Content>
+                </Card>
+
                 {/* Debug: Raw JSON */}
                 <Card mode="outlined" style={[styles.card, { borderColor: theme.colors.outlineVariant }]}>
                     <Card.Title title="Raw JSON Structure" />

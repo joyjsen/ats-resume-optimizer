@@ -16,7 +16,7 @@ export class StripeService {
         return Promise.resolve();
     }
 
-    async initializePaymentSheet(uid: string, amount: number, isDark: boolean = false) {
+    async initializePaymentSheet(uid: string, amount: number, currency: string = 'usd', isDark: boolean = false) {
         try {
             // Detect system color scheme
             const systemColorScheme = Appearance.getColorScheme();
@@ -28,7 +28,7 @@ export class StripeService {
 
             // 1. Call the Firebase Cloud Function
             const createIntent = httpsCallable(functions, 'createStripePaymentIntent');
-            const response = await createIntent({ amount });
+            const response = await createIntent({ amount, currency: currency.toLowerCase() });
             const { clientSecret } = response.data as { clientSecret: string };
 
             if (!clientSecret) {
@@ -74,7 +74,7 @@ export class StripeService {
     /**
      * Open the Payment Sheet and process the transaction
      */
-    async openPaymentSheet(uid: string, tokens: number, packageId: string, amount: number) {
+    async openPaymentSheet(uid: string, tokens: number, packageId: string, amount: number, currency: string = 'usd') {
         // SIMULATION: Only use simulation if we specifically want to skip Stripe (handled by backend or env)
         // For now, we always try to present the sheet unless we are in a dev environment without a key.
 

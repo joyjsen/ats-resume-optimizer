@@ -54,6 +54,7 @@ export const onUserCreated = functionsV1
         <h1>Welcome, ${user.displayName || 'User'}!</h1>
         <p>Thank you for signing up. We are excited to help you land your dream job.</p>
         <p>Get started by uploading your resume today!</p>
+        <p><a href="https://www.riresume.com">Visit RiResume.com to get started</a></p>
     `;
         await sendEmail(user.email, subject, html);
     });
@@ -151,7 +152,7 @@ export const onTaskUpdated = functionsV1
             let title = "Analysis Complete";
             let body = "Your resume analysis is ready. Tap to view.";
             let emailSubject = "Resume Analysis Complete";
-            let emailBody = `<p>Your resume has been analyzed.</p><a href="https://riresume.web.app/analysis-result?id=${after.resultId || ''}">View Results in App</a>`;
+            let emailBody = `<p>Your resume has been analyzed.</p><a href="https://www.riresume.com/analysis-result?id=${after.resultId || ''}">View Results in App</a>`;
 
             // Push notification is handled client-side via notifyAnalysisComplete()
             // which provides more detail (job title, company, score).
@@ -203,10 +204,27 @@ export const onBackgroundTaskUpdated = functionsV1
             let emailBody = "";
             let data: any = { taskId, type };
 
-            if (type === "optimize_resume") {
+            if (type === "analyze_resume") {
+                const jobTitle = payload.jobTitle || payload.job?.title || "your target role";
+                const jobCompany = payload.jobCompany || payload.job?.company || "";
+                const score = after.result?.atsScore;
+                const savedId = after.result?.savedId;
+
+                title = "Resume Analysis Complete";
+                body = score
+                    ? `Score: ${score}% - ${jobTitle}${jobCompany ? ` at ${jobCompany}` : ""}. Tap to view.`
+                    : `Your analysis for ${jobTitle}${jobCompany ? ` at ${jobCompany}` : ""} is ready. Tap to view.`;
+                emailSubject = "Resume Analysis Complete";
+                emailBody = `<p>Your resume has been analyzed.</p><a href="https://www.riresume.com/analysis-result?id=${savedId || ''}">View Results in App</a>`;
+                data.resultId = savedId;
+                data.route = '/analysis-result';
+                data.params = { id: savedId };
+                title = "Resume Optimized!";
+                body = "Your resume rewrite and optimization is complete. Tap to review.";
                 emailSubject = "Resume Optimization Complete";
-                emailBody = `<p>Your resume rewrite and optimization is complete.</p><a href="https://riresume.web.app/analysis-result?id=${payload.analysisTaskId || ''}">Review Optimized Resume</a>`;
-                data.resultId = payload.analysisTaskId || payload.historyId;
+                // Prioritize the actual result ID (user_analyses) over the task ID
+                data.resultId = payload.historyId || payload.analysis?.id || payload.analysisTaskId;
+                emailBody = `<p>Your resume rewrite and optimization is complete.</p><a href="https://www.riresume.com/analysis-result?id=${data.resultId || ''}">Review Optimized Resume</a>`;
                 data.route = '/analysis-result';
                 data.params = { id: data.resultId };
             } else if (type === "add_skill" || type === "skill_addition") {
@@ -218,8 +236,9 @@ export const onBackgroundTaskUpdated = functionsV1
                 body = `Added to resume for ${jobTitle}. ATS Score updated to ${score}%. Tap to view changes.`;
 
                 emailSubject = "Skill Addition Complete";
-                emailBody = `<p>We've successfully added <strong>${skill}</strong> to your resume for <strong>${jobTitle}</strong>.</p><p>Your new ATS Score is <strong>${score}%</strong>.</p>`;
-                data.resultId = payload.analysisTaskId || payload.historyId;
+                // Prioritize the actual result ID (user_analyses) over the task ID
+                data.resultId = payload.historyId || payload.analysis?.id || payload.analysisTaskId;
+                emailBody = `<p>We've successfully added <strong>${skill}</strong> to your resume for <strong>${jobTitle}</strong>.</p><p>Your new ATS Score is <strong>${score}%</strong>.</p><a href="https://www.riresume.com/analysis-result?id=${data.resultId || ''}">View Results</a>`;
                 data.route = '/analysis-result';
                 data.params = { id: data.resultId };
             } else if (type === "cover_letter") {
@@ -230,6 +249,17 @@ export const onBackgroundTaskUpdated = functionsV1
                 data.applicationId = payload.applicationId;
                 data.route = "/(tabs)/applications";
                 data.action = "viewCoverLetter";
+            } else if (type === "prep_guide" || type === "prep_guide_refresh") {
+                const jobTitle = payload.jobTitle || "your target role";
+                const company = payload.companyName || payload.company || "the company";
+
+                title = "Interview Prep Guide Ready!";
+                body = `Your prep guide for ${jobTitle} at ${company} is ready. Tap to review.`;
+                emailSubject = "Interview Prep Guide Complete";
+                emailBody = `<p>Your interview preparation guide for <strong>${jobTitle}</strong> at <strong>${company}</strong> is ready.</p>`;
+                data.applicationId = payload.applicationId;
+                data.route = "/(tabs)/applications";
+                data.action = "viewPrepGuide";
             }
 
             if (title) {
@@ -327,7 +357,7 @@ export const onUserDocUpdated = functionsV1
                         </ul>
                         
                         <div style="text-align: center; margin: 30px 0;">
-                            <a href="https://riresume.web.app/home" style="background-color: #6200ee; color: white; padding: 12px 24px; text-decoration: none; border-radius: 4px; font-weight: bold;">Open RiResume & Start Your Journey</a>
+                            <a href="https://www.riresume.com/home" style="background-color: #6200ee; color: white; padding: 12px 24px; text-decoration: none; border-radius: 4px; font-weight: bold;">Open RiResume & Start Your Journey</a>
                         </div>
                         
                         <p>We're honored to be part of your career success.</p>
@@ -470,35 +500,75 @@ export const checkUserProvider = functionsV1
 
             if (!usersSnapshot.empty) {
                 const userData = usersSnapshot.docs[0].data();
-                return {
-                    exists: true,
-                    provider: userData.provider || "email",
-                    status: userData.accountStatus || "active",
-                    displayName: userData.displayName || "User",
-                };
-            }
-
-            // Check deleted_accounts too
-            const deletedSnapshot = await admin.firestore()
-                .collection("deleted_accounts")
-                .where("email", "==", emailLower)
-                .limit(1)
-                .get();
-
-            if (!deletedSnapshot.empty) {
-                const deletedData = deletedSnapshot.docs[0].data();
-                return {
-                    exists: true,
-                    provider: deletedData.provider || "unknown",
-                    status: "deleted",
-                    displayName: deletedData.displayName || "User",
-                };
+                // If the user's account is marked as deleted, we treat it as if it doesn't exist
+                // for the purpose of new registrations/logins.
+                if (userData.accountStatus !== 'deleted') {
+                    return {
+                        exists: true,
+                        provider: userData.provider || "email",
+                        status: userData.accountStatus || "active",
+                        displayName: userData.displayName || "User",
+                    };
+                }
             }
 
             return { exists: false };
         } catch (error: any) {
             console.error("Error checking user provider:", error);
             throw new functionsV1.https.HttpsError("internal", "Failed to check user status.");
+        }
+    });
+
+/**
+ * Public function to check a user's status by phone number.
+ */
+export const checkPhoneProvider = functionsV1
+    .region("us-central1")
+    .https.onCall(async (data: any) => {
+        const { phone } = data;
+        if (!phone) {
+            throw new functionsV1.https.HttpsError("invalid-argument", "Phone number is required.");
+        }
+
+        try {
+            // 1. Check Firestore first (for profile data)
+            const usersSnapshot = await admin.firestore()
+                .collection("users")
+                .where("phoneNumber", "==", phone)
+                .limit(1)
+                .get();
+
+            if (!usersSnapshot.empty) {
+                const userData = usersSnapshot.docs[0].data();
+                if (userData.accountStatus !== 'deleted') {
+                    return {
+                        exists: true,
+                        status: userData.accountStatus || "active",
+                        displayName: userData.displayName || "User",
+                    };
+                }
+            }
+
+            // 2. Fallback: Check Firebase Auth directly
+            try {
+                const userRecord = await admin.auth().getUserByPhoneNumber(phone);
+                if (userRecord) {
+                    return {
+                        exists: true,
+                        status: "active", // Auth existence implies activity
+                        displayName: userRecord.displayName || "User",
+                    };
+                }
+            } catch (authError: any) {
+                if (authError.code !== 'auth/user-not-found') {
+                    console.error("Auth check error in checkPhoneProvider:", authError);
+                }
+            }
+
+            return { exists: false };
+        } catch (error: any) {
+            console.error("Error checking phone provider:", error);
+            throw new functionsV1.https.HttpsError("internal", "Failed to check phone status.");
         }
     });
 

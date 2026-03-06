@@ -393,7 +393,7 @@ export default function Dashboard() {
                                                         style={{
                                                             color: rec.color,
                                                             fontWeight: 'bold',
-                                                            fontSize: scaleFont(Platform.OS === 'android' ? 10 : 11),
+                                                            fontSize: Platform.OS === 'web' ? 11 : scaleFont(Platform.OS === 'android' ? 10 : 11),
                                                             flexWrap: 'wrap'
                                                         }}
                                                     >

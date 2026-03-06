@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, StyleSheet, Image, ScrollView, TouchableOpacity } from 'react-native';
 import { Text, useTheme, Card, Divider } from 'react-native-paper';
-import { Stack, useRouter } from 'expo-router';
+import { useRouter } from 'expo-router';
 import Markdown from 'react-native-markdown-display';
 
 const ABOUT_CONTENT = `
@@ -47,9 +47,7 @@ export default function AboutScreen() {
 
     return (
         <>
-            <Stack.Screen options={{ title: 'About' }} />
             <ScrollView contentContainerStyle={[styles.container, { backgroundColor: theme.colors.background }]}>
-
                 <View style={styles.logoContainer}>
                     <Image
                         source={require('../../assets/logo.png')}
@@ -57,7 +55,7 @@ export default function AboutScreen() {
                         resizeMode="contain"
                     />
                     <Text variant="headlineMedium" style={styles.appName}>RiResume</Text>
-                    <Text variant="titleMedium" style={styles.version}>Version 1.0.0</Text>
+                    <Text variant="titleMedium" style={styles.version}>Version 1.0.2</Text>
                 </View>
 
                 <Markdown

@@ -128,6 +128,8 @@ export class ApplicationService {
                 }).catch((err: any) => console.error("Failed to sync status to analysis:", err));
             }
 
+            // TODO: Dynamic require to avoid circular dependency. Consider extracting
+            // shared logic into a utility module or using an event-based pattern.
             try {
                 const { activityService } = require('./activityService');
                 const stageName = customStageName || newStage.replace('_', ' ').replace(/\b\w/g, c => c.toUpperCase());
@@ -344,36 +346,8 @@ export class ApplicationService {
 
             submittedResumeData: data.submittedResumeData ? (typeof data.submittedResumeData === 'string' ? JSON.parse(data.submittedResumeData) : data.submittedResumeData) : undefined,
             lastResumeUpdateAt: (data.lastResumeUpdateAt as any)?.toDate?.(),
-            coverLetter: data.coverLetter ? (() => {
-                const status = data.coverLetter.status || (data.coverLetter.content ? 'completed' : 'failed');
-                if (!data.coverLetter.status || data.coverLetter.status === 'generating') {
-                    // Log ONLY if it looks stuck or suspicious (generating but maybe has content? or stuck generating)
-                    if (data.coverLetter.status === 'generating') {
-                        console.log(`[AppService] RAW DATA for ${docSnap.id} (${data.company}): Status=${data.coverLetter.status}, ContentLen=${data.coverLetter.content?.length || 0}`);
-                    }
-                }
-                return {
-                    status: status,
-                    content: data.coverLetter.content || data.coverLetter.text || '',
-                    generatedAt: (data.coverLetter.generatedAt as any)?.toDate?.(),
-                    lastEditedAt: (data.coverLetter.lastEditedAt as any)?.toDate?.(),
-                    startedAt: (data.coverLetter.startedAt as any)?.toDate?.(),
-                    completedAt: (data.coverLetter.completedAt as any)?.toDate?.()
-                };
-            })() : undefined,
-            prepGuide: data.prepGuide ? (() => {
-                console.log(`[AppService] PrepGuide raw for ${data.company}: status=${data.prepGuide.status}, sectionKeys=${data.prepGuide.sections ? Object.keys(data.prepGuide.sections) : 'NONE'}`);
-                return {
-                    status: data.prepGuide.status,
-                    progress: data.prepGuide.progress,
-                    currentStep: data.prepGuide.currentStep,
-                    sections: data.prepGuide.sections || undefined,
-                    downloadUrl: data.prepGuide.downloadUrl,
-                    storagePath: data.prepGuide.storagePath,
-                    startedAt: (data.prepGuide.startedAt as any)?.toDate?.(),
-                    generatedAt: (data.prepGuide.generatedAt as any)?.toDate?.()
-                };
-            })() : undefined,
+            coverLetter: data.coverLetter ? this.mapCoverLetter(data.coverLetter) : undefined,
+            prepGuide: data.prepGuide ? this.mapPrepGuide(data.prepGuide, data.company) : undefined,
             prepGuideHistory: data.prepGuideHistory ? data.prepGuideHistory.map((h: any) => ({
                 ...h,
                 startedAt: (h.startedAt as any)?.toDate?.(),
@@ -384,6 +358,37 @@ export class ApplicationService {
             createdAt: (data.createdAt as any)?.toDate?.() || new Date(),
             updatedAt: (data.updatedAt as any)?.toDate?.() || new Date()
         } as Application;
+    }
+
+    private mapCoverLetter(cl: any): any {
+        const status = cl.status || (cl.content ? 'completed' : 'failed');
+        if (__DEV__ && cl.status === 'generating') {
+            console.log(`[AppService] CoverLetter stuck generating: ContentLen=${cl.content?.length || 0}`);
+        }
+        return {
+            status,
+            content: cl.content || cl.text || '',
+            generatedAt: (cl.generatedAt as any)?.toDate?.(),
+            lastEditedAt: (cl.lastEditedAt as any)?.toDate?.(),
+            startedAt: (cl.startedAt as any)?.toDate?.(),
+            completedAt: (cl.completedAt as any)?.toDate?.()
+        };
+    }
+
+    private mapPrepGuide(pg: any, company?: string): any {
+        if (__DEV__) {
+            console.log(`[AppService] PrepGuide for ${company}: status=${pg.status}, sections=${pg.sections ? Object.keys(pg.sections) : 'NONE'}`);
+        }
+        return {
+            status: pg.status,
+            progress: pg.progress,
+            currentStep: pg.currentStep,
+            sections: pg.sections || undefined,
+            downloadUrl: pg.downloadUrl,
+            storagePath: pg.storagePath,
+            startedAt: (pg.startedAt as any)?.toDate?.(),
+            generatedAt: (pg.generatedAt as any)?.toDate?.()
+        };
     }
 }
 

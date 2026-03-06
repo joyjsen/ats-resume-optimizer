@@ -159,13 +159,15 @@ export class NotificationService {
                     console.error("Error fetching Expo push token:", e);
                 }
 
-                // Also get the native device push token (FCM for Android, APNs for iOS)
+                // Also get the native device push token (FCM for Android)
                 // This enables direct FCM messaging from Cloud Functions, which is more
-                // reliable for background delivery on Android than the Expo Push relay
+                // reliable for background delivery on Android than the Expo Push relay.
+                // Note: On iOS, getDevicePushTokenAsync returns an APNs token (hex string),
+                // which is NOT compatible with FCM's direct send method.
                 try {
                     const deviceToken = await Notifications.getDevicePushTokenAsync();
-                    if (deviceToken?.data) {
-                        console.log(`Native Device Push Token (${deviceToken.type}):`, deviceToken.data.substring(0, 30) + '...');
+                    if (deviceToken?.data && Platform.OS === 'android') {
+                        console.log(`Native Device Push Token (FCM):`, deviceToken.data.substring(0, 30) + '...');
                         await this.saveFcmTokenToUserProfile(deviceToken.data);
                     }
                 } catch (e) {

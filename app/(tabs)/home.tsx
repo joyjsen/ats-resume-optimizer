@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useCallback } from "react";
-import { View, ScrollView, StyleSheet, Platform, RefreshControl, Dimensions, TouchableOpacity, Alert } from "react-native";
+import { View, ScrollView, StyleSheet, Platform, RefreshControl, Dimensions, TouchableOpacity, Alert, useWindowDimensions } from "react-native";
 import { Text, useTheme, Card, ProgressBar, IconButton, Surface, Avatar, Button, Chip } from 'react-native-paper';
 import { useAppTheme } from '../../src/context/ThemeContext';
 import { useRouter } from "expo-router";
@@ -21,6 +21,11 @@ const RiResumeHome = () => {
     const theme = useTheme();
     const insets = useSafeAreaInsets();
     const { isDark, toggleTheme } = useAppTheme();
+    const { width } = useWindowDimensions();
+
+    // Responsive width calculation: (total width - padding - gaps) / 3
+    // Subtracting a small buffer (1px) to prevent floating point rounding errors from causing wrap
+    const cardWidth = Math.floor((width - 32 - 16) / 3) - 1;
 
     const [time, setTime] = useState(new Date());
     const [animatedTokens, setAnimatedTokens] = useState(0);
@@ -228,10 +233,19 @@ const RiResumeHome = () => {
                                 </View>
                             </View>
                             <View style={{ marginTop: 16 }}>
-                                <ProgressBar progress={0.62} color={theme.colors.primary} style={{ height: 6, borderRadius: 3 }} />
-                                <Text variant="bodySmall" style={{ marginTop: 8, color: theme.colors.onSurfaceVariant }}>
-                                    ~{Math.floor(tokenBalance / 8)} analyses or ~{Math.floor(tokenBalance / 15)} optimizations remaining
-                                </Text>
+                                {(() => {
+                                    const WELCOME_BONUS = 110;
+                                    const totalOwned = (userProfile?.totalTokensPurchased || 0) + WELCOME_BONUS;
+                                    const progress = totalOwned > 0 ? (userProfile?.tokenBalance || 0) / totalOwned : 0;
+                                    return (
+                                        <>
+                                            <ProgressBar progress={progress} color={theme.colors.primary} style={{ height: 6, borderRadius: 3 }} />
+                                            <Text variant="bodySmall" style={{ marginTop: 8, color: theme.colors.onSurfaceVariant }}>
+                                                ~{Math.floor(tokenBalance / 8)} analyses or ~{Math.floor(tokenBalance / 15)} optimizations remaining
+                                            </Text>
+                                        </>
+                                    );
+                                })()}
                             </View>
                         </Card.Content>
                     </Card>
@@ -244,7 +258,7 @@ const RiResumeHome = () => {
                         {quickActions.map((action) => (
                             <Card
                                 key={action.id}
-                                style={styles.actionCard}
+                                style={[styles.actionCard, { width: cardWidth }]}
                                 onPress={() => router.push(action.route as any)}
                                 mode="outlined"
                             >
@@ -392,7 +406,6 @@ const styles = StyleSheet.create({
         gap: 8,
     },
     actionCard: {
-        width: (Dimensions.get("window").width - 32 - 16) / 3,
         marginBottom: 8,
         height: isAndroid ? 90 : 110,
         justifyContent: 'center',

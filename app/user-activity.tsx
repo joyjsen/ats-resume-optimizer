@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, StyleSheet, FlatList } from 'react-native';
 import { Text, Card, useTheme } from 'react-native-paper';
-import { useFocusEffect } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { useProfileStore } from '../src/store/profileStore';
 import { UserActivity } from '../src/types/profile.types';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -10,6 +10,7 @@ import { format } from 'date-fns';
 export default function UserActivityScreen() {
     const { userProfile, activities, fetchActivities } = useProfileStore();
     const theme = useTheme();
+    const router = useRouter();
 
     useFocusEffect(
         React.useCallback(() => {
@@ -104,23 +105,25 @@ export default function UserActivityScreen() {
     };
 
     return (
-        <FlatList
-            data={activities}
-            keyExtractor={(item) => item.activityId}
-            renderItem={renderActivity}
-            ListHeaderComponent={renderHeader}
-            style={[styles.container, { backgroundColor: theme.colors.background }]}
-            contentContainerStyle={styles.listContent}
-            ListEmptyComponent={
-                <View style={styles.emptyState}>
-                    <MaterialCommunityIcons name="history" size={48} color={theme.colors.outlineVariant} />
-                    <Text variant="bodyLarge" style={[styles.emptyText, { color: theme.colors.onSurfaceVariant }]}>No activities yet</Text>
-                    <Text variant="bodySmall" style={[styles.emptySubtext, { color: theme.colors.outline }]}>
-                        Your activity history will appear here
-                    </Text>
-                </View>
-            }
-        />
+        <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
+            <FlatList
+                data={activities}
+                keyExtractor={(item) => item.activityId}
+                renderItem={renderActivity}
+                ListHeaderComponent={renderHeader}
+                style={[styles.container, { backgroundColor: theme.colors.background }]}
+                contentContainerStyle={styles.listContent}
+                ListEmptyComponent={
+                    <View style={styles.emptyState}>
+                        <MaterialCommunityIcons name="history" size={48} color={theme.colors.outlineVariant} />
+                        <Text variant="bodyLarge" style={[styles.emptyText, { color: theme.colors.onSurfaceVariant }]}>No activities yet</Text>
+                        <Text variant="bodySmall" style={[styles.emptySubtext, { color: theme.colors.outline }]}>
+                            Your activity history will appear here
+                        </Text>
+                    </View>
+                }
+            />
+        </View>
     );
 }
 

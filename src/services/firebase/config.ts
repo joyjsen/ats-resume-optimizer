@@ -14,7 +14,7 @@ const firebaseConfig = {
     appId: Platform.select({
         ios: ENV.FIREBASE_APP_ID_IOS,
         android: ENV.FIREBASE_APP_ID_ANDROID,
-        default: ENV.FIREBASE_APP_ID_IOS, // Fallback
+        default: ENV.FIREBASE_APP_ID_WEB || ENV.FIREBASE_APP_ID_IOS, // Web app ID with iOS fallback
     }),
 };
 

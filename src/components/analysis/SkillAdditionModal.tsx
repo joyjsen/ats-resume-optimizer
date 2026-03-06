@@ -73,8 +73,8 @@ export const SkillAdditionModal = ({
             // Check for existing learning in this context
             if (!auth.currentUser) return;
             const userId = auth.currentUser.uid;
-            const jTitle = propsJobTitle || (resume.experience && resume.experience.length > 0 ? resume.experience[0].title : 'Unknown Role');
-            const cName = propsCompanyName || (resume.experience && resume.experience.length > 0 ? resume.experience[0].company : 'Unknown Company');
+            const jTitle = propsJobTitle || (resume?.experience && resume.experience.length > 0 ? resume.experience[0].title : 'Unknown Role');
+            const cName = propsCompanyName || (resume?.experience && resume.experience.length > 0 ? resume.experience[0].company : 'Unknown Company');
 
             setLoading(true);
             learningService.findExistingEntry(userId, skill, jTitle, cName).then(existing => {
@@ -418,7 +418,7 @@ export const SkillAdditionModal = ({
                                 const userId = auth.currentUser.uid;
                                 setLoading(true);
                                 try {
-                                    const firstExperience = resume.experience && resume.experience.length > 0 ? resume.experience[0] : null;
+                                    const firstExperience = resume?.experience && resume.experience.length > 0 ? resume.experience[0] : null;
                                     const jobTitle = propsJobTitle || firstExperience?.title || 'Unknown Role';
                                     const companyName = propsCompanyName || firstExperience?.company || 'Unknown Company';
 
@@ -511,7 +511,7 @@ export const SkillAdditionModal = ({
                                     const userId = auth.currentUser.uid;
                                     setLoading(true);
                                     try {
-                                        const firstExperience = resume.experience && resume.experience.length > 0 ? resume.experience[0] : null;
+                                        const firstExperience = resume?.experience && resume.experience.length > 0 ? resume.experience[0] : null;
 
                                         await learningService.addEntry({
                                             userId,
@@ -573,7 +573,7 @@ export const SkillAdditionModal = ({
                             />
                             <Divider />
 
-                            {resume.experience.map((exp) => (
+                            {(resume?.experience || []).map((exp) => (
                                 <Checkbox.Item
                                     key={exp.id}
                                     label={`${exp.company} - ${exp.title}`}

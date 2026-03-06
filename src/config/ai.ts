@@ -2,15 +2,18 @@ import OpenAI from 'openai';
 import axios from 'axios';
 import { ENV } from './env';
 
-// Centralized OpenAI configuration
+// SECURITY TODO: The OpenAI API key is shipped in the client bundle.
+// Any user can extract it from the app binary or network traffic.
+// Migrate all AI calls to a server-side proxy (Firebase Cloud Function)
+// and remove the key from the client entirely.
 export const openai = new OpenAI({
     apiKey: ENV.OPENAI_API_KEY,
     dangerouslyAllowBrowser: true, // Needed for React Native environment
-    maxRetries: 2, // Keep SDK retries low
-    timeout: 60000, // 60s timeout - increased for background resilience
+    maxRetries: 2,
+    timeout: 60000,
 });
 
-// Perplexity API configuration for fallback
+// SECURITY TODO: Perplexity API key also ships in the client bundle. Same risk as OpenAI.
 const PERPLEXITY_API_URL = 'https://api.perplexity.ai/chat/completions';
 const PERPLEXITY_API_KEY = ENV.PERPLEXITY_API_KEY;
 
@@ -78,13 +81,10 @@ async function callPerplexity(options: AICallOptions, taskName: string): Promise
 function isTimeoutError(error: any): boolean {
     if (!error) return false;
 
-    // OpenAI timeout
+    // OpenAI / Axios timeout codes
     if (error.code === 'ETIMEDOUT' || error.code === 'ECONNABORTED') return true;
     if (error.message?.toLowerCase().includes('timeout')) return true;
     if (error.name === 'APIConnectionTimeoutError') return true;
-
-    // Axios timeout
-    if (error.code === 'ECONNABORTED') return true;
 
     // Generic timeout patterns
     if (error.status === 408) return true;

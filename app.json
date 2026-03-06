@@ -3,8 +3,8 @@
     "name": "RiResume",
     "slug": "riresume",
     "scheme": "riresume",
-    "version": "1.0.1",
-    "orientation": "portrait",
+    "version": "1.0.3",
+    "orientation": "default",
     "icon": "./assets/logo_square.png",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
@@ -14,7 +14,7 @@
       "backgroundColor": "#ffffff"
     },
     "ios": {
-      "buildNumber": "12",
+      "buildNumber": "22",
       "supportsTablet": true,
       "bundleIdentifier": "com.jsn22.atsresumeoptimizer",
       "infoPlist": {
@@ -35,7 +35,7 @@
       }
     },
     "android": {
-      "versionCode": 12,
+      "versionCode": 22,
       "adaptiveIcon": {
         "foregroundImage": "./assets/logo_square.png",
         "backgroundColor": "#ffffff"
@@ -123,7 +123,9 @@
           "preprocessorInjectJS": "metas.pageContent = document.body.innerText;"
         }
       ],
-      "./plugins/withBackgroundActionsFixed"
+      "./plugins/withBackgroundActionsFixed",
+      "expo-iap",
+      "expo-localization"
     ],
     "extra": {
       "router": {},

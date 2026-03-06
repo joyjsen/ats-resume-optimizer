@@ -1,5 +1,5 @@
 import React from 'react';
-import { TouchableOpacity, View } from 'react-native';
+import { TouchableOpacity, View, Platform } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Avatar, IconButton } from 'react-native-paper';
 import { useAppTheme } from '../../context/ThemeContext';
@@ -25,7 +25,7 @@ export const UserHeader = () => {
             <IconButton
                 icon={isDark ? "weather-sunny" : "weather-night"}
                 onPress={toggleTheme}
-                size={moderateScale(24)}
+                size={Platform.OS === 'web' ? 22 : moderateScale(24)}
                 style={{ margin: 0 }}
             />
             <TouchableOpacity
@@ -33,9 +33,9 @@ export const UserHeader = () => {
                 style={{ marginRight: moderateScale(8) }}
             >
                 {userProfile.photoURL ? (
-                    <Avatar.Image size={moderateScale(32)} source={{ uri: userProfile.photoURL }} />
+                    <Avatar.Image size={Platform.OS === 'web' ? 30 : moderateScale(32)} source={{ uri: userProfile.photoURL }} />
                 ) : (
-                    <Avatar.Text size={moderateScale(32)} label={userProfile.displayName?.substring(0, 2).toUpperCase() || 'U'} />
+                    <Avatar.Text size={Platform.OS === 'web' ? 30 : moderateScale(32)} label={userProfile.displayName?.substring(0, 2).toUpperCase() || 'U'} />
                 )}
             </TouchableOpacity>
         </View>

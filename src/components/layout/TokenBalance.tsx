@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, StyleSheet, TouchableOpacity, Platform } from 'react-native';
 import { Text, useTheme } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useProfileStore } from '../../store/profileStore';
@@ -20,7 +20,7 @@ export const TokenBalance = () => {
             activeOpacity={0.7}
         >
             <View style={styles.badge}>
-                <MaterialCommunityIcons name="lightning-bolt" size={moderateScale(16)} color="#FF9800" />
+                <MaterialCommunityIcons name="lightning-bolt" size={Platform.OS === 'web' ? 16 : moderateScale(16)} color="#FF9800" />
                 <Text style={[styles.text, { color: theme.dark ? '#FFB74D' : '#F57C00' }]}>
                     {userProfile.tokenBalance}
                 </Text>
@@ -40,7 +40,7 @@ const styles = StyleSheet.create({
         gap: moderateScale(2),
     },
     text: {
-        fontSize: moderateScale(14),
+        fontSize: Platform.OS === 'web' ? 14 : moderateScale(14),
         fontWeight: 'bold',
     }
 });

@@ -1,7 +1,7 @@
 import React from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
 import { useTheme } from 'react-native-paper';
-import { Stack } from 'expo-router';
+import { useRouter } from 'expo-router';
 import Markdown from 'react-native-markdown-display';
 
 const TERMS_CONTENT = `
@@ -207,10 +207,10 @@ If you have any questions about these Terms, please contact us:
 
 export default function TermsScreen() {
     const theme = useTheme();
+    const router = useRouter();
 
     return (
         <>
-            <Stack.Screen options={{ title: 'Terms of Service' }} />
             <ScrollView style={[styles.container, { backgroundColor: theme.colors.background }]}>
                 <Markdown
                     style={{

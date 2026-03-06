@@ -216,7 +216,7 @@ const HeroSection: React.FC<{ jobUrl: string; setJobUrl: (v: string) => void; on
         <View style={[ls.heroInner, isSmall && { flexDirection: 'column' }]}>
             <View style={ls.heroLeft}>
                 <Text style={[ls.heroTagline, isSmall && { fontSize: 36, lineHeight: 44 }]}>
-                    From Application to Interview{'\n'}in <Text style={ls.heroHighlight}>Days, Not Weeks</Text>
+                    From Application to Interview in Days,{'\n'}<Text style={ls.heroHighlight}>Not Weeks</Text>
                 </Text>
                 <Text style={ls.heroSubtext}>
                     RiResume uses AI to perfectly tailor your resume, generate cover letters, bridge skill gaps, and create custom interview guides — all designed to help you land your dream job faster.
@@ -243,7 +243,7 @@ const HeroSection: React.FC<{ jobUrl: string; setJobUrl: (v: string) => void; on
                 <View style={ls.heroRight}>
                     <View style={ls.heroMockup}>
                         <Image
-                            source={require('../../../../assets/hero-mockup-final.png')}
+                            source={require('../../../../assets/hero-mockup-final.jpg')}
                             style={{ width: '100%', height: '100%' }}
                             resizeMode="cover"
                         />
@@ -408,7 +408,10 @@ const BlogSection: React.FC = () => (
                         Expert advice on resume optimization and landing your next role.
                     </Text>
                 </View>
-                <Pressable style={ls.seeAllBtn}>
+                <Pressable
+                    style={ls.seeAllBtn}
+                    onPress={() => Linking.openURL('https://riresume.com/blog')}
+                >
                     <Text style={ls.seeAllText}>See All Articles →</Text>
                 </Pressable>
             </View>

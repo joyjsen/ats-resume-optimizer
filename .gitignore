@@ -46,3 +46,10 @@ env.local
 # Firebase config (if secret scanning blocks it)
 # GoogleService-Info.plist
 # google-services.json
+
+# Keystore credentials (security)
+android/keystore.properties
+
+# Large binaries
+*.apk
+*.aab

@@ -820,7 +820,6 @@ export default function HelpSupportScreen() {
 
     return (
         <>
-            <Stack.Screen options={{ title: 'Help & Support' }} />
             <ScrollView style={[styles.container, { backgroundColor: theme.colors.background }]}>
 
                 <Card style={styles.card}>
@@ -898,6 +897,24 @@ export default function HelpSupportScreen() {
                             style={styles.button}
                         >
                             Privacy Enquiry
+                        </Button>
+                        <Button
+                            mode="outlined"
+                            icon="database-remove"
+                            onPress={() => Linking.openURL('https://riresume.com/delete-data.html')}
+                            style={styles.button}
+                            textColor="#FF9800"
+                        >
+                            Request Data Deletion
+                        </Button>
+                        <Button
+                            mode="outlined"
+                            icon="account-remove"
+                            onPress={() => Linking.openURL('https://riresume.com/delete-account.html')}
+                            style={styles.button}
+                            textColor="#F44336"
+                        >
+                            Request Account Deletion
                         </Button>
                     </Card.Content>
                 </Card>

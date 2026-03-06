@@ -27,7 +27,7 @@ export const createStripePaymentIntent = functionsV1
             );
         }
 
-        const { amount } = data;
+        const { amount, currency = "usd" } = data;
         if (!amount || typeof amount !== "number" || amount <= 0) {
             throw new functionsV1.https.HttpsError(
                 "invalid-argument",
@@ -48,7 +48,7 @@ export const createStripePaymentIntent = functionsV1
 
             const paymentIntent = await stripe.paymentIntents.create({
                 amount: amountInCents,
-                currency: "usd",
+                currency: currency.toLowerCase(),
                 automatic_payment_methods: {
                     enabled: true,
                 },
@@ -82,7 +82,7 @@ export const createStripeCheckoutSession = functionsV1
             throw new functionsV1.https.HttpsError("unauthenticated", "You must be logged in.");
         }
 
-        const { amount, packageId, tokens, successUrl, cancelUrl } = data;
+        const { amount, packageId, tokens, successUrl, cancelUrl, currency = "usd" } = data;
 
         try {
             const stripe = new Stripe(stripeSecretKey.value(), {
@@ -94,7 +94,7 @@ export const createStripeCheckoutSession = functionsV1
                 line_items: [
                     {
                         price_data: {
-                            currency: "usd",
+                            currency: currency.toLowerCase(),
                             product_data: {
                                 name: `${tokens} Tokens Package`,
                                 description: `Purchase ${tokens} tokens for RiResume`,
@@ -126,3 +126,5 @@ export const createStripeCheckoutSession = functionsV1
 export * from "./notifications";
 export * from "./aiAnalysis";
 export * from "./stripeWebhook";
+export * from "./appleAuthRelay";
+export * from "./appleIapValidation";

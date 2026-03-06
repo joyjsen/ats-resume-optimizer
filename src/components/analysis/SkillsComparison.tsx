@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, StyleSheet, TouchableOpacity, Platform } from 'react-native';
 import { Card, Text, Chip, useTheme } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { MatchAnalysis, SkillMatch } from '../../types/analysis.types';
@@ -221,7 +221,7 @@ const styles = StyleSheet.create({
         borderRadius: moderateScale(12),
     },
     title: {
-        fontSize: scaleFont(16),
+        fontSize: Platform.OS === 'web' ? 16 : scaleFont(16),
         marginBottom: 0,
     },
     headerToggle: {

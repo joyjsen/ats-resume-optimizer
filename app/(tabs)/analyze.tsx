@@ -65,6 +65,8 @@ export default function AnalyzeScreen() {
     const [isViewerVisible, setIsViewerVisible] = useState(false);
     const [isParsingResume, setIsParsingResume] = useState(false);
     const [parsingProgress, setParsingProgress] = useState(0);
+    const [hasAttemptedJobExtraction, setHasAttemptedJobExtraction] = useState(false);
+    const [hasAttemptedResumeExtraction, setHasAttemptedResumeExtraction] = useState(false);
 
     // Simulated 44-second progress timer
     React.useEffect(() => {
@@ -178,6 +180,7 @@ export default function AnalyzeScreen() {
         setJobCompany('');
         setInputMode('url');
         setIsEditingJob(false);
+        setHasAttemptedJobExtraction(false);
     };
 
     const handleExtractJob = async (passedUrl?: string) => {
@@ -209,6 +212,7 @@ export default function AnalyzeScreen() {
             Alert.alert("Extraction Failed", "We couldn't fetch details from this site. Please try copying and pasting the job text instead.");
         } finally {
             setIsExtractingJob(false);
+            setHasAttemptedJobExtraction(true);
         }
     };
 
@@ -224,6 +228,7 @@ export default function AnalyzeScreen() {
         setCvUris([]);
         setUploadKey(prev => prev + 1);
         setParsedResumeData(null);
+        setHasAttemptedResumeExtraction(false);
     };
 
     const handleExtractAndShow = async () => {
@@ -271,6 +276,7 @@ export default function AnalyzeScreen() {
             Alert.alert("Parsing Failed", error.message || "Could not parse resume.");
         } finally {
             setIsParsingResume(false);
+            setHasAttemptedResumeExtraction(true);
         }
     };
 
@@ -395,6 +401,7 @@ export default function AnalyzeScreen() {
 
     const { activeTasks } = useTaskQueue();
     const [currentTaskId, setCurrentTaskId] = useState<string | null>(null);
+    const [initialActivityId, setInitialActivityId] = useState<string | null>(null);
     const hasLoggedCompletionRef = useRef<string | null>(null); // Track which task completion has been logged
 
     const progressRef = useRef<number>(0); // Track progress for background listener
@@ -428,14 +435,26 @@ export default function AnalyzeScreen() {
                             changes: saved.changesData
                         });
 
-                        // 3. Log completion (0 tokens) - only once per task
+                        // 3. Update activity (0 tokens) - only once per task
                         if (hasLoggedCompletionRef.current !== task.resultId) {
                             hasLoggedCompletionRef.current = task.resultId ?? null;
-                            activityService.logActivity({
-                                type: 'gap_analysis',
-                                description: `Analyzed the resume for ${saved.jobData.title} at ${saved.jobData.company}`,
-                                skipTokenDeduction: true
-                            });
+
+                            if (initialActivityId) {
+                                console.log("[analyze.tsx] Updating existing activity with results...");
+                                activityService.updateActivity(initialActivityId, {
+                                    description: `Analyzed the resume for ${saved.jobData.title} at ${saved.jobData.company}`,
+                                    contextData: {
+                                        newATSScore: saved.atsScore,
+                                    }
+                                }).catch(e => console.error("Failed to update activity:", e));
+                            } else {
+                                console.log("[analyze.tsx] Logging new activity (fallback)...");
+                                activityService.logActivity({
+                                    type: 'gap_analysis',
+                                    description: `Analyzed the resume for ${saved.jobData.title} at ${saved.jobData.company}`,
+                                    skipTokenDeduction: true
+                                }).catch(e => console.error("Failed to log activity:", e));
+                            }
                         }
 
                         setCurrentTaskId(null); // Stop watching
@@ -580,11 +599,12 @@ export default function AnalyzeScreen() {
             // 2. Deduct tokens BEFORE creating the task
             try {
                 // Use a temporary activity ID to link if needed, or just log
-                await activityService.logActivity({
+                const actId = await activityService.logActivity({
                     type: 'ats_score_calculation',
-                    description: "Analyze Resume has started",
+                    description: `Analyzing resume for ${jobTitle || 'selected job'} at ${jobCompany || 'selected company'}...`,
                 });
-                console.log("[analyze.tsx] Tokens deducted successfully BEFORE task creation");
+                setInitialActivityId(actId);
+                console.log(`[analyze.tsx] Tokens deducted successfully. Activity ID: ${actId}`);
             } catch (deductError: any) {
                 console.error("[analyze.tsx] Token deduction failed:", deductError);
                 setLoading(false);
@@ -605,6 +625,34 @@ export default function AnalyzeScreen() {
             setCurrentTaskId(null); // Ensure task ID is cleared if creation failed
             Alert.alert('Error', 'Failed to start analysis task.');
         }
+    };
+
+    const getValidationMessage = () => {
+        const missingFields = [];
+        if (!jobTitle?.trim()) missingFields.push('position name');
+        if (!jobCompany?.trim()) missingFields.push('company name');
+        if (!jobText?.trim() && screenshots.length === 0) missingFields.push('job description');
+
+        const isJobPopulated = !!(jobTitle?.trim() && jobCompany?.trim() && (jobText?.trim() || screenshots.length > 0));
+        const isResumePopulated = !!(cvUris.length > 0 || resumeText?.trim());
+        const isResumeFullyParsed = !(cvUris.length > 0 && !parsedResumeData);
+
+        if (hasAttemptedJobExtraction && hasAttemptedResumeExtraction) {
+            if (!isJobPopulated || !isResumePopulated || !isResumeFullyParsed) {
+                let message = "We must have valid ";
+                if (missingFields.length > 0) {
+                    message += missingFields.join(' and ');
+                    if (!isResumePopulated) message += " and resume data";
+                    message += " for a resume analysis. We were not able to extract all details, please fill them up manually to proceed.";
+                } else if (!isResumePopulated) {
+                    message += "resume data for a resume analysis. Please upload a file or paste text manually.";
+                } else if (!isResumeFullyParsed) {
+                    message += "verified resume data. Please click 'Verify Parsed Data' above.";
+                }
+                return message;
+            }
+        }
+        return null;
     };
 
     return (
@@ -900,6 +948,19 @@ export default function AnalyzeScreen() {
                                 </Button>
                             );
                         })()}
+                        {(() => {
+                            const message = getValidationMessage();
+                            if (message) {
+                                return (
+                                    <View style={{ marginTop: 8, paddingHorizontal: 4 }}>
+                                        <Text variant="bodySmall" style={{ color: theme.colors.error, textAlign: 'center' }}>
+                                            {message}
+                                        </Text>
+                                    </View>
+                                );
+                            }
+                            return null;
+                        })()}
                         <IconButton
                             icon="information-outline"
                             size={moderateScale(20)}
@@ -910,7 +971,13 @@ export default function AnalyzeScreen() {
                                 right: moderateScale(2),
                                 zIndex: 1
                             }}
-                            onPress={() => Alert.alert("Cost Information", "Each Resume Analysis costs 8 tokens.")}
+                            onPress={() => {
+                                if (Platform.OS === 'web') {
+                                    window.alert('Cost Information: Each Resume Analysis costs 8 tokens.');
+                                } else {
+                                    Alert.alert('Cost Information', 'Each Resume Analysis costs 8 tokens.');
+                                }
+                            }}
                         />
                     </View>
 
@@ -954,7 +1021,7 @@ const styles = StyleSheet.create({
         marginBottom: verticalScale(isAndroid ? 16 : 24),
     },
     sectionTitle: {
-        fontSize: scaleFont(16),
+        fontSize: Platform.OS === 'web' ? 16 : scaleFont(16),
         marginBottom: verticalScale(12),
     },
     button: {

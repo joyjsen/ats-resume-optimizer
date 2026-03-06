@@ -139,16 +139,18 @@ Structure:
   "contactInfo": {"name":"", "email":"", "phone":"", "location":"", "linkedin":"", "portfolio":"", "github":""},
   "summary": "",
   "experience": [{"company":"", "title":"", "location":"", "startDate":"MM/YYYY", "endDate":"MM/YYYY", "current":false, "bullets":[]}],
-  "education": [{"institution":"", "degree":"", "field":"", "startDate":"YYYY", "endDate":"YYYY", "gpa":""}],
+  "education": [{"institution":"", "degree":"", "field":"", "startDate":"YYYY", "endDate":"YYYY", "gpa":"", "relevantCoursework":[], "honors":[]}],
   "skills": [{"name":"", "category":"technical|soft|domain|methodology", "proficiency":"beginner|intermediate|advanced|expert"}],
-  "certifications": [{"name":"", "issuer":"", "date":"MM/YYYY"}],
+  "certifications": [{"name":"", "issuer":"", "date":"MM/YYYY", "expiryDate":"MM/YYYY", "credentialId":""}],
   "projects": [{"name":"", "description":"", "technologies":[], "url":""}]
 }
 Rules:
-- Exhaustive extraction. Do not truncate bullets.
+- EXHAUSTIVE extraction. Do not truncate bullets or lists.
 - MM/YYYY dates.
 - Clean bullets (no symbols).
 - Categorize skills accurately.
+- **Education Standardization**: Try to standardize degree names during extraction (e.g., extract "Bachelor of Arts" or "BA" as "Bachelor's Degree" in the JSON if the meaning is clear).
+- Education & Certifications: Extract ALL mentioned technologies, tools, and professional standards mentioned in these sections.
 - Return EXACT JSON, no other text.`.trim();
 
     // Clean visualization markers if present
@@ -198,6 +200,8 @@ Rules:
       ...parsed,
       experience: (parsed.experience || []).map((exp: any) => ({ ...exp, id: this.generateId() })),
       education: (parsed.education || []).map((edu: any) => ({ ...edu, id: this.generateId() })),
+      certifications: (parsed.certifications || []).map((cert: any) => ({ ...cert, id: this.generateId() })),
+      projects: (parsed.projects || []).map((proj: any) => ({ ...proj, id: this.generateId() })),
       skills: parsed.skills || [],
       text: content
     };
@@ -214,13 +218,15 @@ Structure:
   "contactInfo": {"name":"", "email":"", "phone":"", "location":"", "linkedin":"", "portfolio":"", "github":""},
   "summary": "",
   "experience": [{"company":"", "title":"", "location":"", "startDate":"MM/YYYY", "endDate":"MM/YYYY", "current":false, "bullets":[]}],
-  "education": [{"institution":"", "degree":"", "field":"", "startDate":"YYYY", "endDate":"YYYY", "gpa":""}],
+  "education": [{"institution":"", "degree":"", "field":"", "startDate":"YYYY", "endDate":"YYYY", "gpa":"", "relevantCoursework":[], "honors":[]}],
   "skills": [{"name":"", "category":"technical|soft|domain|methodology", "proficiency":"beginner|intermediate|advanced|expert"}],
-  "certifications": [{"name":"", "issuer":"", "date":"MM/YYYY"}],
+  "certifications": [{"name":"", "issuer":"", "date":"MM/YYYY", "expiryDate":"MM/YYYY", "credentialId":""}],
   "projects": [{"name":"", "description":"", "technologies":[], "url":""}]
 }
 Rules:
 - EXHAUSTIVE text extraction. Do not skip content.
+- **Education Standardization**: Try to standardize degree names during extraction (e.g., extract "Bachelor of Arts" or "BA" as "Bachelor's Degree" in the JSON if the meaning is clear).
+- Education & Certifications: Capture every degree, certification, and specific technical keywords mentioned.
 - Combined all images into one profile.
 - Return EXACT JSON, no explanations.`.trim();
 
@@ -257,6 +263,8 @@ Rules:
       ...parsed,
       experience: (parsed.experience || []).map((exp: any) => ({ ...exp, id: this.generateId() })),
       education: (parsed.education || []).map((edu: any) => ({ ...edu, id: this.generateId() })),
+      certifications: (parsed.certifications || []).map((cert: any) => ({ ...cert, id: this.generateId() })),
+      projects: (parsed.projects || []).map((proj: any) => ({ ...proj, id: this.generateId() })),
       skills: parsed.skills || [],
       text: "[Parsed from images]"
     };

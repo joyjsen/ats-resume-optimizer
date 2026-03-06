@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { View, StyleSheet, ScrollView, Alert, KeyboardAvoidingView, Platform, Keyboard, TouchableOpacity, Text } from 'react-native';
 import { TextInput, Button, useTheme, Appbar, List, Menu, Divider } from 'react-native-paper';
-import { useRouter } from 'expo-router';
+import { useRouter, Stack } from 'expo-router';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useProfileStore } from '../../src/store/profileStore';
 import { userService } from '../../src/services/firebase/userService';
@@ -75,11 +75,20 @@ export default function EditProfessionalDetailsScreen() {
 
     return (
         <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
-            <Appbar.Header>
-                <Appbar.BackAction onPress={() => router.back()} />
-                <Appbar.Content title="Professional Details" />
-                <Appbar.Action icon="check" onPress={handleSave} disabled={loading} />
-            </Appbar.Header>
+            <Stack.Screen
+                options={{
+                    title: 'Professional Details',
+                    headerLeft: () => <Appbar.BackAction onPress={() => router.back()} />,
+                    headerRight: () => (
+                        <Appbar.Action
+                            icon="check"
+                            onPress={handleSave}
+                            disabled={loading}
+                            color={theme.colors.primary}
+                        />
+                    )
+                }}
+            />
 
             <KeyboardAvoidingView
                 behavior={Platform.OS === 'ios' ? 'padding' : undefined}

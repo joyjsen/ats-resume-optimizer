@@ -301,7 +301,9 @@ export default function HistoryDetailsScreen() {
     const navigation = useNavigation();
 
     useEffect(() => {
-        navigation.setOptions({ title: getTitle(), headerBackTitle: '' });
+        navigation.setOptions({
+            title: getTitle(),
+        });
     }, [filter]);
 
     return (

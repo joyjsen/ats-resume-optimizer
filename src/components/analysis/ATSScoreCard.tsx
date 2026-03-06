@@ -1,6 +1,6 @@
 import React from 'react';
-import { View, StyleSheet, TouchableOpacity } from 'react-native';
-import { Card, Text, ProgressBar, useTheme, Avatar } from 'react-native-paper';
+import { View, StyleSheet, TouchableOpacity, Platform } from 'react-native';
+import { Text, ProgressBar, useTheme } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { getATSScoreRecommendation } from '../../utils/scoreColors';
 
@@ -17,71 +17,89 @@ export const ATSScoreCard = ({ score, originalScore, threshold = 75 }: Props) =>
     const rec = getATSScoreRecommendation(score);
     const diff = originalScore !== undefined ? score - originalScore : 0;
 
-    return (
-        <Card style={styles.card}>
-            <Card.Content style={styles.content}>
-                <TouchableOpacity
-                    onPress={() => setIsCollapsed(!isCollapsed)}
-                    style={styles.header}
-                    activeOpacity={0.7}
-                >
-                    <Text variant="titleMedium">ATS Compatibility Score</Text>
-                    <MaterialCommunityIcons
-                        name={isCollapsed ? "chevron-down" : "chevron-up"}
-                        size={24}
-                        color={theme.colors.onSurfaceVariant}
-                    />
-                </TouchableOpacity>
-
-                {!isCollapsed && (
-                    <View style={{ gap: 12 }}>
-                        <View style={{ alignItems: 'center', marginVertical: 4 }}>
-                            <Text style={{ color: rec.color, fontWeight: 'bold', fontSize: 18 }}>{score}%</Text>
-                            {originalScore !== undefined && diff !== 0 && (
-                                <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
-                                    <Text variant="titleSmall" style={{ color: '#999', textDecorationLine: 'line-through', marginRight: 10 }}>
-                                        {originalScore}%
-                                    </Text>
-                                    <Text variant="titleMedium" style={{ color: '#4CAF50', fontWeight: 'bold' }}>
-                                        +{diff}% ⬆️
-                                    </Text>
-                                </View>
-                            )}
-                        </View>
-
-                        <ProgressBar progress={score / 100} color={rec.color} style={styles.progress} />
-
-                        <View style={[styles.recommendationBox, { backgroundColor: rec.bg, borderColor: rec.color }]}>
-                            <Avatar.Icon size={32} icon={rec.icon} style={{ backgroundColor: rec.color, marginTop: 2 }} color="white" />
-                            <View style={{ flex: 1, paddingRight: 4 }}>
-                                <Text
-                                    variant="titleSmall"
-                                    style={{ color: rec.color, fontWeight: 'bold' }}
-                                >
-                                    {rec.message}
-                                </Text>
-                                <Text
-                                    variant="bodySmall"
-                                    style={{ color: '#444', marginTop: 2, flexWrap: 'wrap' }}
-                                >
-                                    {rec.description}
-                                </Text>
-                            </View>
-                        </View>
+    const expandedContent = (
+        <View style={{ flexDirection: 'column', marginTop: 12, paddingBottom: 8 }}>
+            <View style={{ alignItems: 'center', marginBottom: 12 }}>
+                <Text style={{ color: rec.color, fontWeight: 'bold', fontSize: 18 }}>{score}%</Text>
+                {originalScore !== undefined && diff !== 0 && (
+                    <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
+                        <Text variant="titleSmall" style={{ color: '#999', textDecorationLine: 'line-through', marginRight: 10 }}>
+                            {originalScore}%
+                        </Text>
+                        <Text variant="titleMedium" style={{ color: '#4CAF50', fontWeight: 'bold' }}>
+                            +{diff}% ⬆️
+                        </Text>
                     </View>
                 )}
-            </Card.Content>
-        </Card>
+            </View>
+
+            <ProgressBar progress={score / 100} color={rec.color} style={[styles.progress, { marginBottom: 16 }]} />
+
+            {/* Recommendation — using MaterialCommunityIcons so no Paper Avatar height issues */}
+            <View style={{
+                flexDirection: 'row',
+                alignItems: 'flex-start',
+                padding: 12,
+                borderRadius: 8,
+                borderLeftWidth: 4,
+                borderColor: rec.color,
+                backgroundColor: rec.color + '22', // 13% opacity tint = always visible in dark/light
+                gap: 10,
+            }}>
+                <MaterialCommunityIcons name={rec.icon as any} size={22} color={rec.color} style={{ marginTop: 1 }} />
+                <View style={{ flex: 1 }}>
+                    <Text style={{ color: rec.color, fontWeight: 'bold', fontSize: 13 }}>
+                        {rec.message}
+                    </Text>
+                    <Text style={{ color: theme.colors.onSurfaceVariant, fontSize: 12, marginTop: 4 }}>
+                        {rec.description}
+                    </Text>
+                </View>
+            </View>
+        </View>
+    );
+
+    return (
+        <View
+            style={{
+                backgroundColor: theme.colors.elevation.level2,
+                borderRadius: 12,
+                marginBottom: 16,
+                padding: 16,
+            }}
+        >
+            <TouchableOpacity
+                onPress={() => setIsCollapsed(!isCollapsed)}
+                style={styles.header}
+                activeOpacity={0.7}
+            >
+                <Text variant="titleMedium">ATS Compatibility Score</Text>
+                <MaterialCommunityIcons
+                    name={isCollapsed ? "chevron-down" : "chevron-up"}
+                    size={24}
+                    color={theme.colors.onSurfaceVariant}
+                />
+            </TouchableOpacity>
+
+            {Platform.OS === 'web' ? (
+                // Web: use maxHeight+overflow so the parent card correctly computes its height
+                <View
+                    style={{
+                        maxHeight: isCollapsed ? 0 : 9999,
+                        overflow: 'hidden',
+                    }}
+                >
+                    {expandedContent}
+                </View>
+            ) : (
+                // Native: simple conditional rendering
+                !isCollapsed && expandedContent
+            )}
+        </View>
     );
 };
 
 const styles = StyleSheet.create({
-    card: {
-        marginBottom: 16,
-    },
-    content: {
-        gap: 12,
-    },
     header: {
         flexDirection: 'row',
         justifyContent: 'space-between',
@@ -91,13 +109,4 @@ const styles = StyleSheet.create({
         height: 10,
         borderRadius: 5,
     },
-    recommendationBox: {
-        flexDirection: 'row',
-        alignItems: 'flex-start', // Changed from center to allow multiline growth
-        padding: 12,
-        borderRadius: 8,
-        gap: 12,
-        borderLeftWidth: 4,
-        marginTop: 8
-    }
 });

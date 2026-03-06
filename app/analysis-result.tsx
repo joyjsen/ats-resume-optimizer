@@ -26,32 +26,90 @@ export default function AnalysisResultScreen() {
     const { currentAnalysis, setCurrentAnalysis } = useResumeStore();
     const { activeTasks } = useTaskQueue();
     const { id } = useLocalSearchParams<{ id: string }>();
+    const [isAuthReady, setIsAuthReady] = React.useState(false);
+    const [error, setError] = React.useState<string | null>(null);
+    const [isInitialLoading, setIsInitialLoading] = React.useState(true);
 
-    // Initial load from params if store is empty or mismatched
+    // 1. Wait for Auth Session to restore (Prevents Permission Denied on cold start)
     React.useEffect(() => {
-        if (id && (!currentAnalysis || currentAnalysis.id !== id)) {
-            const { historyService } = require('../src/services/firebase/historyService');
-            historyService.getAnalysisById(id).then((analysis: any) => {
-                if (analysis) {
-                    setCurrentAnalysis({
-                        ...analysis.analysisData,
-                        id: analysis.id,
-                        job: analysis.jobData,
-                        resume: analysis.resumeData,
-                        optimizedResume: analysis.optimizedResumeData,
-                        changes: analysis.changesData,
-                        optimizedMatchAnalysis: analysis.optimizedMatchAnalysis,
-                        draftOptimizedResumeData: analysis.draftOptimizedResumeData,
-                        draftChangesData: analysis.draftChangesData,
-                        draftAtsScore: analysis.draftAtsScore,
-                        draftMatchAnalysis: analysis.draftMatchAnalysis,
-                        // Priority: Top-level (fast read) -> Nested (legacy/backup) -> 0
-                        atsScore: analysis.atsScore ?? analysis.analysisData?.atsScore ?? 0
-                    });
-                }
-            });
+        const { auth } = require('../src/services/firebase/config');
+        const { onAuthStateChanged } = require('firebase/auth');
+
+        const unsubscribeAuth = onAuthStateChanged(auth, (user: any) => {
+            if (user) {
+                console.log("[AnalysisResult] Auth state ready.");
+                setIsAuthReady(true);
+            } else {
+                console.warn("[AnalysisResult] Auth state changed: No user detected.");
+            }
+        });
+
+        if (auth.currentUser) {
+            setIsAuthReady(true);
         }
-    }, [id]);
+
+        return () => unsubscribeAuth();
+    }, []);
+
+    const fetchAnalysis = React.useCallback(async () => {
+        if (!id) return;
+        console.log(`[AnalysisResult] fetchAnalysis triggered for ID: ${id}`);
+        setError(null);
+        setIsInitialLoading(true);
+        try {
+            const { historyService } = require('../src/services/firebase/historyService');
+            const analysis = await historyService.getAnalysisById(id);
+            if (analysis) {
+                console.log(`[AnalysisResult] Successfully fetched analysis document: ${analysis.id}`);
+                setCurrentAnalysis({
+                    ...analysis.analysisData,
+                    id: analysis.id,
+                    job: analysis.jobData,
+                    resume: analysis.resumeData,
+                    optimizedResume: analysis.optimizedResumeData,
+                    changes: analysis.changesData,
+                    optimizedMatchAnalysis: analysis.optimizedMatchAnalysis,
+                    draftOptimizedResumeData: analysis.draftOptimizedResumeData,
+                    draftChangesData: analysis.draftChangesData,
+                    draftAtsScore: analysis.draftAtsScore,
+                    draftMatchAnalysis: analysis.draftMatchAnalysis,
+                    atsScore: analysis.atsScore ?? analysis.analysisData?.atsScore ?? 0
+                });
+            } else {
+                console.error(`[AnalysisResult] No document found for ID: ${id}`);
+                setError(`Analysis not found (ID: ${id}). If this was from a notification, please try opening it from the Optimize tab.`);
+            }
+        } catch (err: any) {
+            console.error(`[AnalysisResult] Load error for ID ${id}:`, err);
+            setError(err.message || "Failed to load analysis.");
+        } finally {
+            setIsInitialLoading(false);
+        }
+    }, [id, setCurrentAnalysis]);
+
+    // 2. Initial load from params if store is empty or mismatched
+    React.useEffect(() => {
+        if (!isAuthReady || !id) return;
+
+        if (!currentAnalysis || currentAnalysis.id !== id) {
+            fetchAnalysis();
+        } else {
+            setIsInitialLoading(false);
+        }
+    }, [isAuthReady, id, currentAnalysis?.id, fetchAnalysis]);
+
+    // 3. Timeout fallback for the loading screen
+    React.useEffect(() => {
+        const timer = setTimeout(() => {
+            if (isInitialLoading) {
+                console.warn("[AnalysisResult] Loading timeout reached.");
+                if (!isAuthReady) {
+                    setError("Auth session taking longer than expected. Please ensure you are logged in.");
+                }
+            }
+        }, 12000); // 12 seconds
+        return () => clearTimeout(timer);
+    }, [isInitialLoading, isAuthReady]);
 
     // Local state
     const [optimizing, setOptimizing] = React.useState(false);
@@ -106,7 +164,14 @@ export default function AnalysisResultScreen() {
 
     // Real-time subscription to analysis changes (Instant Sync)
     React.useEffect(() => {
-        if (!currentAnalysis?.id) return;
+        if (!isAuthReady || !currentAnalysis?.id) return;
+
+        // Safety: If the store ID doesn't match the URL ID, don't subscribe yet.
+        // This prevents subscribing to "stale" store data while hydration is pending.
+        if (id && currentAnalysis.id !== id) {
+            console.log("[AnalysisResult] Store ID and URL ID mismatch. Skipping subscription until sync.");
+            return;
+        }
 
         const { historyService } = require('../src/services/firebase/historyService');
         console.log(`[AnalysisResult] Subscribing to analysis: ${currentAnalysis.id}`);
@@ -162,7 +227,7 @@ export default function AnalysisResultScreen() {
             console.log("[AnalysisResult] Unsubscribing");
             unsubscribe();
         };
-    }, [currentAnalysis?.id]);
+    }, [isAuthReady, currentAnalysis?.id, id]);
 
     // Cleanup active task if we see it finish via context (Just for spinner state management)
     React.useEffect(() => {
@@ -220,13 +285,30 @@ export default function AnalysisResultScreen() {
     const theme = useTheme();
 
     // Derived State and Safety Check
-    if (!currentAnalysis) {
+    if (!isAuthReady || isInitialLoading || !currentAnalysis || (id && currentAnalysis.id !== id)) {
         return (
-            <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: theme.colors.background }}>
-                <Text style={{ marginBottom: 16 }}>No analysis data found.</Text>
-                <Button mode="contained" onPress={() => router.replace('/(tabs)/analyze')}>
-                    Go to Analyze
-                </Button>
+            <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20, backgroundColor: theme.colors.background }}>
+                {!error ? (
+                    <>
+                        <MaterialCommunityIcons name="loading" size={48} color={theme.colors.primary} style={{ marginBottom: 16 }} />
+                        <Text variant="titleMedium" style={{ marginBottom: 16, fontWeight: 'bold' }}>Loading, Please Wait ...</Text>
+                        {!isAuthReady && <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>Waiting for secure session...</Text>}
+                    </>
+                ) : (
+                    <>
+                        <MaterialCommunityIcons name="alert-circle-outline" size={48} color={theme.colors.error} style={{ marginBottom: 16 }} />
+                        <Text variant="titleMedium" style={{ color: theme.colors.error, marginBottom: 8, textAlign: 'center' }}>Something went wrong</Text>
+                        <Text variant="bodyMedium" style={{ marginBottom: 24, textAlign: 'center' }}>{error}</Text>
+                        <View style={{ flexDirection: 'row', gap: 12 }}>
+                            <Button mode="outlined" onPress={() => router.replace('/(tabs)/analyze')}>
+                                Back
+                            </Button>
+                            <Button mode="contained" onPress={fetchAnalysis}>
+                                Retry
+                            </Button>
+                        </View>
+                    </>
+                )}
             </View>
         );
     }

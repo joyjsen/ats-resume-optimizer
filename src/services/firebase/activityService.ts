@@ -10,6 +10,7 @@ import {
     onSnapshot,
     serverTimestamp,
     runTransaction,
+    updateDoc,
     deleteDoc
 } from 'firebase/firestore';
 import { db, auth } from './config';
@@ -53,49 +54,6 @@ export class ActivityService {
             if (!userSnap.exists()) throw new Error("User profile not found");
             const userData = userSnap.data();
 
-            if (!userData) throw new Error("User data is empty");
-
-            // For admin_adjustment (adding tokens), cost is 0 or negative (to add tokens)
-            // But ACTIVITY_COSTS usually defines usage cost.
-            // If type is admin_adjustment, we might want to skip balance check or handle it differently.
-            // However, the caller usually updates balance separately? 
-            // WAIT - the previous implementation DEDUCTED tokens inside this transaction:
-            // const newBalance = userData.tokenBalance - cost;
-            // If I am ADDING tokens, cost should be negative? Or should I just not use cost here if I use creditTokens?
-            // Actually, best practice: do it ALL in here. 
-
-            // If it's an adjustment, we might want to pass 'amount' in contextData and handle it.
-            // But to minimize changes, let's keep logic:
-            // If params.type is admin_adjustment, we assume cost is 0 (defined in constant?) or we handle it.
-            // Let's assume cost is 0 for admin_adjustment in ACTIVITY_COSTS.
-
-            // NOTE: The previous code updated the balance: `const newBalance = userData.tokenBalance - cost;`
-            // If I want to CREDIT tokens, I should perhaps update that logic.
-            // BUT `userService.creditTokens` exists.
-            // If I use `logActivity` just for LOGGING, cost should be 0.
-            // If I use it for transaction, it implies deduction.
-
-            // Let's stick to: logActivity logs it. If type is admin_adjustment, cost is 0. 
-            // The actual balance update happens via userService.creditTokens? 
-            // NO, `creditTokens` is separate.
-            // IF I want atomic, I should do it here. 
-            // But let's look at `userService.ts` again. `creditTokens` is simple `updateDoc`.
-
-            // Decision: `logActivity` is primarily for SPENDING. 
-            // But for `admin_adjustment`, we just want to log.
-            // So if cost is 0, newBalance = oldBalance.
-            // But if we want to trace the balance change, we should probably update it here.
-            // However, `userService.creditTokens` updates it.
-            // Let's just update `logActivity` to support `targetUserId`, and let the Caller handle the balance update if it's a credit.
-            // Or better, if I am admin granting tokens, I call `creditTokens` (which updates balance) AND `logActivity` (which logs it).
-            // `logActivity` calculates `newBalance` based on `userData.tokenBalance - cost`.
-            // If I call `creditTokens` FIRST, then `logActivity`, `logActivity` will read the NEW balance.
-            // So:
-            // 1. UserService.creditTokens(uid, 50) -> Balance 50 -> 100
-            // 2. ActivityService.logActivity(..., cost=0) -> Read 100. Write 100.
-
-            // This works.
-
             if ((userData.tokenBalance || 0) < cost) {
                 throw new Error("Insufficient token balance");
             }
@@ -134,6 +92,28 @@ export class ActivityService {
 
             return activityId;
         });
+    }
+
+    /**
+     * Update an existing activity record
+     */
+    async updateActivity(activityId: string, updates: Partial<UserActivity>): Promise<void> {
+        const docRef = doc(db, this.collectionName, activityId);
+
+        // Remove prohibited fields for updates
+        const cleanUpdates = { ...updates };
+        // @ts-ignore
+        delete cleanUpdates.activityId;
+        // @ts-ignore
+        delete cleanUpdates.uid;
+        // @ts-ignore
+        delete cleanUpdates.timestamp;
+
+        await updateDoc(docRef, {
+            ...cleanUpdates,
+            updatedAt: serverTimestamp()
+        });
+        console.log(`[ActivityService] Updated activity: ${activityId}`);
     }
 
     /**

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, StyleSheet, ScrollView, Dimensions } from 'react-native';
+import { View, StyleSheet, ScrollView, Dimensions, Platform } from 'react-native';
 import { Portal, Modal, Text, Button, IconButton, ProgressBar, useTheme } from 'react-native-paper';
 
 interface Slide {
@@ -22,6 +22,7 @@ interface Props {
 export const TrainingSlideshow = ({ visible, slides, initialSlide, onDismiss, onSlideChange, onComplete }: Props) => {
     const theme = useTheme();
     const [currentIndex, setCurrentIndex] = useState(initialSlide || 0);
+    const windowHeight = Dimensions.get('window').height;
 
     const progress = slides.length > 0 ? (currentIndex + 1) / slides.length : 0;
 
@@ -76,13 +77,13 @@ export const TrainingSlideshow = ({ visible, slides, initialSlide, onDismiss, on
 
     const points = (Array.isArray(rawItems) ? rawItems : []).map(normalizePoint);
 
-    // Debug: log first slide structure to help diagnose issues
-    if (currentIndex === 0) {
-        console.log('[Slideshow] Slide 0 raw keys:', Object.keys(currentSlide));
-        const firstRawItem = Array.isArray(rawItems) && rawItems[0];
-        if (firstRawItem && typeof firstRawItem === 'object') {
-            console.log('[Slideshow] Point 0 keys:', Object.keys(firstRawItem));
-        }
+    // Debug: log slide structure to help diagnose issues
+    console.log(`[Slideshow] Rendering Slide ${currentIndex + 1}/${slides.length}`);
+    console.log(`[Slideshow] Current Slide Keys:`, Object.keys(currentSlide));
+    console.log(`[Slideshow] Raw Items Found:`, Array.isArray(rawItems) ? `${rawItems.length} items` : 'none');
+
+    if (currentIndex === 0 || currentIndex === 7) {
+        console.log(`[Slideshow] Slide ${currentIndex} data:`, JSON.stringify(currentSlide).substring(0, 200));
     }
 
     return (
@@ -90,7 +91,10 @@ export const TrainingSlideshow = ({ visible, slides, initialSlide, onDismiss, on
             <Modal
                 visible={visible}
                 onDismiss={onDismiss}
-                contentContainerStyle={[styles.modal, { backgroundColor: theme.colors.elevation.level3 }]}
+                contentContainerStyle={[
+                    styles.modal,
+                    { backgroundColor: theme.colors.elevation.level3 }
+                ]}
             >
                 <View style={styles.header}>
                     <Text variant="titleMedium">Training Progress</Text>
@@ -103,7 +107,14 @@ export const TrainingSlideshow = ({ visible, slides, initialSlide, onDismiss, on
                     Slide {currentIndex + 1} of {slides.length}
                 </Text>
 
-                <ScrollView style={styles.content}>
+                <ScrollView
+                    style={[
+                        styles.content,
+                        Platform.OS === 'web' && { height: windowHeight * 0.6, flex: undefined }
+                    ]}
+                    contentContainerStyle={styles.scrollContent}
+                    showsVerticalScrollIndicator={true}
+                >
                     <Text variant="headlineSmall" style={[styles.slideTitle, { color: theme.colors.onSurface }]}>{currentSlide.title || `Slide ${currentIndex + 1}`}</Text>
 
                     {points.length > 0 ? points.map((item, idx) => (
@@ -161,10 +172,12 @@ export const TrainingSlideshow = ({ visible, slides, initialSlide, onDismiss, on
 
 const styles = StyleSheet.create({
     modal: {
-        margin: 16,
+        margin: 20,
         padding: 20,
-        borderRadius: 12,
-        height: '80%',
+        borderRadius: 16,
+        maxHeight: Dimensions.get('window').height * 0.8,
+        alignSelf: 'center',
+        width: Platform.OS === 'web' ? '60%' : '90%',
     },
     header: {
         flexDirection: 'row',
@@ -188,8 +201,12 @@ const styles = StyleSheet.create({
         // color: '#000', -- Handled by theme inline
     },
     content: {
-        flex: 1,
-        marginBottom: 20,
+        marginBottom: 8,
+        minHeight: 200,
+    },
+    scrollContent: {
+        paddingBottom: 24,
+        flexGrow: 1,
     },
     pointContainer: {
         marginBottom: 20,

@@ -36,7 +36,7 @@ exports.createStripePaymentIntent = functionsV1
     if (!context.auth) {
         throw new functionsV1.https.HttpsError("unauthenticated", "You must be logged in to make a purchase.");
     }
-    const { amount } = data;
+    const { amount, currency = "usd" } = data;
     if (!amount || typeof amount !== "number" || amount <= 0) {
         throw new functionsV1.https.HttpsError("invalid-argument", "A valid numeric amount is required.");
     }
@@ -50,7 +50,7 @@ exports.createStripePaymentIntent = functionsV1
         console.log(`Creating PaymentIntent for UID: ${context.auth.uid}, Amount: ${amountInCents} cents`);
         const paymentIntent = await stripe.paymentIntents.create({
             amount: amountInCents,
-            currency: "usd",
+            currency: currency.toLowerCase(),
             automatic_payment_methods: {
                 enabled: true,
             },
@@ -79,7 +79,7 @@ exports.createStripeCheckoutSession = functionsV1
     if (!context.auth) {
         throw new functionsV1.https.HttpsError("unauthenticated", "You must be logged in.");
     }
-    const { amount, packageId, tokens, successUrl, cancelUrl } = data;
+    const { amount, packageId, tokens, successUrl, cancelUrl, currency = "usd" } = data;
     try {
         const stripe = new stripe_1.default(secrets_1.stripeSecretKey.value(), {
             apiVersion: "2022-11-15",
@@ -89,7 +89,7 @@ exports.createStripeCheckoutSession = functionsV1
             line_items: [
                 {
                     price_data: {
-                        currency: "usd",
+                        currency: currency.toLowerCase(),
                         product_data: {
                             name: `${tokens} Tokens Package`,
                             description: `Purchase ${tokens} tokens for RiResume`,
@@ -119,4 +119,6 @@ exports.createStripeCheckoutSession = functionsV1
 __exportStar(require("./notifications"), exports);
 __exportStar(require("./aiAnalysis"), exports);
 __exportStar(require("./stripeWebhook"), exports);
+__exportStar(require("./appleAuthRelay"), exports);
+__exportStar(require("./appleIapValidation"), exports);
 //# sourceMappingURL=index.js.map

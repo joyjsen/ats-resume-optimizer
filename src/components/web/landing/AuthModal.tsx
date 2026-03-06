@@ -50,6 +50,12 @@ export const AuthModal: React.FC<AuthModalProps> = ({ visible, onClose, initialM
             Alert.alert("Error", "Please fill in all fields.");
             return;
         }
+        // Email format validation
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(email.trim())) {
+            Alert.alert("Error", "Please enter a valid email address.");
+            return;
+        }
         setLoading(true);
         try {
             await authService.loginWithEmail(email, password);
@@ -76,6 +82,12 @@ export const AuthModal: React.FC<AuthModalProps> = ({ visible, onClose, initialM
             Alert.alert("Error", "Password should be at least 6 characters.");
             return;
         }
+        // Email format validation
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(email.trim())) {
+            Alert.alert("Error", "Please enter a valid email address.");
+            return;
+        }
 
         setLoading(true);
         try {
@@ -98,13 +110,11 @@ export const AuthModal: React.FC<AuthModalProps> = ({ visible, onClose, initialM
 
     const handleSocialLogin = async (provider: 'google' | 'apple' | 'microsoft') => {
         if (provider === 'apple' && Platform.OS === 'web') {
+            const msg = "Apple Sign-In is not available directly on the web. Please use the RiResume mobile app, or sign in with Google or email instead.";
             if (typeof window !== 'undefined') {
-                window.alert("Apple Login: To proceed on web, please use the email address as defined in your mobile app.");
+                window.alert(msg);
             } else {
-                Alert.alert(
-                    "Apple Login",
-                    "To proceed on web, please use the email address as defined in your mobile app."
-                );
+                Alert.alert("Apple Login", msg);
             }
             return;
         }

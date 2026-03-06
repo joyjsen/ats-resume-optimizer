@@ -1,7 +1,7 @@
 import React from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
 import { useTheme } from 'react-native-paper';
-import { Stack } from 'expo-router';
+import { useRouter } from 'expo-router';
 import Markdown from 'react-native-markdown-display';
 
 const PRIVACY_CONTENT = `
@@ -243,10 +243,10 @@ If you have questions, concerns, or requests regarding this Privacy Policy or ou
 
 export default function PrivacyScreen() {
     const theme = useTheme();
+    const router = useRouter();
 
     return (
         <>
-            <Stack.Screen options={{ title: 'Privacy Policy' }} />
             <ScrollView style={[styles.container, { backgroundColor: theme.colors.background }]}>
                 <Markdown
                     style={{

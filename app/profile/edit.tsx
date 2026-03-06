@@ -1,12 +1,18 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { View, StyleSheet, ScrollView, Alert, KeyboardAvoidingView, Platform, TouchableOpacity } from 'react-native';
 import { TextInput, Button, useTheme, HelperText, Appbar, Avatar, Text } from 'react-native-paper';
-import { useRouter } from 'expo-router';
+import { useRouter, Stack } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import { useProfileStore } from '../../src/store/profileStore';
 import { userService } from '../../src/services/firebase/userService';
 import { authService } from '../../src/services/firebase/authService';
 import { storageService } from '../../src/services/firebase/storageService';
+import { auth } from '../../src/services/firebase/config';
+import RecaptchaVerifierModal from '../../src/components/auth/RecaptchaVerifierModal';
+import { PhoneAuthProvider } from 'firebase/auth';
+import { CountryCodeSelector } from '../../src/components/auth/CountryCodeSelector';
+import { COUNTRY_CALLING_CODES, CountryCallingCode } from '../../src/constants/countries';
+import { getFunctions, httpsCallable } from 'firebase/functions';
 
 export default function EditProfileScreen() {
     const router = useRouter();
@@ -15,8 +21,21 @@ export default function EditProfileScreen() {
 
     const [firstName, setFirstName] = useState(userProfile?.firstName || '');
     const [lastName, setLastName] = useState(userProfile?.lastName || '');
-    const [phone, setPhone] = useState(userProfile?.phoneNumber || '');
     const [email, setEmail] = useState(userProfile?.email || '');
+
+    // Parse initial phone number
+    const initialPhone = userProfile?.phoneNumber || '';
+    const initialCountry = COUNTRY_CALLING_CODES.find(c => initialPhone.startsWith(c.code)) ||
+        COUNTRY_CALLING_CODES.find(c => c.iso === 'US') ||
+        COUNTRY_CALLING_CODES[0];
+
+    // The local part of the phone number (without country code)
+    const localPhone = initialPhone.startsWith(initialCountry.code)
+        ? initialPhone.slice(initialCountry.code.length)
+        : initialPhone;
+
+    const [phone, setPhone] = useState(localPhone);
+    const [selectedCountry, setSelectedCountry] = useState<CountryCallingCode>(initialCountry);
 
     // Photo State
     const [photoUri, setPhotoUri] = useState<string | null>(userProfile?.photoURL || null);
@@ -26,6 +45,14 @@ export default function EditProfileScreen() {
     const [newPassword, setNewPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
     const [loading, setLoading] = useState(false);
+
+    // Phone Verification State
+    const [confirmingPhone, setConfirmingPhone] = useState(false);
+    const [verificationCode, setVerificationCode] = useState('');
+    const recaptchaVerifier = useRef(null);
+
+    // Email Verification State
+    const [confirmingEmail, setConfirmingEmail] = useState(false);
 
     const isPhoneAuth = userProfile?.provider === 'phone';
 
@@ -55,32 +82,10 @@ export default function EditProfileScreen() {
             );
     };
 
-    const handleSave = async () => {
+    const performRemainingUpdates = async (forceLogoutAfter = false) => {
         if (!userProfile) return;
-        setLoading(true);
 
         try {
-            // Validation
-            if (isPhoneAuth) {
-                if (!email) {
-                    Alert.alert("Error", "Email address is required for your account.");
-                    setLoading(false);
-                    return;
-                }
-                if (!validateEmail(email)) {
-                    Alert.alert("Error", "Please enter a valid email address.");
-                    setLoading(false);
-                    return;
-                }
-            } else {
-                // For other providers, if they input specific fields, validate them
-                if (email && !validateEmail(email)) {
-                    Alert.alert("Error", "Please enter a valid email address.");
-                    setLoading(false);
-                    return;
-                }
-            }
-
             // 0. Upload Photo if changed
             let finalPhotoURL = userProfile.photoURL;
             if (isNewPhoto && photoUri) {
@@ -88,19 +93,26 @@ export default function EditProfileScreen() {
                     finalPhotoURL = await storageService.uploadProfilePhoto(userProfile.uid, photoUri);
                 } catch (e) {
                     console.error("Photo upload failed", e);
-                    Alert.alert("Warning", "Failed to upload photo, proceeding with profile update.");
                 }
             }
 
-            // 1. Update Bio Data
+            // 1. Update Bio Data in Firestore
             const updates: any = {
                 firstName,
                 lastName,
                 displayName: `${firstName} ${lastName}`.trim(),
-                phoneNumber: phone,
-                email: email, // Save email
                 photoURL: finalPhotoURL
             };
+
+            // Only update phone/email in Firestore if they match auth state now
+            const currentUser = auth.currentUser;
+            const fullPhone = `${selectedCountry.code}${phone}`;
+            if (currentUser?.email?.toLowerCase() === email.toLowerCase() || forceLogoutAfter) {
+                updates.email = email;
+            }
+            if (currentUser?.phoneNumber === fullPhone) {
+                updates.phoneNumber = fullPhone;
+            }
 
             // Check if profile is now complete
             if (!userProfile.profileCompleted &&
@@ -118,56 +130,286 @@ export default function EditProfileScreen() {
 
             // 2. Update Password if provided
             if (newPassword) {
-                if (newPassword.length < 6) {
-                    Alert.alert("Error", "Password must be at least 6 characters long.");
-                    setLoading(false);
-                    return;
-                }
-                if (newPassword !== confirmPassword) {
-                    Alert.alert("Error", "Passwords do not match.");
-                    setLoading(false);
-                    return;
-                }
-
-                try {
-                    await authService.updateUserPassword(newPassword);
-                    Alert.alert("Success", "Profile and password updated successfully.");
-                } catch (error: any) {
-                    if (error.code === 'auth/requires-recent-login') {
-                        Alert.alert("Security Check", "To change your password, please logout and login again.");
-                    } else {
-                        Alert.alert("Error", "Failed to update password: " + error.message);
+                if (newPassword.length >= 6 && newPassword === confirmPassword) {
+                    try {
+                        await authService.updateUserPassword(newPassword);
+                        if (!forceLogoutAfter) Alert.alert("Success", "Profile updated successfully (including password).");
+                    } catch (error: any) {
+                        Alert.alert("Warning", "Bio updated, but password update failed: " + error.message);
                     }
-                    // Bio data was saved, so we keep going
                 }
             } else {
-                Alert.alert("Success", "Profile updated successfully.");
+                if (!forceLogoutAfter) Alert.alert("Success", "Profile details saved.");
             }
 
             await refreshProfile();
-            router.back();
+
+            if (forceLogoutAfter) {
+                Alert.alert(
+                    "Update Successful",
+                    "Email address is updated, please re-login with the new email address to continue",
+                    [{
+                        text: "OK",
+                        onPress: async () => {
+                            await authService.logout();
+                            router.replace('/(auth)/sign-in' as any);
+                        }
+                    }]
+                );
+            } else {
+                router.back();
+            }
+
+        } catch (error: any) {
+            console.error("Firestore Update Error:", error);
+            if (error.code === 'auth/user-token-expired' || forceLogoutAfter) {
+                Alert.alert(
+                    "Update Successful",
+                    "Email address is updated, please re-login with the new email address to continue",
+                    [{
+                        text: "OK",
+                        onPress: async () => {
+                            await authService.logout();
+                            router.replace('/(auth)/sign-in' as any);
+                        }
+                    }]
+                );
+            } else {
+                Alert.alert("Error", "Bio data updated in Auth, but failed to save to database record.");
+            }
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleSendPhoneCode = async () => {
+        try {
+            const cleanNumber = phone.replace(/\s+/g, '').replace(/-/g, '').replace(/\(|\)/g, '');
+            const fullNumber = cleanNumber.startsWith('+') ? cleanNumber : `${selectedCountry.code}${cleanNumber}`;
+
+            const verifier = Platform.OS === 'web' ? undefined : recaptchaVerifier.current;
+            await authService.signInWithPhoneNumber(fullNumber, verifier || undefined);
+            setConfirmingPhone(true);
+            Alert.alert("Verification", "Verification code sent to your new phone number.");
+        } catch (error: any) {
+            Alert.alert("Error", error.message || "Failed to send code.");
+            setLoading(false);
+        }
+    };
+
+    const handleConfirmPhone = async () => {
+        setLoading(true);
+        try {
+            const credential = PhoneAuthProvider.credential(
+                // @ts-ignore -confirmationResult is stored in authService
+                authService['confirmationResult'].verificationId,
+                verificationCode
+            );
+            await authService.updateNewPhoneNumber(credential);
+            setConfirmingPhone(false);
+            setVerificationCode('');
+            await performRemainingUpdates();
+        } catch (error: any) {
+            Alert.alert("Error", error.message || "Invalid code.");
+            setLoading(false);
+        }
+    };
+
+    const handleCheckEmailVerification = async () => {
+        setLoading(true);
+        try {
+            const user = await authService.reloadUser();
+            if (user?.email?.toLowerCase() === email.toLowerCase()) {
+                setConfirmingEmail(false);
+                // Perform other updates (photo, names) before forced logout
+                await performRemainingUpdates(true);
+            } else {
+                Alert.alert("Pending", "Email not verified yet. Please check your inbox and click the link.");
+            }
+        } catch (error: any) {
+            if (error.code === 'auth/user-token-expired') {
+                // This usually means the email update was successful but the session needs refresh
+                setConfirmingEmail(false);
+                Alert.alert(
+                    "Success",
+                    "Email address is updated, please re-login with the new email address to continue",
+                    [{
+                        text: "OK",
+                        onPress: async () => {
+                            await authService.logout();
+                            router.replace('/(auth)/sign-in' as any);
+                        }
+                    }]
+                );
+            } else {
+                Alert.alert("Error", error.message || "Failed to check verification status.");
+            }
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleSave = async () => {
+        if (!firstName || !lastName) {
+            Alert.alert("Error", "First and last name are required.");
+            return;
+        }
+
+        setLoading(true);
+        try {
+            // 1. Check for Email Change
+            if (email.toLowerCase() !== userProfile?.email?.toLowerCase()) {
+                if (!email || !validateEmail(email)) {
+                    Alert.alert("Error", "Please enter a valid email address.");
+                    setLoading(false);
+                    return;
+                }
+
+                // Check for duplicate email before triggering verification
+                try {
+                    const functions = getFunctions();
+                    const checkUserProvider = httpsCallable(functions, 'checkUserProvider');
+                    const result = await checkUserProvider({ email });
+                    const emailCheck = result.data as any;
+
+                    if (emailCheck?.exists) {
+                        Alert.alert("Error", "Email address is already registered with another user, please use a different email address");
+                        setLoading(false);
+                        return;
+                    }
+                } catch (e: any) {
+                    Alert.alert("Error", "Failed to check email availability: " + (e.message || "Unknown error"));
+                    setLoading(false);
+                    return;
+                }
+
+                // Native Firebase Verification
+                Alert.alert(
+                    "Verify New Email",
+                    `We will send a verification link to ${email}. The change will only take effect after you verify it. Proceed?`,
+                    [
+                        { text: "Cancel", style: "cancel", onPress: () => setLoading(false) },
+                        {
+                            text: "Send Link",
+                            onPress: async () => {
+                                try {
+                                    await authService.verifyNewEmail(email);
+                                    setConfirmingEmail(true);
+                                    Alert.alert("Verification Sent", "Please check your new email's inbox for the verification link. Once verified, click 'I Have Verified' below.");
+                                } catch (e: any) {
+                                    Alert.alert("Error", e.message || "Failed to send verification email.");
+                                } finally {
+                                    setLoading(false);
+                                }
+                            }
+                        }
+                    ]
+                );
+                return;
+            }
+
+            // 2. Check for Phone Change
+            const currentPhone = userProfile?.phoneNumber || '';
+            const newFullPhone = phone.trim() ? (phone.startsWith('+') ? phone : `${selectedCountry.code}${phone}`) : '';
+
+            if (newFullPhone && newFullPhone !== currentPhone && !isPhoneAuth) {
+                if (!phone) {
+                    Alert.alert("Error", "Phone number cannot be empty.");
+                    setLoading(false);
+                    return;
+                }
+
+                // Check for duplicate phone safely via Cloud Function if phone changed
+                try {
+                    const exists = await userService.checkPhoneExists(newFullPhone);
+                    if (exists) {
+                        Alert.alert("Error", "This phone number is already registered with another user, please use a different phone number.");
+                        setLoading(false);
+                        return;
+                    }
+                } catch (err) {
+                    console.warn("Duplicate phone check failed, proceeding anyway", err);
+                }
+
+                // Trigger Phone Verification flow
+                await handleSendPhoneCode();
+                return;
+            }
+
+            await performRemainingUpdates();
 
         } catch (error: any) {
             console.error("Save Error:", error);
-            Alert.alert("Error", "Failed to save profile.");
-        } finally {
+            Alert.alert("Error", error.message || "Failed to save profile.");
             setLoading(false);
         }
     };
 
     return (
         <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
-            <Appbar.Header>
-                <Appbar.BackAction onPress={() => router.back()} />
-                <Appbar.Content title="Edit Profile" />
-                <Appbar.Action icon="check" onPress={handleSave} disabled={loading} />
-            </Appbar.Header>
+            <Stack.Screen
+                options={{
+                    headerRight: () => (
+                        <Appbar.Action
+                            icon="check"
+                            onPress={handleSave}
+                            disabled={loading || confirmingEmail || confirmingPhone}
+                            color={theme.colors.primary}
+                        />
+                    )
+                }}
+            />
 
             <KeyboardAvoidingView
                 behavior={Platform.OS === 'ios' ? 'padding' : undefined}
                 style={{ flex: 1 }}
             >
                 <ScrollView contentContainerStyle={styles.container}>
+                    <RecaptchaVerifierModal
+                        ref={recaptchaVerifier}
+                        firebaseConfig={auth.app.options}
+                        title="Verify you are human"
+                        cancelLabel="Close"
+                    />
+
+                    {/* Phone Verification Confirmation (Only shown when verifying new phone) */}
+                    {confirmingPhone && (
+                        <View style={styles.verificationOverlay}>
+                            <Text variant="titleMedium">Enter Verification Code</Text>
+                            <TextInput
+                                label="Code"
+                                value={verificationCode}
+                                onChangeText={setVerificationCode}
+                                mode="outlined"
+                                keyboardType="number-pad"
+                                style={styles.input}
+                            />
+                            <View style={{ flexDirection: 'row', gap: 10 }}>
+                                <Button mode="outlined" onPress={() => {
+                                    setConfirmingPhone(false);
+                                    setPhone(localPhone);
+                                }} style={{ flex: 1 }}>Cancel</Button>
+                                <Button mode="contained" onPress={handleConfirmPhone} style={{ flex: 1 }} loading={loading}>Verify</Button>
+                            </View>
+                        </View>
+                    )}
+
+                    {/* Email Verification Pending */}
+                    {confirmingEmail && (
+                        <View style={styles.verificationOverlay}>
+                            <Text variant="titleMedium">Email Verification Pending</Text>
+                            <Text variant="bodyMedium" style={{ marginVertical: 8 }}>
+                                We've sent a link to <Text style={{ fontWeight: 'bold' }}>{email}</Text>. Please verify it to complete the update.
+                            </Text>
+                            <View style={{ flexDirection: 'row', gap: 10 }}>
+                                <Button mode="outlined" onPress={() => {
+                                    setConfirmingEmail(false);
+                                    setEmail(userProfile?.email || '');
+                                }} style={{ flex: 1 }}>Cancel</Button>
+                                <Button mode="contained" onPress={handleCheckEmailVerification} style={{ flex: 1 }} loading={loading}>I Have Verified</Button>
+                            </View>
+                        </View>
+                    )}
 
                     {/* Photo Upload Section */}
                     <View style={styles.photoContainer}>
@@ -219,17 +461,24 @@ export default function EditProfileScreen() {
                         </HelperText>
                     )}
 
-                    {/* Phone Field - Disabled for phone users */}
-                    <TextInput
-                        label="Phone Number"
-                        value={phone}
-                        onChangeText={setPhone}
-                        style={[styles.input, { backgroundColor: theme.colors.surface }]}
-                        mode="outlined"
-                        keyboardType="phone-pad"
-                        disabled={isPhoneAuth} // Phone users cannot change their ID
-                        right={isPhoneAuth ? <TextInput.Icon icon="lock" /> : null}
-                    />
+                    {/* Phone Field - Side-by-side with Country Selector */}
+                    <View style={{ flexDirection: 'row', alignItems: 'flex-start', marginBottom: 16 }}>
+                        <CountryCodeSelector
+                            selectedCountry={selectedCountry}
+                            onSelect={setSelectedCountry}
+                            disabled={isPhoneAuth}
+                        />
+                        <TextInput
+                            label="Phone Number"
+                            value={phone}
+                            onChangeText={setPhone}
+                            style={[styles.input, { flex: 1, backgroundColor: theme.colors.surface, marginBottom: 0 }]}
+                            mode="outlined"
+                            keyboardType="phone-pad"
+                            disabled={isPhoneAuth} // Phone users cannot change their ID
+                            right={isPhoneAuth ? <TextInput.Icon icon="lock" /> : null}
+                        />
+                    </View>
                     {isPhoneAuth && (
                         <HelperText type="info" visible style={{ marginTop: -12, marginBottom: 12 }}>
                             Phone number cannot be changed as it is your login ID.
@@ -286,6 +535,7 @@ export default function EditProfileScreen() {
                         mode="contained"
                         onPress={handleSave}
                         loading={loading}
+                        disabled={confirmingEmail || confirmingPhone}
                         style={styles.saveButton}
                     >
                         Save Changes
@@ -314,20 +564,25 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
         alignItems: 'center',
         borderWidth: 2,
-        // borderColor set dynamically
     },
     input: {
         marginBottom: 16,
-        // backgroundColor set dynamically
     },
     passwordSection: {
         marginTop: 16,
         paddingTop: 16,
         borderTopWidth: 1,
-        borderTopColor: '#ccc', // Will be overridden or we should change it. Let's rely on component override if possible, but StyleSheet is static. 
-        // Actually, I should use inline styles for the border color in passwordSection too.
     },
     saveButton: {
         marginTop: 24,
+    },
+    verificationOverlay: {
+        padding: 20,
+        backgroundColor: 'rgba(0,0,0,0.03)',
+        borderRadius: 12,
+        marginBottom: 20,
+        borderWidth: 1,
+        borderStyle: 'dashed',
+        borderColor: '#ccc',
     }
 });

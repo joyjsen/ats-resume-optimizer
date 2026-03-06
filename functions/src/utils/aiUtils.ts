@@ -28,9 +28,10 @@ export async function callPerplexity(
     perplexityKey: string,
     systemContent: string,
     userContent: string,
-    returnJson: boolean = true
+    returnJson: boolean = true,
+    maxTokens: number = 4000
 ): Promise<string> {
-    console.log("[AI Fallback/Research] Calling Perplexity...");
+    console.log(`[AI Fallback/Research] Calling Perplexity (maxTokens: ${maxTokens})...`);
 
     const finalUserContent = returnJson
         ? userContent + "\n\nIMPORTANT: Return ONLY valid JSON."
@@ -45,7 +46,7 @@ export async function callPerplexity(
                 { role: "user", content: finalUserContent }
             ],
             temperature: 0.3,
-            max_tokens: 4000,
+            max_tokens: maxTokens,
         },
         {
             headers: {
@@ -108,17 +109,40 @@ export async function callAiWithFallback(
             perplexityKey,
             perplexitySystemInstruction || systemInstruction,
             userContent,
-            jsonMode
+            jsonMode,
+            maxTokens
         );
 
         if (jsonMode) {
-            return result
-                .replace(/```json\s*/gi, "")
-                .replace(/```\s*/g, "")
-                .trim();
+            return extractJson(result);
         }
         return result;
     }
+}
+
+/**
+ * Robustly extract JSON from AI string results.
+ * Handles markdown fences, trailing text, and partial results.
+ */
+export function extractJson(content: string): string {
+    if (!content) return "";
+
+    // Step 1: Remove markdown fences
+    let cleaned = content
+        .replace(/```json\s*/gi, "")
+        .replace(/```\s*/g, "")
+        .trim();
+
+    // Step 2: Extract the first balanced JSON object { ... }
+    const firstBrace = cleaned.indexOf('{');
+    const lastBrace = cleaned.lastIndexOf('}');
+
+    if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+        return cleaned.substring(firstBrace, lastBrace + 1);
+    }
+
+    // Step 3: Minimal fallback (return cleaned if no braces found, though likely invalid)
+    return cleaned;
 }
 
 /**

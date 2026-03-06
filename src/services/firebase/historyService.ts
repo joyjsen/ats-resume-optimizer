@@ -89,7 +89,7 @@ export class HistoryService {
             return docRef.id;
         } catch (error) {
             console.error('Error saving analysis history:', error);
-            return '';
+            throw new Error(`Failed to save analysis: ${(error as Error).message}`);
         }
     }
 
@@ -152,6 +152,8 @@ export class HistoryService {
 
                         await updateDoc(doc(db, 'user_applications', data.applicationId), appUpdate);
                     } else {
+                        // TODO: Dynamic require to avoid circular dependency.
+                        // Consider extracting shared logic into a utility module.
                         const { applicationService } = require('./applicationService');
                         const app = await applicationService.getApplicationByAnalysisId(docId);
                         if (app) {
@@ -169,7 +171,7 @@ export class HistoryService {
             return true;
         } catch (error) {
             console.error('Error updating analysis history:', error);
-            return false;
+            throw new Error(`Failed to update analysis: ${(error as Error).message}`);
         }
     }
 
