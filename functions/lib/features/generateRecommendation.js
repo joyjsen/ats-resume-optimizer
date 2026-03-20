@@ -15,13 +15,13 @@ const generateRecommendation = (openaiApiKey, perplexityApiKey) => (0, https_1.o
     const { resume, job, gaps } = request.data;
     if (!resume || !job || !gaps)
         throw new https_1.HttpsError("invalid-argument", "Missing required fields.");
-    const openai = new openai_1.default({ apiKey: openaiApiKey.value() });
+    const openai = new openai_1.default({ apiKey: openaiApiKey.value().trim() });
     try {
         const upskillPrompt = `Create a learning path for ${JSON.stringify(gaps)}.`;
         const jobsPrompt = `Suggest alternative jobs for ${job.title}.`;
         const [upskillPath, alternativeJobs] = await Promise.all([
-            (0, aiUtils_1.callAiWithFallback)(openai, perplexityApiKey.value(), "You are a career advisor.", upskillPrompt),
-            (0, aiUtils_1.callAiWithFallback)(openai, perplexityApiKey.value(), "You are a career advisor.", jobsPrompt)
+            (0, aiUtils_1.callAiWithFallback)(openai, perplexityApiKey.value().trim(), "You are a career advisor.", upskillPrompt),
+            (0, aiUtils_1.callAiWithFallback)(openai, perplexityApiKey.value().trim(), "You are a career advisor.", jobsPrompt)
         ]);
         return {
             success: true,

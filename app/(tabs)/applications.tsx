@@ -184,12 +184,6 @@ export default function ApplicationsScreen() {
         setLoading(true);
         // Subscribe to applications
         const unsubApps = applicationService.subscribeToApplications((apps) => {
-            // Diagnostic: log cover letter status changes
-            apps.forEach(app => {
-                if (app.coverLetter) {
-                    console.log(`[Subscription] ${app.company} CL status: ${app.coverLetter.status}, content: ${!!app.coverLetter.content}`);
-                }
-            });
             setApplications(apps);
             setLoading(false);
         });
@@ -210,7 +204,6 @@ export default function ApplicationsScreen() {
     useEffect(() => {
         const appStateSubscription = AppState.addEventListener('change', (nextAppState) => {
             if (nextAppState === 'active') {
-                console.log('[Applications] App foregrounded - triggering refresh');
                 setRefreshTrigger(prev => prev + 1);
             }
         });
@@ -460,7 +453,7 @@ export default function ApplicationsScreen() {
 
             // Optimistic Update: Immediately set status to generating locally
             // This ensures instant feedback even if network/backend is slow to respond
-            console.log("[CoverLetter] Applying optimistic update: generating");
+            // console.log("[CoverLetter] Applying optimistic update: generating"); // Removed verbose log
             setApplications(prev => prev.map(a => {
                 if (a.id === application.id) {
                     return {
@@ -478,9 +471,6 @@ export default function ApplicationsScreen() {
             }));
 
             // Use fire-and-forget pattern: create a background task
-            // The Cloud Function processes it automatically and updates Firestore
-            // We listen via Firestore for completion - works even when app is backgrounded
-            console.log("[CoverLetter] Creating background task for server-side generation...");
 
             await backgroundTaskService.createTask(
                 'cover_letter',
@@ -562,7 +552,7 @@ export default function ApplicationsScreen() {
                     aiProvider: 'perplexity-sonar-pro',
                     platform: 'ios'
                 });
-                console.log("[PrepGuide] Tokens deducted successfully BEFORE task creation");
+
 
                 // 1.5 INITIALIZE STATUS - Force push a new history entry so the Cancel button shows up
                 await applicationService.updatePrepStatus(appId, {
@@ -579,7 +569,7 @@ export default function ApplicationsScreen() {
             }
 
             // 2. CREATE TASK ONLY AFTER SUCCESSFUL DEDUCTION
-            console.log("[PrepGuide] Creating background task for server-side generation...");
+
 
             await backgroundTaskService.createTask(
                 'prep_guide',
@@ -597,14 +587,7 @@ export default function ApplicationsScreen() {
                 },
                 // onComplete - called when Firestore updates with completion
                 async (bgTask: BackgroundTask) => {
-                    console.log("[PrepGuide] Background task completed");
 
-                    // LOG AUDIT ACTIVITY - Use skipTokenDeduction because tokens were already deducted at the start
-                    // This serves as a "completion" marker in the log if needed, though usually the start log is enough.
-                    // To avoid cluttering the log with two entries for the same thing, we can either skip this
-                    // or mark it differently. Per user request "update log before task starts", 
-                    // we've already done the main log.
-                    console.log("[PrepGuide] Task completed, skipping duplicate logging.");
 
                     // The Cloud Function already updated the application document with sections
                     // Now generate PDF locally (needs file system access)
@@ -699,9 +682,7 @@ export default function ApplicationsScreen() {
     };
 
     const handleDownloadPrep = async () => {
-        console.log('[PrepGuide] Download requested. App:', viewingPrepApp?.company, 'ID:', viewingPrepApp?.id);
-        console.log('[PrepGuide] Has sections:', !!viewingPrepApp?.prepGuide?.sections);
-        console.log('[PrepGuide] Section keys:', viewingPrepApp?.prepGuide?.sections ? Object.keys(viewingPrepApp.prepGuide.sections) : 'none');
+
 
         if (!viewingPrepApp?.prepGuide) {
             Alert.alert("Error", "No prep guide data available.");

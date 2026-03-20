@@ -3,7 +3,7 @@ import { View, StyleSheet, ScrollView, Alert } from 'react-native';
 import { Text, TextInput, Button, useTheme, Card, HelperText } from 'react-native-paper';
 import { useRouter } from 'expo-router';
 import { authService } from '../../src/services/firebase/authService';
-import { getFunctions, httpsCallable } from 'firebase/functions';
+import { getFirebaseFunctions } from '../../src/services/firebase/config';
 
 export default function ForgotPasswordScreen() {
     const theme = useTheme();
@@ -29,7 +29,8 @@ export default function ForgotPasswordScreen() {
         try {
             // 1. Attempt to check Registration Method via Secure Cloud Function
             try {
-                const functions = getFunctions();
+                const { httpsCallable } = await import('firebase/functions');
+                const functions = await getFirebaseFunctions();
                 const checkUserProviderFunc = httpsCallable(functions, 'checkUserProvider');
                 const result = await checkUserProviderFunc({ email: trimmedEmail });
                 const info = result.data as any;

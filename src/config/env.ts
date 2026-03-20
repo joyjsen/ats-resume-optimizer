@@ -1,5 +1,5 @@
 export const ENV = {
-    OPENAI_API_KEY: (process.env.EXPO_PUBLIC_OPENAI_API_KEY || '').trim(),
+    // Removed OpenAI API Key (Now securely handled on backend)
     FIREBASE_API_KEY: (process.env.EXPO_PUBLIC_FIREBASE_API_KEY || '').trim(),
     FIREBASE_AUTH_DOMAIN: (process.env.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN || '').trim(),
     FIREBASE_PROJECT_ID: (process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID || '').trim(),
@@ -8,7 +8,7 @@ export const ENV = {
     FIREBASE_APP_ID_IOS: (process.env.EXPO_PUBLIC_FIREBASE_APP_ID_IOS || '').trim(),
     FIREBASE_APP_ID_ANDROID: (process.env.EXPO_PUBLIC_FIREBASE_APP_ID_ANDROID || '').trim(),
     API_URL: (process.env.EXPO_PUBLIC_API_URL || '').trim(),
-    PERPLEXITY_API_KEY: (process.env.EXPO_PUBLIC_PERPLEXITY_API_KEY || '').trim(),
+    // Removed Perplexity API Key (Now securely handled on backend)
     STRIPE_PUBLISHABLE_KEY: (process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY || '').trim(),
     GOOGLE_WEB_CLIENT_ID: (process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID || '').trim(),
     GOOGLE_IOS_CLIENT_ID: (process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID || '').trim(),

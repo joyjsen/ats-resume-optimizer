@@ -1,21 +1,14 @@
-import OpenAI from 'openai';
-import axios from 'axios';
-import { ENV } from './env';
+import { getFirebaseFunctions } from '../services/firebase/config';
+import { httpsCallable } from 'firebase/functions';
 
-// SECURITY TODO: The OpenAI API key is shipped in the client bundle.
-// Any user can extract it from the app binary or network traffic.
-// Migrate all AI calls to a server-side proxy (Firebase Cloud Function)
-// and remove the key from the client entirely.
-export const openai = new OpenAI({
-    apiKey: ENV.OPENAI_API_KEY,
-    dangerouslyAllowBrowser: true, // Needed for React Native environment
-    maxRetries: 2,
-    timeout: 60000,
-});
+// Lazy initialized axios instance (if still needed anywhere)
+let axiosInstance: any = null;
 
-// SECURITY TODO: Perplexity API key also ships in the client bundle. Same risk as OpenAI.
-const PERPLEXITY_API_URL = 'https://api.perplexity.ai/chat/completions';
-const PERPLEXITY_API_KEY = ENV.PERPLEXITY_API_KEY;
+export async function getAxios() {
+    if (axiosInstance) return axiosInstance;
+    axiosInstance = (await import('axios')).default;
+    return axiosInstance;
+}
 
 interface AICallOptions {
     model?: string;
@@ -26,185 +19,42 @@ interface AICallOptions {
 }
 
 /**
- * Call Perplexity API as fallback
+ * Proxy call to the backend Firebase function instead of local OpenAI
  */
-async function callPerplexity(options: AICallOptions, taskName: string): Promise<string> {
-    console.log(`[AI Fallback] Calling Perplexity for: ${taskName}`);
-
-    // Convert messages - Perplexity doesn't support vision, so we need to handle image content
-    const convertedMessages = options.messages.map(msg => {
-        if (Array.isArray(msg.content)) {
-            // Extract text from multi-part content (vision messages)
-            const textParts = msg.content
-                .filter((part: any) => part.type === 'text')
-                .map((part: any) => part.text)
-                .join('\n');
-            return { role: msg.role, content: textParts || '[Image content - not supported in fallback]' };
-        }
-        return msg;
-    });
-
-    // If JSON mode was requested, add instruction to return JSON
-    if (options.response_format?.type === 'json_object') {
-        const lastMessage = convertedMessages[convertedMessages.length - 1];
-        if (lastMessage && !lastMessage.content.includes('Return ONLY valid JSON')) {
-            lastMessage.content += '\n\nIMPORTANT: Return ONLY valid JSON. No markdown, no explanations, just the JSON object.';
-        }
-    }
-
-    const response = await axios.post(
-        PERPLEXITY_API_URL,
-        {
-            model: 'sonar-pro',
-            messages: convertedMessages,
-            temperature: options.temperature ?? 0.3,
-            max_tokens: options.max_tokens ?? 4000,
-        },
-        {
-            headers: {
-                'Authorization': `Bearer ${PERPLEXITY_API_KEY}`,
-                'Content-Type': 'application/json'
-            },
-            timeout: 90000, // 90s timeout for Perplexity
-        }
-    );
-
-    const content = response.data.choices[0]?.message?.content;
-    if (!content) throw new Error("No content returned from Perplexity");
-
-    return content.trim();
-}
-
-/**
- * Check if an error is a timeout error
- */
-function isTimeoutError(error: any): boolean {
-    if (!error) return false;
-
-    // OpenAI / Axios timeout codes
-    if (error.code === 'ETIMEDOUT' || error.code === 'ECONNABORTED') return true;
-    if (error.message?.toLowerCase().includes('timeout')) return true;
-    if (error.name === 'APIConnectionTimeoutError') return true;
-
-    // Generic timeout patterns
-    if (error.status === 408) return true;
-    if (error.response?.status === 408) return true;
-
-    return false;
-}
-
-/**
- * Check if error is a vision-related call (can't fallback to Perplexity)
- */
-function hasVisionContent(messages: any[]): boolean {
-    return messages.some(msg =>
-        Array.isArray(msg.content) &&
-        msg.content.some((part: any) => part.type === 'image_url')
-    );
-}
-
-/**
- * Safe OpenAI call with Perplexity fallback on timeout
- *
- * @param apiCall - The OpenAI API call function
- * @param taskName - Name of the task for logging
- * @param options - Optional: the original options for fallback (needed for Perplexity fallback)
- */
-export const safeOpenAICall = async <T>(
-    apiCall: () => Promise<T>,
-    taskName: string,
-    options?: AICallOptions
-): Promise<T> => {
-    let lastError: any = null;
-
-    // Try OpenAI first
+export const safeOpenAICall = async <T>(apiCall: any, taskName: string, options?: AICallOptions): Promise<any> => {
     try {
-        return await apiCall();
-    } catch (error: any) {
-        lastError = error;
-        console.warn(`[AI] OpenAI call failed for ${taskName}:`, error.message || error);
+        const functions = await getFirebaseFunctions();
+        const aiProxyFunc = httpsCallable(functions, 'aiProxy');
 
-        // Check if we can fallback to Perplexity
-        const canFallback = PERPLEXITY_API_KEY &&
-            options &&
-            (isTimeoutError(error) || error.status === 429 || error.status >= 500);
-
-        // Don't fallback for vision calls - Perplexity doesn't support them
-        if (canFallback && options && hasVisionContent(options.messages)) {
-            console.warn(`[AI] Cannot fallback to Perplexity for vision tasks`);
-            throw error;
-        }
-
-        if (canFallback && options) {
-            console.log(`[AI] Attempting Perplexity fallback for: ${taskName}`);
-            try {
-                const perplexityResult = await callPerplexity(options, taskName);
-
-                // If JSON mode was requested, parse and return as expected structure
-                if (options.response_format?.type === 'json_object') {
-                    // Clean up markdown code blocks if present
-                    let cleanContent = perplexityResult
-                        .replace(/```json\s*/gi, '')
-                        .replace(/```\s*/g, '')
-                        .trim();
-
-                    // Validate it's valid JSON
-                    JSON.parse(cleanContent); // This will throw if invalid
-
-                    // Return in OpenAI-like structure
-                    return {
-                        choices: [{
-                            message: {
-                                content: cleanContent
-                            },
-                            finish_reason: 'stop'
-                        }]
-                    } as T;
-                }
-
-                // Return in OpenAI-like structure for non-JSON responses
-                return {
-                    choices: [{
-                        message: {
-                            content: perplexityResult
-                        },
-                        finish_reason: 'stop'
-                    }]
-                } as T;
-
-            } catch (fallbackError: any) {
-                console.error(`[AI] Perplexity fallback also failed:`, fallbackError.message);
-                // Throw the original OpenAI error as it's more informative
-                throw lastError;
+        const response = await aiProxyFunc({
+            provider: 'openai',
+            messages: options?.messages,
+            options: {
+                model: options?.model,
+                response_format: options?.response_format,
+                max_tokens: options?.max_tokens,
+                temperature: options?.temperature
             }
-        }
+        });
 
-        // No fallback possible, throw original error
-        if (error.status === 429) {
-            throw new Error(`Rate limit exceeded. Please wait a moment and try again. (${taskName})`);
-        }
+        const data = response.data as any;
+        if (!data.success) throw new Error(data.error || "AI Proxy call failed");
 
+        return {
+            choices: [{
+                message: { content: data.result }
+            }]
+        };
+
+    } catch (error) {
+        console.error(`Error in safeOpenAICall (\${taskName}):`, error);
         throw error;
     }
 };
 
-/**
- * Create a safe API call with automatic fallback support
- * This is a convenience wrapper that captures options for fallback
- */
-export const createSafeAPICall = async (
-    options: AICallOptions,
-    taskName: string
-): Promise<any> => {
-    return safeOpenAICall(
-        () => openai.chat.completions.create({
-            model: options.model || 'gpt-4o-mini',
-            messages: options.messages as any,
-            response_format: options.response_format as any,
-            max_tokens: options.max_tokens,
-            temperature: options.temperature,
-        }),
-        taskName,
-        options
-    );
+export const createSafeAPICall = async (options: AICallOptions, taskName: string): Promise<any> => {
+    return safeOpenAICall(null, taskName, options);
 };
+
+// We don't export openai itself because we shouldn't use it directly on the frontend anymore
+export const openai = null;

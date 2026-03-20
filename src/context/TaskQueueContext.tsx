@@ -1,8 +1,8 @@
 import React, { createContext, useContext, useEffect, useState, useRef, useMemo } from 'react';
 import { Alert } from 'react-native';
-import { taskService } from '../services/firebase/taskService';
-import { AnalysisTask } from '../types/task.types';
-import { executeAnalysisTask } from '../workers/analysisWorker';
+// type-only imports
+import type { AnalysisTask } from '../types/task.types';
+
 
 interface TaskQueueContextType {
     activeTasks: AnalysisTask[];
@@ -18,9 +18,11 @@ export const TaskQueueProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
     // Cleanup stale tasks (older than 10 mins)
     const cleanupStaleTasks = async () => {
-        const { db } = require('../services/firebase/config');
-        const { collection, query, where, getDocs, doc, updateDoc, Timestamp } = require('firebase/firestore');
-        const { auth } = require('../services/firebase/config');
+        const { getFirestoreDb: localGetFirestoreDb, getFirebaseAuth: localGetFirebaseAuth } = await import('../services/firebase/config');
+        const db = await localGetFirestoreDb();
+        const auth = await localGetFirebaseAuth();
+        const { collection, query, where, getDocs, doc, updateDoc, Timestamp } = await import('firebase/firestore');
+
 
         const user = auth.currentUser;
         if (!user) return;
@@ -55,56 +57,64 @@ export const TaskQueueProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     const subscriptionsRef = useRef<(() => void)[]>([]);
 
     useEffect(() => {
-        const { auth } = require('../services/firebase/config');
+        let unsubscribeAuth: (() => void) | undefined;
 
-        const unsubscribeAuth = auth.onAuthStateChanged((user: any) => {
-            // Always cleanup previous subscriptions on auth state change
-            subscriptionsRef.current.forEach(unsub => unsub());
-            subscriptionsRef.current = [];
+        const init = async () => {
+            const { onAuthStateChanged } = await import('firebase/auth');
+            const { getFirebaseAuth } = await import('../services/firebase/config');
+            const auth = await getFirebaseAuth();
+            const { taskService } = await import('../services/firebase/taskService');
+            const localTaskService = taskService;
 
-            if (user) {
-                console.log("[TaskQueue] User authenticated, initializing subscriptions...");
-                cleanupStaleTasks().catch(console.error);
+            unsubscribeAuth = onAuthStateChanged(auth, async (user) => {
+                // Clear existing subscriptions on auth change
+                subscriptionsRef.current.forEach(unsub => unsub());
+                subscriptionsRef.current = [];
 
-                // 1. Subscribe to Active Tasks
-                const subActive = taskService.subscribeToActiveTasks((tasks) => {
-                    console.log(`[TaskQueue] UI Subscription update: ${tasks.length} tasks.`);
-                    setActiveTasks(tasks);
-                }, (error) => {
-                    // Ignore permission errors during logout transition or when tasks are deleted
-                    const errorCode = error?.code || '';
-                    if (errorCode !== 'permission-denied' && !errorCode.includes('permission')) {
-                        console.error("[TaskQueue] UI Subscription Error:", error);
-                    } else {
-                        console.log("[TaskQueue] Ignoring permission error (likely logout or deleted task)");
-                    }
-                });
-                subscriptionsRef.current.push(subActive);
+                if (user) {
+                    console.log("[TaskQueue] User logged in, setting up subscriptions...");
+                    cleanupStaleTasks().catch(console.error);
 
-                // 2. Subscribe to Queued Tasks
-                const subQueued = taskService.subscribeToQueuedTasks((tasks) => {
-                    console.log(`[TaskQueue] Worker Subscription update: ${tasks.length} queued tasks.`);
-                    processQueue(tasks);
-                }, (error) => {
-                    // Ignore permission errors during logout transition or when tasks are deleted
-                    const errorCode = error?.code || '';
-                    if (errorCode !== 'permission-denied' && !errorCode.includes('permission')) {
-                        console.error("[TaskQueue] Worker Subscription Error:", error);
-                    } else {
-                        console.log("[TaskQueue] Ignoring permission error (likely logout or deleted task)");
-                    }
-                });
-                subscriptionsRef.current.push(subQueued);
+                    // 1. Subscribe to Active Tasks (UI optimization)
+                    const subActive = await localTaskService.subscribeToActiveTasks((tasks: AnalysisTask[]) => {
+                        console.log(`[TaskQueue] UI Subscription update: ${tasks.length} active tasks.`);
+                        setActiveTasks(tasks);
+                    }, (error: any) => {
+                        const errorCode = error?.code || '';
+                        if (errorCode !== 'permission-denied' && !errorCode.includes('permission')) {
+                            console.error("[TaskQueue] UI Subscription Error:", error);
+                        }
+                    });
+                    subscriptionsRef.current.push(subActive);
 
-            } else {
-                console.log("[TaskQueue] User logged out, cleared tasks.");
-                setActiveTasks([]);
-            }
-        });
+                    // 2. Subscribe to Queued Tasks
+                    const subQueued = await localTaskService.subscribeToQueuedTasks((tasks: AnalysisTask[]) => {
+                        console.log(`[TaskQueue] Worker Subscription update: ${tasks.length} queued tasks.`);
+                        processQueue(tasks);
+                    }, (error: any) => {
+                        const errorCode = error?.code || '';
+                        if (errorCode !== 'permission-denied' && !errorCode.includes('permission')) {
+                            console.error("[TaskQueue] Worker Subscription Error:", error);
+                        }
+                    });
+                    subscriptionsRef.current.push(subQueued);
+
+
+                } else {
+                    console.log("[TaskQueue] User logged out, cleared tasks.");
+                    setActiveTasks([]);
+                }
+            });
+        };
+
+        const initPromise = init();
 
         return () => {
-            unsubscribeAuth();
-            subscriptionsRef.current.forEach(unsub => unsub());
+            initPromise.then(() => {
+                if (unsubscribeAuth) unsubscribeAuth();
+                subscriptionsRef.current.forEach(unsub => unsub());
+                subscriptionsRef.current = [];
+            });
         };
     }, []);
 
@@ -135,12 +145,14 @@ export const TaskQueueProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
                 // Execute in background "thread" (promise)
                 const executeTask = async () => {
-                    const { BackgroundWorker } = require('../services/background/backgroundWorker');
-
+                    const { BackgroundWorker: localBackgroundWorker } = await import('../services/background/backgroundWorker');
+                    const { executeAnalysisTask: localExecuteAnalysisTask } = await import('../workers/analysisWorker');
                     // Start background service if not already running
-                    await BackgroundWorker.start(async () => {
+                    await localBackgroundWorker.start(async () => {
                         try {
-                            await executeAnalysisTask(task.id, task.payload, task.type);
+                            await localExecuteAnalysisTask(task.id, task.payload, task.type);
+
+
                             console.log(`[TaskQueue] Worker finished for task: ${task.id}`);
                         } catch (error: any) {
                             console.error(`[TaskQueue] Worker failed for task: ${task.id}`, error);
@@ -160,10 +172,8 @@ export const TaskQueueProvider: React.FC<{ children: React.ReactNode }> = ({ chi
                 // Trigger execution but don't await the result (fire and forget)
                 // However, we DO want to ensure the loop continues synchronously to lock subsequent tasks
                 executeTask().catch(e => {
-                    if (e.message !== 'Task was force stopped') {
+                    if (e.message !== 'Task was force stopped' && !e.message?.includes('NOT_FOUND')) {
                         console.error("[TaskQueue] Background Task Launcher Exception:", e);
-                    } else {
-                        console.log("[TaskQueue] Task cancellation handled gracefully.");
                     }
                     processingRef.current.delete(task.id);
                 });
@@ -175,57 +185,35 @@ export const TaskQueueProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
     // Monitor for cancellation of currently running task
     useEffect(() => {
-        const { BackgroundWorker } = require('../services/background/backgroundWorker');
-        const currentId = BackgroundWorker.getCurrentTaskId();
+        let isActive = true;
+        const check = async () => {
+            const { BackgroundWorker: localBackgroundWorker } = await import('../services/background/backgroundWorker');
+            if (!isActive) return;
 
-        if (currentId && activeTasks.length > 0) {
-            const isTaskValid = activeTasks.find(t => t.id === currentId && t.status !== 'cancelled' && t.status !== 'failed');
-            // If the task is running in worker but NOT in active tasks (deleted) OR flagged as cancelled/failed
-            if (!isTaskValid) {
-                // Double check if it was just completed (completed tasks might stay in activeTasks list for a bit, or might be removed depending on filter)
-                // But we only proceed if we are SURE it's gone or cancelled.
-                // Note: activeTasks usually returns LIMIT 10 ordered by desc. If it's old it might fall off, but "running" tasks are usually new.
-                // Safer check: look for specific cancellation status or TOTAL absence if we trust subscription.
+            const currentId = localBackgroundWorker.getCurrentTaskId();
 
-                const taskInList = activeTasks.find(t => t.id === currentId);
-                // If it is in list but status is cancelled/failed/completed -> Stop it
-                if (taskInList) {
-                    if (taskInList.status === 'cancelled' || taskInList.status === 'failed' || taskInList.status === 'completed') {
-                        console.log(`[TaskQueue] Detected running task ${currentId} is now ${taskInList.status}. Force stopping worker.`);
-
-                        // Also cancel the background task to stop the Cloud Function
-                        const { backgroundTaskService } = require('../services/firebase/backgroundTaskService');
-                        const bgTaskId = backgroundTaskService.getActiveTaskIdForAnalysis(currentId);
-                        if (bgTaskId) {
-                            backgroundTaskService.cancelTask(bgTaskId).catch((e: any) =>
-                                console.warn(`[TaskQueue] Could not cancel background task:`, e.message)
-                            );
-                            backgroundTaskService.stopListening(bgTaskId); // Stop only this listener
+            if (currentId && activeTasks.length > 0) {
+                const isTaskValid = activeTasks.find(t => t.id === currentId && t.status !== 'cancelled' && t.status !== 'failed');
+                if (!isTaskValid) {
+                    const taskInList = activeTasks.find(t => t.id === currentId);
+                    if (taskInList) {
+                        if (taskInList.status === 'cancelled' || taskInList.status === 'failed' || taskInList.status === 'completed') {
+                            console.log(`[TaskQueue] Detected running task ${currentId} is now ${taskInList.status}. Force stopping worker.`);
+                            localBackgroundWorker.forceStop();
                         }
-
-                        BackgroundWorker.forceStop();
+                    } else {
+                        console.log(`[TaskQueue] Detected running task ${currentId} is missing from active list. Force stopping worker.`);
+                        localBackgroundWorker.forceStop();
                     }
-                } else {
-                    // Task completely gone from list? Potentially deleted.
-                    // This is risky if the list is paginated. But for active tasks we fetch top 10.
-                    // If a user has > 10 active tasks, the older running one might be lost.
-                    // But assume we don't have > 10 active concurrent tasks.
-                    console.log(`[TaskQueue] Detected running task ${currentId} is missing from active list. Force stopping worker.`);
-
-                    // Also cancel the background task to stop the Cloud Function
-                    const { backgroundTaskService } = require('../services/firebase/backgroundTaskService');
-                    const bgTaskId = backgroundTaskService.getActiveTaskIdForAnalysis(currentId);
-                    if (bgTaskId) {
-                        backgroundTaskService.cancelTask(bgTaskId).catch((e: any) =>
-                            console.warn(`[TaskQueue] Could not cancel background task:`, e.message)
-                        );
-                        backgroundTaskService.stopListening(bgTaskId); // Stop only this listener
-                    }
-
-                    BackgroundWorker.forceStop();
                 }
             }
-        }
+        };
+
+        check().catch(console.error);
+
+        return () => {
+            isActive = false;
+        };
     }, [activeTasks]);
 
     const contextValue = useMemo(() => ({ activeTasks }), [activeTasks]);

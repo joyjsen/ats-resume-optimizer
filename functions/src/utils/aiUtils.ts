@@ -80,7 +80,7 @@ export async function callAiWithFallback(
     } = {}
 ): Promise<string> {
     const {
-        model = "gpt-4o-mini",
+        model = "gpt-5.4-mini",
         maxTokens = 2000,
         jsonMode = true,
         temperature = 0.5,
@@ -95,7 +95,7 @@ export async function callAiWithFallback(
                 { role: "user", content: userContent }
             ],
             response_format: jsonMode ? { type: "json_object" } : undefined,
-            max_tokens: maxTokens,
+            max_completion_tokens: maxTokens,
             temperature,
         });
 

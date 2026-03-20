@@ -2,7 +2,7 @@ import React from 'react';
 import { View, StyleSheet, Image, ScrollView, TouchableOpacity } from 'react-native';
 import { Text, useTheme, Card, Divider } from 'react-native-paper';
 import { useRouter } from 'expo-router';
-import Markdown from 'react-native-markdown-display';
+import LazyMarkdown from '../../src/components/common/LazyMarkdown';
 
 const ABOUT_CONTENT = `
 **What is RiResume?**
@@ -58,7 +58,7 @@ export default function AboutScreen() {
                     <Text variant="titleMedium" style={styles.version}>Version 1.0.2</Text>
                 </View>
 
-                <Markdown
+                <LazyMarkdown
                     style={{
                         body: {
                             color: theme.colors.onSurface,
@@ -79,7 +79,7 @@ export default function AboutScreen() {
                     }}
                 >
                     {ABOUT_CONTENT}
-                </Markdown>
+                </LazyMarkdown>
 
                 <View style={styles.sectionContainer}>
                     <Text variant="titleMedium" style={styles.sectionHeader}>Legal</Text>

@@ -1,9 +1,15 @@
 import React, { useState, useCallback } from 'react';
-import { View, ScrollView, Pressable, Image, Text, Linking, useWindowDimensions } from 'react-native';
+import { View, ScrollView, Pressable, Image, Text, Linking, useWindowDimensions, Platform } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useResumeStore } from '../../../store/resumeStore';
 import { FontAwesome6 } from '@expo/vector-icons';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
+// import { MaterialCommunityIcons } from '@expo/vector-icons';
+import {
+    MenuIcon, CloseIcon, FileSearchIcon, FileEditIcon, PlusCircleIcon,
+    FilePlusIcon, MailIcon, BookOpenIcon, GraduationCapIcon, PhoneIcon,
+    AppleIcon, GooglePlayIcon, CheckCircleIcon
+} from '../../common/StaticIcons';
+
 import { LinearGradient } from 'expo-linear-gradient';
 import {
     C, HEADER_HEIGHT,
@@ -16,6 +22,32 @@ import {
 import Head from 'expo-router/head';
 import { ls } from './LandingStyles';
 import { AuthModal } from './AuthModal';
+import { UniversalWebHeader } from './UniversalWebHeader';
+import { UniversalWebFooter } from './UniversalWebFooter';
+import { useMounted } from '../../../hooks/useMounted';
+
+// ============================================================
+// STATIC ICON MAPPER
+// ============================================================
+interface StaticIconMapperProps {
+    name: string;
+    size: number;
+    color: string;
+}
+
+const StaticIconMapper: React.FC<StaticIconMapperProps> = ({ name, size, color }) => {
+    switch (name) {
+        case 'file-search': return <FileSearchIcon size={size} color={color} />;
+        case 'file-edit': return <FileEditIcon size={size} color={color} />;
+        case 'plus-circle': return <PlusCircleIcon size={size} color={color} />;
+        case 'file-plus': return <FilePlusIcon size={size} color={color} />;
+        case 'mail': return <MailIcon size={size} color={color} />;
+        case 'book-open': return <BookOpenIcon size={size} color={color} />;
+        case 'graduation-cap': return <GraduationCapIcon size={size} color={color} />;
+        case 'phone': return <PhoneIcon size={size} color={color} />;
+        default: return null; // Or a fallback icon
+    }
+};
 
 // ============================================================
 // HEADER COMPONENT
@@ -46,7 +78,7 @@ const LandingHeader: React.FC<{
         <View style={[ls.header, { position: 'fixed' as any, top: 0, left: 0, right: 0 }]}>
             {/* Logo */}
             <View style={ls.headerLogo}>
-                <Image source={require('../../../../assets/logo.png')} style={ls.headerLogoImg} resizeMode="contain" />
+                <Image source={require('../../../../assets/logo-72.png')} style={ls.headerLogoImg} resizeMode="contain" accessibilityLabel="RiResume Logo" />
                 <Text style={ls.headerLogoText}>RiResume</Text>
             </View>
 
@@ -81,7 +113,7 @@ const LandingHeader: React.FC<{
                 </Pressable>
                 {isSmall && (
                     <Pressable style={ls.menuBtn} onPress={toggleMobileMenu}>
-                        <MaterialCommunityIcons name="menu" size={28} color={C.white} />
+                        <MenuIcon size={28} color={C.white} />
                     </Pressable>
                 )}
             </View>
@@ -108,7 +140,7 @@ const MobileMenu: React.FC<{
                 <View style={ls.mobileNavHeader}>
                     <Text style={ls.headerLogoText}>Menu</Text>
                     <Pressable onPress={onClose}>
-                        <MaterialCommunityIcons name="close" size={28} color={C.white} />
+                        <CloseIcon size={28} color={C.white} />
                     </Pressable>
                 </View>
 
@@ -152,7 +184,7 @@ const ItemDropdown: React.FC<{ items: NavDropdownItem[]; onItemClick: (sectionId
                     onPress={() => onItemClick(item.sectionId)}
                 >
                     <View style={ls.dropdownItemIcon}>
-                        <MaterialCommunityIcons name={item.icon as any} size={20} color={C.primary} />
+                        <StaticIconMapper name={item.icon || ''} size={20} color={C.primary} />
                     </View>
                     <View style={{ flex: 1 }}>
                         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
@@ -167,22 +199,25 @@ const ItemDropdown: React.FC<{ items: NavDropdownItem[]; onItemClick: (sectionId
     </View>
 );
 
-const BlogDropdown: React.FC = () => (
-    <View style={ls.dropdownPanel}>
-        <View style={ls.blogGrid}>
-            {BLOG_CATEGORIES.map((cat, i) => (
-                <View key={i} style={ls.blogColumn}>
-                    <Text style={ls.blogColumnTitle}>{cat.title}</Text>
-                    {cat.topics.map((topic, j) => (
-                        <Pressable key={j} style={ls.blogTopic}>
-                            <Text style={ls.blogTopicText}>{topic}</Text>
-                        </Pressable>
-                    ))}
-                </View>
-            ))}
+const BlogDropdown: React.FC = () => {
+    const router = useRouter();
+    return (
+        <View style={ls.dropdownPanel}>
+            <View style={ls.blogGrid}>
+                {BLOG_CATEGORIES.map((cat, i) => (
+                    <View key={i} style={ls.blogColumn}>
+                        <Text style={ls.blogColumnTitle}>{cat.title}</Text>
+                        {cat.topics.map((topic, j) => (
+                            <Pressable key={j} style={ls.blogTopic} onPress={() => router.push(topic.url as any)}>
+                                <Text style={ls.blogTopicText}>{topic.label}</Text>
+                            </Pressable>
+                        ))}
+                    </View>
+                ))}
+            </View>
         </View>
-    </View>
-);
+    );
+};
 
 const DropdownContent: React.FC<{ activeDropdown: DropdownKey; onItemClick: (sectionId?: string) => void }> = ({ activeDropdown, onItemClick }) => {
     if (!activeDropdown) return null;
@@ -205,9 +240,10 @@ const DropdownContent: React.FC<{ activeDropdown: DropdownKey; onItemClick: (sec
 const HeroSection: React.FC<{ jobUrl: string; setJobUrl: (v: string) => void; onStart: () => void; isSmall: boolean }> = ({ jobUrl, setJobUrl, onStart, isSmall }) => (
     <View style={ls.heroContainer}>
         <Image
-            source={{ uri: 'https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?auto=format&fit=crop&q=80&w=2000' }}
+            source={{ uri: 'https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?auto=format&fit=crop&q=80&w=1335&h=575' }}
             style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, opacity: 0.35 }}
             resizeMode="cover"
+            accessibilityRole="image"
         />
         <LinearGradient
             colors={['transparent', 'rgba(26, 16, 80, 0.8)', '#1a1050']}
@@ -243,9 +279,10 @@ const HeroSection: React.FC<{ jobUrl: string; setJobUrl: (v: string) => void; on
                 <View style={ls.heroRight}>
                     <View style={ls.heroMockup}>
                         <Image
-                            source={require('../../../../assets/hero-mockup-final.jpg')}
-                            style={{ width: '100%', height: '100%' }}
-                            resizeMode="cover"
+                            source={require('../../../../assets/hero-mockup-final-optimized.jpg')}
+                            style={{ width: 518, height: 318 }}
+                            resizeMode="contain"
+                            accessibilityLabel="RiResume Product Mockup"
                         />
                     </View>
                 </View>
@@ -283,7 +320,7 @@ const FeaturesSection: React.FC = () => (
                     <View key={i} style={ls.featureCard}>
                         <View style={ls.featureCardContent}>
                             <View style={[ls.featureCardIcon, { backgroundColor: feat.accentColor + '12' }]}>
-                                <MaterialCommunityIcons name={feat.icon as any} size={28} color={feat.accentColor} />
+                                <StaticIconMapper name={feat.icon} size={28} color={feat.accentColor} />
                             </View>
                             <Text style={ls.featureCardTitle}>{feat.title}</Text>
                             <Text style={ls.featureCardDesc}>{feat.description}</Text>
@@ -309,7 +346,7 @@ const HowItWorks: React.FC<{ isSmall: boolean }> = ({ isSmall }) => (
                         <View style={ls.stepCard}>
                             <Text style={ls.stepNumber}>{step.number}</Text>
                             <View style={ls.stepIconWrap}>
-                                <MaterialCommunityIcons name={step.icon as any} size={28} color={C.primary} />
+                                <StaticIconMapper name={step.icon} size={28} color={C.primary} />
                             </View>
                             <Text style={ls.stepTitle}>{step.title}</Text>
                             <Text style={ls.stepDesc}>{step.description}</Text>
@@ -343,7 +380,7 @@ const DetailedFeatureSection: React.FC<{ feature: any; index: number; isSmall: b
                     <View style={ls.benefitList}>
                         {feature.benefits.map((benefit: string, i: number) => (
                             <View key={i} style={ls.benefitItem}>
-                                <MaterialCommunityIcons name="check-circle" size={20} color={feature.accentColor} />
+                                <CheckCircleIcon size={20} color={feature.accentColor} />
                                 <Text style={ls.benefitText}>{benefit}</Text>
                             </View>
                         ))}
@@ -385,7 +422,7 @@ const ValuePropInterleaved: React.FC<{ items: typeof VALUE_PROPS }> = ({ items }
             {items.map((prop, i) => (
                 <View key={i} style={ls.valuePropCard}>
                     <View style={ls.valuePropIconWrap}>
-                        <MaterialCommunityIcons name={prop.icon as any} size={24} color={C.primary} />
+                        <StaticIconMapper name={prop.icon} size={24} color={C.primary} />
                     </View>
                     <Text style={ls.valuePropTitle}>{prop.title}</Text>
                     <Text style={ls.valuePropDesc}>{prop.desc}</Text>
@@ -398,70 +435,86 @@ const ValuePropInterleaved: React.FC<{ items: typeof VALUE_PROPS }> = ({ items }
 // ============================================================
 // BLOG PREVIEW SECTION
 // ============================================================
-const BlogSection: React.FC = () => (
-    <View style={ls.sectionContainer}>
-        <View style={ls.sectionInner}>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 40, flexWrap: 'wrap', gap: 16 }}>
-                <View style={{ flex: 1, minWidth: 300 }}>
-                    <Text style={[ls.sectionTitle, { textAlign: 'left', marginBottom: 8 }]}>From Our Blog</Text>
-                    <Text style={[ls.sectionSubtitle, { textAlign: 'left', marginBottom: 0, marginHorizontal: 0 }]}>
-                        Expert advice on resume optimization and landing your next role.
-                    </Text>
-                </View>
-                <Pressable
-                    style={ls.seeAllBtn}
-                    onPress={() => Linking.openURL('https://riresume.com/blog')}
-                >
-                    <Text style={ls.seeAllText}>See All Articles →</Text>
-                </Pressable>
-            </View>
-            <View style={ls.blogPreviewGrid}>
-                {BLOG_POSTS.slice(0, 3).map((post) => (
-                    <Pressable key={post.id} style={ls.blogPreviewCard}>
-                        <Image source={{ uri: post.image }} style={ls.blogPreviewImage} />
-                        <View style={ls.blogPreviewContent}>
-                            <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 12 }}>
-                                <Text style={ls.blogPreviewCat}>{post.category}</Text>
-                                <Text style={ls.blogPreviewTime}>{post.readTime}</Text>
-                            </View>
-                            <Text style={ls.blogPreviewTitle}>{post.title}</Text>
-                            <Text style={ls.blogPreviewDesc} numberOfLines={3}>{post.description}</Text>
-                            <Text style={ls.blogPreviewDate}>{post.date}</Text>
-                        </View>
+const BlogSection: React.FC = () => {
+    const router = useRouter();
+    return (
+        <View style={ls.sectionContainer}>
+            <View style={ls.sectionInner}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 40, flexWrap: 'wrap', gap: 16 }}>
+                    <View style={{ flex: 1, minWidth: 300 }}>
+                        <Text style={[ls.sectionTitle, { textAlign: 'left', marginBottom: 8 }]}>From Our Blog</Text>
+                        <Text style={[ls.sectionSubtitle, { textAlign: 'left', marginBottom: 0, marginHorizontal: 0 }]}>
+                            Expert advice on resume optimization and landing your next role.
+                        </Text>
+                    </View>
+                    <Pressable
+                        style={ls.seeAllBtn}
+                        onPress={() => router.push('/blog')}
+                    >
+                        <Text style={ls.seeAllText}>See All Articles →</Text>
                     </Pressable>
-                ))}
+                </View>
+                <View style={ls.blogPreviewGrid}>
+                    {BLOG_POSTS.slice(0, 3).map((post) => (
+                        <Pressable
+                            key={post.id}
+                            style={ls.blogPreviewCard}
+                            onPress={() => router.push(post.url as any)}
+                        >
+                            <Image source={{ uri: post.image }} style={ls.blogPreviewImage} />
+                            <View style={ls.blogPreviewContent}>
+                                <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 12 }}>
+                                    <Text style={ls.blogPreviewCat}>{post.category}</Text>
+                                    <Text style={ls.blogPreviewTime}>{post.readTime}</Text>
+                                </View>
+                                <Text style={ls.blogPreviewTitle}>{post.title}</Text>
+                                <Text style={ls.blogPreviewDesc} numberOfLines={3}>{post.description}</Text>
+                                <Text style={ls.blogPreviewDate}>{post.date}</Text>
+                            </View>
+                        </Pressable>
+                    ))}
+                </View>
             </View>
         </View>
-    </View>
-);
+    );
+};
 
 // ============================================================
 // TESTIMONIALS SECTION
 // ============================================================
-const TestimonialsSection: React.FC = () => (
-    <View style={ls.testiSection}>
-        <View style={ls.sectionInner}>
-            <Text style={ls.sectionTitle}>Trusted by Thousands</Text>
-            <Text style={ls.sectionSubtitle}>See what professionals are saying about RiResume.</Text>
-            <View style={ls.testiGrid}>
-                {TESTIMONIALS.map((testi, i) => (
-                    <View key={i} style={ls.testiCard}>
-                        <Text style={ls.testiContent}>"{testi.content}"</Text>
-                        <View style={ls.testiAuthor}>
-                            <View style={ls.testiAvatar}>
-                                <Text style={ls.testiAvatarText}>{testi.avatar}</Text>
-                            </View>
-                            <View>
-                                <Text style={ls.testiName}>{testi.name}</Text>
-                                <Text style={ls.testiRole}>{testi.role}</Text>
+const TestimonialsSection: React.FC = () => {
+    const router = useRouter();
+    return (
+        <View style={ls.testiSection}>
+            <View style={ls.sectionInner}>
+                <Text style={ls.sectionTitle}>Trusted by Thousands</Text>
+                <Text style={ls.sectionSubtitle}>See what professionals are saying about RiResume.</Text>
+                <View style={ls.testiGrid}>
+                    {TESTIMONIALS.map((testi, i) => (
+                        <View key={i} style={ls.testiCard}>
+                            <Text style={ls.testiContent}>"{testi.content}"</Text>
+                            <View style={ls.testiAuthor}>
+                                <View style={ls.testiAvatar}>
+                                    <Text style={ls.testiAvatarText}>{testi.avatar}</Text>
+                                </View>
+                                <View>
+                                    <Text style={ls.testiName}>{testi.name}</Text>
+                                    <Text style={ls.testiRole}>{testi.role}</Text>
+                                </View>
                             </View>
                         </View>
-                    </View>
-                ))}
+                    ))}
+                </View>
+                <Pressable
+                    style={ls.testiViewAllBtn}
+                    onPress={() => router.push('/reviews')}
+                >
+                    <Text style={ls.testiViewAllBtnText}>View All Reviews</Text>
+                </Pressable>
             </View>
         </View>
-    </View>
-);
+    );
+};
 
 // ============================================================
 // PRICING SECTION
@@ -552,73 +605,73 @@ const FAQSection: React.FC = () => {
 };
 
 // ============================================================
-// FOOTER
+// MOBILE APP BANNER
 // ============================================================
-const LandingFooter: React.FC<{ onSectionScroll: (id: string) => void }> = ({ onSectionScroll }) => {
-    const router = useRouter();
-    return (
-        <View style={ls.footer}>
-            <View style={ls.footerInner}>
-                <View style={ls.footerTop}>
-                    <View style={ls.footerBrand}>
-                        <Text style={ls.footerBrandName}>RiResume</Text>
-                        <Text style={ls.footerBrandDesc}>
-                            AI-powered ATS resume optimization. Tailored resumes, cover letters, and interview prep — all in one platform.
-                        </Text>
+const MobileAppBanner: React.FC<{ isSmall: boolean }> = ({ isSmall }) => (
+    <LinearGradient
+        colors={['#1a1050', '#2d1b69', '#1a1050']}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={ls.appBanner}
+    >
+        <View style={ls.appBannerInner}>
+            <Image
+                source={require('../../../../assets/logo-72.png')}
+                style={ls.appBannerIcon}
+                resizeMode="contain"
+            />
+            <Text style={[ls.appBannerTitle, isSmall && { fontSize: 26 }]}>
+                Get the Best Experience on Mobile
+            </Text>
+            <Text style={ls.appBannerSubtitle}>
+                Download RiResume on your phone for a faster, smoother experience with push notifications, one-tap optimization, and offline access to your resumes.
+            </Text>
+            <View style={ls.appBannerBadges}>
+                <Pressable
+                    style={ls.appBadgeBtn}
+                    onPress={() => Linking.openURL('https://apps.apple.com/app/riresume/id6740043838')}
+                >
+                    <AppleIcon size={24} color="white" />
+                    <View style={ls.appBadgeTextWrap}>
+                        <Text style={ls.appBadgeSmallText}>Available on the</Text>
+                        <Text style={ls.appBadgeBigText}>App Store</Text>
                     </View>
-                    {FOOTER_COLUMNS.map((col, i) => (
-                        <View key={i} style={ls.footerCol}>
-                            <Text style={ls.footerColTitle}>{col.title}</Text>
-                            {col.links.map((link, j) => (
-                                <Pressable key={j} style={ls.footerLink} onPress={() => {
-                                    if (link.href.startsWith('#')) {
-                                        onSectionScroll(link.href.slice(1));
-                                    } else if (link.href.startsWith('/')) {
-                                        router.push(link.href as any);
-                                    } else {
-                                        Linking.openURL(link.href);
-                                    }
-                                }}>
-                                    <Text style={ls.footerLinkText}>{link.label}</Text>
-                                </Pressable>
-                            ))}
-                        </View>
-                    ))}
-                </View>
-                <View style={ls.footerBottom}>
-                    <Text style={ls.footerCopyright}>© 2026 RiResume. All rights reserved.</Text>
-                    <View style={ls.footerSocial}>
-                        {SOCIAL_LINKS.map((s, i) => (
-                            <Pressable key={i} style={ls.footerSocialIcon} onPress={() => Linking.openURL(s.url)}>
-                                <FontAwesome6 name={s.icon as any} size={18} color="rgba(255,255,255,0.5)" />
-                            </Pressable>
-                        ))}
+                </Pressable>
+                <Pressable
+                    style={ls.appBadgeBtn}
+                    onPress={() => Linking.openURL('https://play.google.com/store/apps/details?id=com.jsn22.atsresumeoptimizer')}
+                >
+                    <GooglePlayIcon size={24} color="white" />
+                    <View style={ls.appBadgeTextWrap}>
+                        <Text style={ls.appBadgeSmallText}>Android App on</Text>
+                        <Text style={ls.appBadgeBigText}>Google Play</Text>
                     </View>
-                </View>
+                </Pressable>
             </View>
         </View>
-    );
-};
+    </LinearGradient>
+);
 
 // ============================================================
 // MAIN COMPONENT
 // ============================================================
 export const WebLandingPage: React.FC = () => {
-    const router = useRouter();
+
     const { width } = useWindowDimensions();
     const isSmall = width < 900;
     const [jobUrl, setJobUrl] = useState('');
-    const [activeDropdown, setActiveDropdown] = useState<DropdownKey>(null);
-    const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
     const [authModalVisible, setAuthModalVisible] = useState(false);
     const [authModalMode, setAuthModalMode] = useState<'signin' | 'signup'>('signin');
     const setPendingSharedUrl = useResumeStore(state => state.setPendingSharedUrl);
 
+    const mounted = useMounted();
+
     const handleStart = useCallback(() => {
+        if (!mounted) return;
         if (jobUrl) setPendingSharedUrl(jobUrl);
         setAuthModalMode('signup');
         setAuthModalVisible(true);
-    }, [jobUrl, setPendingSharedUrl]);
+    }, [jobUrl, mounted, setPendingSharedUrl]);
 
     const handleSignIn = useCallback(() => {
         setAuthModalMode('signin');
@@ -626,14 +679,14 @@ export const WebLandingPage: React.FC = () => {
     }, []);
 
     const scrollToSection = useCallback((sectionId?: string) => {
-        if (!sectionId) return;
-        setActiveDropdown(null);
-        setMobileMenuOpen(false);
+        if (!sectionId || !mounted) return;
         // Small delay to allow dropdown to close if needed
         setTimeout(() => {
-            document.getElementById(sectionId)?.scrollIntoView({ behavior: 'smooth' });
+            if (Platform.OS === 'web') {
+                document.getElementById(sectionId)?.scrollIntoView({ behavior: 'smooth' });
+            }
         }, 100);
-    }, []);
+    }, [mounted]);
 
     const handlePricing = useCallback(() => {
         scrollToSection('pricing-section');
@@ -647,8 +700,9 @@ export const WebLandingPage: React.FC = () => {
         "applicationCategory": "BusinessApplication",
         "offers": {
             "@type": "Offer",
-            "price": "4.99",
-            "priceCurrency": "USD"
+            "price": "0",
+            "priceCurrency": "USD",
+            "description": "Free to start with 110 tokens included"
         },
         "description": SEO_METADATA.description,
         "aggregateRating": {
@@ -678,29 +732,33 @@ export const WebLandingPage: React.FC = () => {
         }))
     };
 
+    if (!mounted) {
+        return <View style={{ flex: 1, backgroundColor: C.headerBg }} />;
+    }
+
     return (
         <View style={ls.root}>
             <Head>
                 <title>{SEO_METADATA.title}</title>
                 <meta name="description" content={SEO_METADATA.description} />
                 <meta name="keywords" content={SEO_METADATA.keywords} />
-                <link rel="canonical" href="https://riresume.com" />
+                <link rel="canonical" href="https://www.riresume.com/" />
 
                 {/* Open Graph / Facebook */}
                 <meta property="og:type" content="website" />
-                <meta property="og:url" content="https://riresume.com/" />
+                <meta property="og:url" content="https://www.riresume.com/" />
                 <meta property="og:title" content={SEO_METADATA.title} />
                 <meta property="og:description" content={SEO_METADATA.description} />
-                <meta property="og:image" content="https://riresume.com/assets/og-image.png" />
+                <meta property="og:image" content="https://www.riresume.com/assets/og-image.webp" />
 
                 {/* Twitter */}
-                <meta property="twitter:card" content="summary_large_image" />
-                <meta property="twitter:url" content="https://riresume.com/" />
-                <meta property="twitter:title" content={SEO_METADATA.title} />
-                <meta property="twitter:description" content={SEO_METADATA.description} />
-                <meta property="twitter:image" content="https://riresume.com/assets/og-image.png" />
+                <meta name="twitter:card" content="summary_large_image" />
+                <meta name="twitter:url" content="https://www.riresume.com/" />
+                <meta name="twitter:title" content={SEO_METADATA.title} />
+                <meta name="twitter:description" content={SEO_METADATA.description} />
+                <meta name="twitter:image" content="https://www.riresume.com/assets/og-image.webp" />
 
-                <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+                <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5" />
 
                 {/* JSON-LD Structured Data for Google and LLMs */}
                 <script type="application/ld+json">{JSON.stringify(jsonLd)}</script>
@@ -708,35 +766,19 @@ export const WebLandingPage: React.FC = () => {
             </Head>
 
             {/* Header */}
-            <LandingHeader
-                activeDropdown={activeDropdown}
-                setActiveDropdown={setActiveDropdown}
+            <UniversalWebHeader
+                isSmall={isSmall}
                 onSignIn={handleSignIn}
                 onGetStarted={handleStart}
                 onPricing={handlePricing}
-                isSmall={isSmall}
-                toggleMobileMenu={() => setMobileMenuOpen(true)}
             />
-            {!isSmall && <DropdownContent activeDropdown={activeDropdown} onItemClick={scrollToSection} />}
-
-            <MobileMenu
-                isOpen={mobileMenuOpen}
-                onClose={() => setMobileMenuOpen(false)}
-                onSignIn={handleSignIn}
-                onPricing={handlePricing}
-                onItemClick={scrollToSection}
-            />
-
-            {/* Dropdown overlay to close on outside click */}
-            {activeDropdown && !isSmall && (
-                <Pressable
-                    style={[ls.dropdownOverlay, { position: 'fixed' as any, top: 0, left: 0, right: 0, bottom: 0, zIndex: 9997 }]}
-                    onPress={() => setActiveDropdown(null)}
-                />
-            )}
 
             {/* Scrollable Content */}
-            <ScrollView style={ls.scrollContent} contentContainerStyle={{ flexGrow: 1 }}>
+            <ScrollView
+                style={ls.scrollContent}
+                contentContainerStyle={{ flexGrow: 1 }}
+                accessibilityRole={"main" as any}
+            >
                 <HeroSection jobUrl={jobUrl} setJobUrl={setJobUrl} onStart={handleStart} isSmall={isSmall} />
                 <StatsBar isSmall={isSmall} />
                 <FeaturesSection />
@@ -765,8 +807,10 @@ export const WebLandingPage: React.FC = () => {
                 <TestimonialsSection />
                 <BlogSection />
                 <PricingSection onGetStarted={handleStart} />
+                <MobileAppBanner isSmall={isSmall} />
+                {/* Fixed double FAQ section here as well */}
                 <FAQSection />
-                <LandingFooter onSectionScroll={scrollToSection} />
+                <UniversalWebFooter />
             </ScrollView>
 
             <AuthModal
@@ -777,3 +821,7 @@ export const WebLandingPage: React.FC = () => {
         </View>
     );
 };
+
+export default WebLandingPage;
+
+

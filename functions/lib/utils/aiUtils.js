@@ -36,7 +36,7 @@ exports.callPerplexity = callPerplexity;
  * Common GPT calling wrapper with Perplexity fallback
  */
 async function callAiWithFallback(openai, perplexityKey, systemInstruction, userContent, options = {}) {
-    const { model = "gpt-4o-mini", maxTokens = 2000, jsonMode = true, temperature = 0.5, perplexitySystemInstruction } = options;
+    const { model = "gpt-5.4-mini", maxTokens = 2000, jsonMode = true, temperature = 0.5, perplexitySystemInstruction } = options;
     try {
         const response = await openai.chat.completions.create({
             model,
@@ -45,7 +45,7 @@ async function callAiWithFallback(openai, perplexityKey, systemInstruction, user
                 { role: "user", content: userContent }
             ],
             response_format: jsonMode ? { type: "json_object" } : undefined,
-            max_tokens: maxTokens,
+            max_completion_tokens: maxTokens,
             temperature,
         });
         const content = response.choices[0].message.content;

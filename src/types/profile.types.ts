@@ -125,7 +125,7 @@ export type ActivityType =
     | 'resume_parsing_failed';
 
 export type ActivityStatus = 'completed' | 'failed' | 'cancelled' | 'in_progress';
-export type AIProvider = 'openai-gpt4o-mini' | 'perplexity-sonar-pro' | 'none';
+export type AIProvider = 'openai-gpt5.4-mini' | 'perplexity-sonar-pro' | 'none';
 
 export interface UserActivity {
     activityId: string;

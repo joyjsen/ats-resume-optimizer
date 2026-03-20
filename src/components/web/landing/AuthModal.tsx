@@ -7,6 +7,7 @@ import { auth } from '../../../services/firebase/config';
 import RecaptchaVerifierModal from '../../auth/RecaptchaVerifierModal';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { C } from './LandingData';
+import { useMounted } from '../../../hooks/useMounted';
 
 interface AuthModalProps {
     visible: boolean;
@@ -34,6 +35,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ visible, onClose, initialM
     const [confirming, setConfirming] = useState(false);
 
     const recaptchaVerifier = useRef(null);
+    const mounted = useMounted();
 
     // Reset state when visible/mode changes
     useEffect(() => {
@@ -111,7 +113,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ visible, onClose, initialM
     const handleSocialLogin = async (provider: 'google' | 'apple' | 'microsoft') => {
         if (provider === 'apple' && Platform.OS === 'web') {
             const msg = "Apple Sign-In is not available directly on the web. Please use the RiResume mobile app, or sign in with Google or email instead.";
-            if (typeof window !== 'undefined') {
+            if (mounted && typeof window !== 'undefined') {
                 window.alert(msg);
             } else {
                 Alert.alert("Apple Login", msg);
@@ -217,16 +219,18 @@ export const AuthModal: React.FC<AuthModalProps> = ({ visible, onClose, initialM
                     />
 
                     <ScrollView contentContainerStyle={styles.scrollContent}>
-                        <RecaptchaVerifierModal
-                            ref={recaptchaVerifier}
-                            firebaseConfig={auth.app.options}
-                            title="Verify you are human"
-                            cancelLabel="Close"
-                        />
+                        {mounted && (
+                            <RecaptchaVerifierModal
+                                ref={recaptchaVerifier}
+                                firebaseConfig={auth?.app?.options || {}}
+                                title="Verify you are human"
+                                cancelLabel="Close"
+                            />
+                        )}
 
                         <View style={styles.header}>
                             <Image
-                                source={require('../../../../assets/logo.png')}
+                                source={require('../../../../assets/logo-72.png')}
                                 style={styles.logo}
                                 resizeMode="contain"
                             />

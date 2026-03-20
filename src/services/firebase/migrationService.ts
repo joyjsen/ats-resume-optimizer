@@ -1,24 +1,22 @@
-import {
-    collection,
-    doc,
-    getDocs,
-    query,
-    where,
-    writeBatch,
-    Timestamp
-} from 'firebase/firestore';
-import { db, auth } from './config';
+import { getFirestoreDb, getFirebaseAuth } from './config';
+import type { User } from 'firebase/auth';
+
 
 export class MigrationService {
     /**
      * Migrate all data from 'anonymous_user' to current authenticated user
      */
     async migrateAnonymousData(): Promise<{ success: boolean; count: number }> {
+        const auth = await getFirebaseAuth();
         const user = auth.currentUser;
-        if (!user || user.email !== 'support@riresume.com') {
-            console.warn("Migration attempted by non-primary admin. Blocked.");
+        if (!user) {
+            console.log("[Migration] No logged in user found.");
             return { success: false, count: 0 };
         }
+
+        const { collection, doc, getDocs, query, where, writeBatch } = await import('firebase/firestore');
+        const db = await getFirestoreDb();
+
 
         const targetUid = user.uid;
         const anonymousId = 'anonymous_user';
@@ -66,11 +64,15 @@ export class MigrationService {
      * Updates history entries to match the current prepGuide.status
      */
     async fixPrepGuideHistoryStatus(): Promise<{ success: boolean; count: number }> {
+        const auth = await getFirebaseAuth();
         const user = auth.currentUser;
         if (!user) {
             console.warn("Migration requires authenticated user.");
             return { success: false, count: 0 };
         }
+
+        const db = await getFirestoreDb();
+        const { collection, doc, getDocs, query, where, writeBatch, Timestamp } = await import('firebase/firestore');
 
         let totalUpdated = 0;
 

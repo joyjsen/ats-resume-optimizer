@@ -1,21 +1,4 @@
-import {
-    collection,
-    doc,
-    getDoc,
-    setDoc,
-    updateDoc,
-    getDocs,
-    query,
-    where,
-    orderBy,
-    onSnapshot,
-    serverTimestamp,
-    increment,
-    Timestamp,
-    deleteDoc
-} from 'firebase/firestore';
-import { httpsCallable } from 'firebase/functions';
-import { db, auth, functions } from './config';
+import { getFirestoreDb, getFirebaseAuth, getFirebaseFunctions } from './config';
 import { ENV } from '../../config/env';
 import { UserProfile, AuthProvider } from '../../types/profile.types';
 
@@ -23,23 +6,20 @@ export class UserService {
     private collectionName = 'users';
     private WELCOME_BONUS = 110;
 
-    private get usersCollection() {
+    private async getUsersCollection() {
+        const { collection } = await import('firebase/firestore');
+        const db = await getFirestoreDb();
         return collection(db, this.collectionName);
     }
 
-    /**
-     * Create or update user profile after login
-     */
     async syncUserProfile(user: any, provider: AuthProvider, additionalData?: Partial<UserProfile>): Promise<UserProfile> {
+        const { doc, getDoc, serverTimestamp, setDoc, updateDoc } = await import('firebase/firestore');
+        const db = await getFirestoreDb();
         const userRef = doc(db, this.collectionName, user.uid);
         const snapshot = await getDoc(userRef);
-
         const now = new Date();
 
         if (!snapshot.exists()) {
-            // New User Registration
-
-            // Try to parse names
             let firstName = '';
             let lastName = '';
             if (user.displayName) {
@@ -57,21 +37,14 @@ export class UserService {
                 photoURL: user.photoURL || '',
                 phoneNumber: user.phoneNumber || '',
                 provider: provider,
-                // SECURITY TODO: Admin role is determined by email comparison.
-                // This should be replaced with Firebase Custom Claims for proper
-                // server-side role enforcement. See: https://firebase.google.com/docs/auth/admin/custom-claims
                 role: user.email === ENV.ADMIN_EMAIL ? 'admin' : 'user',
                 emailVerified: user.emailVerified || false,
                 phoneVerified: !!user.phoneNumber,
                 accountStatus: 'active',
-
                 createdAt: now,
-                // Token System
-                tokenBalance: this.WELCOME_BONUS, // Welcome Bonus
+                tokenBalance: this.WELCOME_BONUS,
                 totalTokensPurchased: 0,
                 totalTokensUsed: 0,
-
-                // Defaults (can be overwritten by additionalData)
                 notificationsEnabled: true,
                 emailNotifications: true,
                 smsNotifications: false,
@@ -79,12 +52,8 @@ export class UserService {
                 theme: 'auto',
                 profileVisibility: 'private',
                 shareLocationWithEmployers: false,
-
                 profileCompleted: false,
-
-                // Spread additional data
                 ...additionalData,
-
                 updatedAt: now,
                 lastLoginAt: now,
             };
@@ -98,55 +67,39 @@ export class UserService {
 
             return newProfile;
         } else {
-            // Existing User Login
             const data = snapshot.data() as UserProfile;
             const updates: any = {
                 lastLoginAt: serverTimestamp(),
                 updatedAt: serverTimestamp(),
             };
 
-            // Sync critical info from Auth if it changed
-            if (user.email && user.email !== data.email) {
-                updates.email = user.email;
-            }
-            if (user.photoURL && user.photoURL !== data.photoURL) {
-                updates.photoURL = user.photoURL;
-            }
-            if (user.displayName && !data.displayName) {
-                updates.displayName = user.displayName;
-            }
+            if (user.email && user.email !== data.email) updates.email = user.email;
+            if (user.photoURL && user.photoURL !== data.photoURL) updates.photoURL = user.photoURL;
+            if (user.displayName && !data.displayName) updates.displayName = user.displayName;
 
-            // RECOVERY & ENFORCEMENT:
             if (user.email === ENV.ADMIN_EMAIL) {
-                if (data.role !== 'admin') {
-                    updates.role = 'admin';
-                }
+                if (data.role !== 'admin') updates.role = 'admin';
             } else if (data.role === 'admin') {
-                console.warn(`[Security] Demoting unauthorized admin account: ${user.email}`);
                 updates.role = 'user';
             }
 
             await updateDoc(userRef, updates);
 
-            const mergedProfile: UserProfile = {
+            return {
                 ...data,
                 ...updates,
-                uid: user.uid, // Ensure UID is always present
+                uid: user.uid,
                 createdAt: (data.createdAt as any)?.toDate ? (data.createdAt as any).toDate() : (data.createdAt instanceof Date ? data.createdAt : new Date(data.createdAt as any || now)),
                 lastLoginAt: now,
                 updatedAt: now,
             };
-
-            return mergedProfile;
         }
     }
 
-    /**
-     * Check if an email already exists in the database
-     * Returns the account status if found, null if not found
-     */
     async checkEmailExists(email: string): Promise<{ exists: boolean; status?: string; displayName?: string; provider?: string; uid?: string } | null> {
         try {
+            const { httpsCallable } = await import('firebase/functions');
+            const functions = await getFirebaseFunctions();
             const checkUserProvider = httpsCallable(functions, 'checkUserProvider');
             const result = await checkUserProvider({ email });
             return result.data as any;
@@ -156,12 +109,10 @@ export class UserService {
         }
     }
 
-    /**
-     * Check if a phone number already exists in the database
-     * Returns the account status if found, null if not found
-     */
     async checkPhoneExists(phone: string): Promise<{ exists: boolean; status?: string; displayName?: string; provider?: string; uid?: string } | null> {
         try {
+            const { httpsCallable } = await import('firebase/functions');
+            const functions = await getFirebaseFunctions();
             const checkPhoneProvider = httpsCallable(functions, 'checkPhoneProvider');
             const result = await checkPhoneProvider({ phone });
             return result.data as any;
@@ -173,10 +124,11 @@ export class UserService {
 
     async getUserProfile(uid: string): Promise<UserProfile | null> {
         try {
+            const { doc, getDoc } = await import('firebase/firestore');
+            const db = await getFirestoreDb();
             const userRef = doc(db, this.collectionName, uid);
             const snapshot = await getDoc(userRef);
             if (!snapshot.exists()) return null;
-
             const data = snapshot.data();
             return {
                 ...data,
@@ -190,306 +142,184 @@ export class UserService {
         }
     }
 
-    /**
-     * Subscribe to real-time user profile updates
-     */
-    subscribeToUserProfile(uid: string, callback: (profile: UserProfile | null) => void): () => void {
-        const userRef = doc(db, this.collectionName, uid);
-        return onSnapshot(userRef, (snapshot) => {
-            if (snapshot.exists()) {
-                const data = snapshot.data();
-                const profile = {
-                    ...data,
-                    createdAt: (data?.createdAt as any)?.toDate ? (data?.createdAt as any).toDate() : new Date(),
-                    lastLoginAt: (data?.lastLoginAt as any)?.toDate ? (data?.lastLoginAt as any).toDate() : new Date(),
-                    updatedAt: (data?.updatedAt as any)?.toDate ? (data?.updatedAt as any).toDate() : new Date(),
-                } as UserProfile;
-                callback(profile);
-            } else {
-                callback(null);
-            }
-        }, (error) => {
-            // @ts-ignore
-            if (error.code === 'permission-denied' || error.message?.includes('Missing or insufficient permissions')) {
-                return;
-            }
-            console.error("Error in user profile subscription:", error);
-        });
+    async subscribeToUserProfile(uid: string, callback: (profile: UserProfile | null) => void): Promise<() => void> {
+        let unsub: (() => void) | undefined;
+        const init = async () => {
+            const { doc, onSnapshot } = await import('firebase/firestore');
+            const db = await getFirestoreDb();
+            const userRef = doc(db, this.collectionName, uid);
+            unsub = onSnapshot(userRef, (snapshot: any) => {
+                if (snapshot.exists()) {
+                    const data = snapshot.data();
+                    callback({
+                        ...data,
+                        createdAt: (data?.createdAt as any)?.toDate ? (data?.createdAt as any).toDate() : new Date(),
+                        lastLoginAt: (data?.lastLoginAt as any)?.toDate ? (data?.lastLoginAt as any).toDate() : new Date(),
+                        updatedAt: (data?.updatedAt as any)?.toDate ? (data?.updatedAt as any).toDate() : new Date(),
+                    } as UserProfile);
+                } else {
+                    callback(null);
+                }
+            }, (error: any) => {
+                if (error.code !== 'permission-denied') console.error("Error in user profile sub:", error);
+            });
+        };
+        const promise = init();
+        return () => {
+            promise.then(() => unsub?.());
+        };
     }
 
     async updateProfile(uid: string, updates: Partial<UserProfile>): Promise<void> {
         try {
+            const { doc, updateDoc, serverTimestamp } = await import('firebase/firestore');
+            const db = await getFirestoreDb();
             const userRef = doc(db, this.collectionName, uid);
-            await updateDoc(userRef, {
-                ...updates,
-                updatedAt: serverTimestamp()
-            });
+            await updateDoc(userRef, { ...updates, updatedAt: serverTimestamp() });
         } catch (error) {
-            console.error("Error updating user profile:", error);
+            console.error("Error updating profile:", error);
             throw error;
         }
     }
 
-    /**
-     * Archive user data and soft-delete the account
-     */
     async archiveAndSoftDelete(uid: string, reason: string): Promise<void> {
         try {
-            // Debug: Check current auth state
-            const currentUser = auth.currentUser;
+            const { doc, getDoc, collection, query, where, getDocs, serverTimestamp, updateDoc, setDoc } = await import('firebase/firestore');
+            const db = await getFirestoreDb();
             const userRef = doc(db, this.collectionName, uid);
-            if (__DEV__) console.log(`[Archive] Fetching user profile for ${uid}...`);
             const userSnapshot = await getDoc(userRef);
-
-            if (!userSnapshot.exists()) {
-                throw new Error("User profile not found for archiving.");
-            }
+            if (!userSnapshot.exists()) throw new Error("User not found.");
 
             const userData = userSnapshot.data() as UserProfile;
-            console.log(`[Archive] Step 1 complete: Got user data for ${userData.email}`);
-
-            // 1. Calculate Total Spent from activities (optional - don't fail if this doesn't work)
             let totalSpent = 0;
             let historyCount = 0;
 
             try {
-                console.log(`[Archive] Step 2: Fetching activities...`);
-                const activitiesSnapshot = await getDocs(
-                    query(collection(db, 'activities'), where('uid', '==', uid), where('type', '==', 'token_purchase'))
-                );
-                activitiesSnapshot.forEach(docSnap => {
-                    const data = docSnap.data();
-                    if (data.contextData?.amount) {
-                        totalSpent += Number(data.contextData.amount);
-                    }
+                const activitiesSnapshot = await getDocs(query(collection(db, 'activities'), where('uid', '==', uid), where('type', '==', 'token_purchase')));
+                activitiesSnapshot.forEach((docSnap: any) => {
+                    if (docSnap.data().contextData?.amount) totalSpent += Number(docSnap.data().contextData.amount);
                 });
-                console.log(`[Archive] Step 2 complete: Total spent = ${totalSpent}`);
-            } catch (e) {
-                console.warn("[Archive] Step 2 failed (non-critical):", e);
-            }
+            } catch (e) { }
 
-            // 2. Fetch User History count (optional - don't fail if this doesn't work)
             try {
-                console.log(`[Archive] Step 3: Fetching history...`);
-                const historySnapshot = await getDocs(
-                    query(collection(db, 'user_analyses'), where('userId', '==', uid))
-                );
+                const historySnapshot = await getDocs(query(collection(db, 'user_analyses'), where('userId', '==', uid)));
                 historyCount = historySnapshot.size;
-                console.log(`[Archive] Step 3 complete: History count = ${historyCount}`);
-            } catch (e) {
-                console.warn("[Archive] Step 3 failed (non-critical):", e);
-            }
+            } catch (e) { }
 
-            // 3. Create Archive Document (essential - will fail if permissions are wrong)
-            console.log(`[Archive] Step 4: Creating archive document at deleted_accounts/${uid}...`);
-            const archiveRef = doc(collection(db, 'deleted_accounts'), uid);
-
-            // Sanitize profile to remove undefined values (Firestore fails on undefined)
-            const sanitizeForFirestore = (obj: any) => {
-                const sanitized = { ...obj };
-                Object.keys(sanitized).forEach(key => {
-                    if (sanitized[key] === undefined) {
-                        delete sanitized[key];
-                    }
-                });
-                return sanitized;
-            };
-
-            const sanitizedProfile = sanitizeForFirestore(userData);
-            // Explicitly remove photoBase64 to keep archive sizes small
-            delete sanitizedProfile.photoBase64;
-
-            await setDoc(archiveRef, {
-                uid: uid,
-                email: userData.email || '',
-                displayName: userData.displayName || 'User',
-                provider: userData.provider || 'unknown',
-                createdAt: userData.createdAt,
+            await setDoc(doc(db, 'deleted_accounts', uid), {
+                uid,
+                email: userData.email,
+                displayName: userData.displayName,
                 deletedAt: serverTimestamp(),
-                reason: reason,
-                totalSpent: totalSpent,
-                historyCount: historyCount,
+                reason,
+                totalSpent,
+                historyCount,
                 tokenBalanceAtDeletion: userData.tokenBalance || 0,
-                fullProfile: sanitizedProfile,
-            });
-            console.log(`[Archive] Step 4 complete: Archive document created`);
-
-            // 4. Soft delete the original user document
-            console.log(`[Archive] Step 5: Updating user status to deleted...`);
-            await updateDoc(userRef, {
-                accountStatus: 'deleted',
-                deletedAt: serverTimestamp(),
-                reason: reason
+                fullProfile: userData
             });
 
-            console.log(`[Archive] Successfully archived and soft-deleted user ${uid}`);
+            await updateDoc(userRef, { accountStatus: 'deleted', deletedAt: serverTimestamp(), reason });
         } catch (error) {
-            console.error("Error archiving and deleting account:", error);
+            console.error("Error archiving user:", error);
             throw error;
         }
     }
 
-    /**
-     * Delete user profile data (legacy - kept for compatibility or forced deletion)
-     */
     async deleteAccount(uid: string): Promise<void> {
-        try {
-            const userRef = doc(db, this.collectionName, uid);
-            await updateDoc(userRef, {
-                accountStatus: 'deleted',
-                deletedAt: serverTimestamp(),
-            });
-        } catch (error) {
-            console.error("Error deleting user account:", error);
-            throw error;
-        }
+        const { doc, updateDoc, serverTimestamp } = await import('firebase/firestore');
+        const db = await getFirestoreDb();
+        await updateDoc(doc(db, this.collectionName, uid), { accountStatus: 'deleted', deletedAt: serverTimestamp() });
     }
 
-    /**
-     * Hard delete a user account document from Firestore.
-     * Used during onboarding exit to ensure no partial profile remains.
-     */
     async hardDeleteAccount(uid: string): Promise<void> {
-        try {
-            const userRef = doc(db, this.collectionName, uid);
-            await deleteDoc(userRef);
-        } catch (error) {
-            console.error("Error hard deleting user account:", error);
-            throw error;
-        }
+        const { doc, deleteDoc } = await import('firebase/firestore');
+        const db = await getFirestoreDb();
+        await deleteDoc(doc(db, this.collectionName, uid));
     }
 
-    /**
-     * Restore a deleted user account from the archive.
-     * Restores their profile with preserved token balance and marks profile as completed
-     * so they bypass onboarding.
-     */
     async restoreDeletedAccount(uid: string): Promise<void> {
         try {
-            console.log(`[Restore] Starting restore for uid: ${uid}`);
-
-            // 1. Get the archived data
+            const { doc, getDoc, updateDoc, serverTimestamp, setDoc, deleteDoc } = await import('firebase/firestore');
+            const db = await getFirestoreDb();
             const archiveRef = doc(db, 'deleted_accounts', uid);
             const archiveSnap = await getDoc(archiveRef);
-
-            if (!archiveSnap.exists()) {
-                throw new Error("Archived account not found.");
-            }
+            if (!archiveSnap.exists()) throw new Error("Archived account not found.");
 
             const archiveData = archiveSnap.data();
             const fullProfile = archiveData.fullProfile || {};
-
-            // 2. Restore the user document with preserved data
             const userRef = doc(db, this.collectionName, uid);
             const userSnap = await getDoc(userRef);
 
+            const updates = {
+                ...fullProfile,
+                uid,
+                accountStatus: 'active',
+                restoredAt: serverTimestamp(),
+                updatedAt: serverTimestamp(),
+            };
+
             if (userSnap.exists()) {
-                // User document still exists (soft-deleted), update it
-                await updateDoc(userRef, {
-                    ...fullProfile,
-                    uid: uid,
-                    accountStatus: 'active',
-                    profileCompleted: true, // Ensure they bypass onboarding
-                    tokenBalance: archiveData.tokenBalanceAtDeletion || fullProfile.tokenBalance || 0,
-                    restoredAt: serverTimestamp(),
-                    restoredBy: 'admin',
-                    deletedAt: null,
-                    reason: null,
-                    updatedAt: serverTimestamp(),
-                });
+                await updateDoc(userRef, { ...updates, deletedAt: null, reason: null });
             } else {
-                // User document was hard-deleted, recreate it
-                await setDoc(userRef, {
-                    ...fullProfile,
-                    uid: uid,
-                    accountStatus: 'active',
-                    profileCompleted: true,
-                    tokenBalance: archiveData.tokenBalanceAtDeletion || fullProfile.tokenBalance || 0,
-                    restoredAt: serverTimestamp(),
-                    restoredBy: 'admin',
-                    createdAt: fullProfile.createdAt || serverTimestamp(),
-                    updatedAt: serverTimestamp(),
-                });
+                await setDoc(userRef, { ...updates, createdAt: fullProfile.createdAt || serverTimestamp() });
             }
-
-            // 3. Delete the archive document so they no longer appear in "Deleted Users"
             await deleteDoc(archiveRef);
-
-            console.log(`[Restore] Successfully restored user ${uid}`);
         } catch (error) {
-            console.error("Error restoring deleted account:", error);
+            console.error("Error restoring account:", error);
             throw error;
         }
     }
 
-    /**
-     * Deduct tokens from user balance
-     * @deprecated Use `activityService.logActivity()` with a transaction instead
-     * to prevent race conditions where balance goes negative.
-     */
     async deductTokens(uid: string, amount: number): Promise<void> {
-        const userRef = doc(db, this.collectionName, uid);
-        await updateDoc(userRef, {
+        const { doc, updateDoc, increment, serverTimestamp } = await import('firebase/firestore');
+        const db = await getFirestoreDb();
+        await updateDoc(doc(db, this.collectionName, uid), {
             tokenBalance: increment(-amount),
             totalTokensUsed: increment(amount),
             updatedAt: serverTimestamp()
         });
     }
 
-    /**
-     * Credit tokens to user balance
-     */
     async creditTokens(uid: string, amount: number): Promise<void> {
-        const userRef = doc(db, this.collectionName, uid);
-        await updateDoc(userRef, {
+        const { doc, updateDoc, increment, serverTimestamp } = await import('firebase/firestore');
+        const db = await getFirestoreDb();
+        await updateDoc(doc(db, this.collectionName, uid), {
             tokenBalance: increment(amount),
             totalTokensPurchased: increment(amount),
             updatedAt: serverTimestamp()
         });
     }
 
-    /**
-     * Get platform-wide statistics (Admin only)
-     * SECURITY TODO: This method runs client-side. Ensure Firestore security rules
-     * restrict the 'users' collection to admin-only reads for full collection scans.
-     * Consider migrating to a Cloud Function for admin operations.
-     */
     async getPlatformStats(): Promise<any> {
-        const usersSnapshot = await getDocs(this.usersCollection);
-        const totalUsers = usersSnapshot.size;
-
+        const { getDocs } = await import('firebase/firestore');
+        const usersColl = await this.getUsersCollection();
+        const usersSnapshot = await getDocs(usersColl);
         let totalTokensDistributed = 0;
         let totalTokensUsed = 0;
         let activeUsers30d = 0;
         const thirtyDaysAgo = new Date(Date.now() - (30 * 24 * 60 * 60 * 1000));
 
-        usersSnapshot.forEach(docSnap => {
+        usersSnapshot.forEach((docSnap: any) => {
             const data = docSnap.data() as UserProfile;
             totalTokensDistributed += (data.totalTokensPurchased || 0) + this.WELCOME_BONUS;
             totalTokensUsed += (data.totalTokensUsed || 0);
-
-            const lastLogin = (data.lastLoginAt as any)?.toDate ? (data.lastLoginAt as any).toDate() : new Date(0);
-
-            if (lastLogin > thirtyDaysAgo) {
-                activeUsers30d++;
-            }
+            const lastLogin = (data.lastLoginAt as any)?.toDate?.() || new Date(0);
+            if (lastLogin > thirtyDaysAgo) activeUsers30d++;
         });
 
         return {
-            totalUsers,
+            totalUsers: usersSnapshot.size,
             activeUsers30d,
             totalTokensDistributed,
             totalTokensUsed,
-            newUsersMonth: 0,
             tokenUtilizationRate: totalTokensDistributed > 0 ? totalTokensUsed / totalTokensDistributed : 0
         };
     }
 
-    /**
-     * Get aggregate statistics for a specific user
-     */
     async getUserStats(uid: string): Promise<any> {
         try {
+            const { getDocs, query, collection, where } = await import('firebase/firestore');
+            const db = await getFirestoreDb();
             const [analyses, apps, learning, activities] = await Promise.all([
                 getDocs(query(collection(db, 'user_analyses'), where('userId', '==', uid))),
                 getDocs(query(collection(db, 'user_applications'), where('userId', '==', uid))),
@@ -497,40 +327,28 @@ export class UserService {
                 getDocs(query(collection(db, 'activities'), where('uid', '==', uid)))
             ]);
 
-            const analysisDocs = analyses.docs.map(d => d.data());
-            const appDocs = apps.docs.map(d => d.data());
-            const learningDocs = learning.docs.map(d => d.data());
-            const activityDocs = activities.docs.map(d => d.data());
-
             return {
-                resumesAnalyzed: analysisDocs.length,
-                resumesOptimized: activityDocs.filter(d => d.type === 'resume_optimized').length,
-                resumesReoptimized: activityDocs.filter(d => d.type === 'resume_reoptimization').length,
-                prepGuides: appDocs.filter(d => d.prepGuide || (d.prepGuideHistory && d.prepGuideHistory.length > 0)).length,
-                skillsLearned: learningDocs.filter(d => !d.archived).length,
-                coverLetters: appDocs.filter(d => d.coverLetter).length
+                resumesAnalyzed: analyses.size,
+                resumesOptimized: activities.docs.filter((d: any) => d.data().type === 'resume_optimized').length,
+                resumesReoptimized: activities.docs.filter((d: any) => d.data().type === 'resume_reoptimization').length,
+                prepGuides: apps.docs.filter((d: any) => d.data().prepGuide || d.data().prepGuideHistory?.length > 0).length,
+                skillsLearned: learning.docs.filter((d: any) => !d.data().archived).length,
+                coverLetters: apps.docs.filter((d: any) => d.data().coverLetter).length
             };
         } catch (error) {
             console.error("Error fetching user stats:", error);
-            return {
-                resumesAnalyzed: 0,
-                resumesOptimized: 0,
-                resumesReoptimized: 0,
-                prepGuides: 0,
-                skillsLearned: 0,
-                coverLetters: 0
-            };
+            return { resumesAnalyzed: 0, resumesOptimized: 0, resumesReoptimized: 0, prepGuides: 0, skillsLearned: 0, coverLetters: 0 };
         }
     }
 
-    /**
-     * Get all users for admin management
-     * Excludes deleted users - they appear in Deleted Users section instead
-     */
     async getAllUsers(): Promise<UserProfile[]> {
-        const q = query(this.usersCollection, orderBy('createdAt', 'desc'));
+        const { query, orderBy, getDocs } = await import('firebase/firestore');
+        const db = await getFirestoreDb();
+        const usersColl = await this.getUsersCollection();
+        const q = query(usersColl, orderBy('createdAt', 'desc'));
         const snapshot = await getDocs(q);
-        const allUsers = snapshot.docs.map(docSnap => {
+
+        return snapshot.docs.map((docSnap: any) => {
             const data = docSnap.data();
             return {
                 ...data,
@@ -538,37 +356,19 @@ export class UserService {
                 lastLoginAt: (data.lastLoginAt as any)?.toDate ? (data.lastLoginAt as any).toDate() : new Date(),
                 updatedAt: (data.updatedAt as any)?.toDate ? (data.updatedAt as any).toDate() : new Date(),
             } as UserProfile;
-        });
-
-        // Filter out deleted users - they appear in Deleted Users section
-        const activeUsers = allUsers.filter(user => user.accountStatus !== 'deleted');
-        if (__DEV__) console.log('[getAllUsers] After filtering deleted:', activeUsers.length);
-
-        return activeUsers;
+        }).filter(user => user.accountStatus !== 'deleted');
     }
 
-    /**
-     * Batch activate all users (Admin only)
-     */
     async batchActivateUsers(): Promise<{ count: number }> {
         const users = await this.getAllUsers();
         let count = 0;
-
+        const { serverTimestamp } = await import('firebase/firestore');
         for (const user of users) {
-            const updates: any = {
-                accountStatus: 'active',
-                updatedAt: serverTimestamp()
-            };
-
-            // Reset tokens to initial amount if below
-            if (user.tokenBalance < this.WELCOME_BONUS) {
-                updates.tokenBalance = this.WELCOME_BONUS;
-            }
-
+            const updates: any = { accountStatus: 'active', updatedAt: serverTimestamp() };
+            if (user.tokenBalance < this.WELCOME_BONUS) updates.tokenBalance = this.WELCOME_BONUS;
             await this.updateProfile(user.uid, updates);
             count++;
         }
-
         return { count };
     }
 }

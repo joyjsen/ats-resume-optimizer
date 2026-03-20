@@ -1,11 +1,10 @@
 import React, { useState } from 'react';
 import { View, StyleSheet, ScrollView, Platform } from 'react-native';
 import { Portal, Modal, Text, Button, Checkbox, Divider, useTheme, IconButton } from 'react-native-paper';
-import { DatePickerModal, registerTranslation, en } from 'react-native-paper-dates';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { format } from 'date-fns';
 
-registerTranslation('en', en);
-import { auth } from '../../services/firebase/config';
+import { getFirebaseAuth } from '../../services/firebase/config';
 import { useRouter } from 'expo-router';
 import { LearningEntry } from '../../types/learning.types';
 import { activityService } from '../../services/firebase/activityService';
@@ -71,22 +70,27 @@ export const SkillAdditionModal = ({
             setOptInAI(false);
 
             // Check for existing learning in this context
-            if (!auth.currentUser) return;
-            const userId = auth.currentUser.uid;
-            const jTitle = propsJobTitle || (resume?.experience && resume.experience.length > 0 ? resume.experience[0].title : 'Unknown Role');
-            const cName = propsCompanyName || (resume?.experience && resume.experience.length > 0 ? resume.experience[0].company : 'Unknown Company');
+            const checkExisting = async () => {
+                const auth = await getFirebaseAuth();
+                if (!auth.currentUser) return;
+                const userId = auth.currentUser.uid;
 
-            setLoading(true);
-            learningService.findExistingEntry(userId, skill, jTitle, cName).then(existing => {
-                if (existing) {
-                    setExistingLearning(existing);
-                    if (existing.status === 'completed') {
-                        setStep('already_saved');
-                    } else {
-                        setStep('training_in_progress');
+                setLoading(true);
+                try {
+                    const existing = await learningService.getEntryBySkill(userId, skill);
+                    if (existing) {
+                        setExistingLearning(existing);
+                        if (existing.status === 'completed') {
+                            setStep('already_saved');
+                        } else {
+                            setStep('training_in_progress');
+                        }
                     }
+                } finally {
+                    setLoading(false);
                 }
-            }).finally(() => setLoading(false));
+            };
+            checkExisting();
         }
     }, [visible, skill, propsJobTitle, propsCompanyName]);
 
@@ -413,8 +417,9 @@ export const SkillAdditionModal = ({
                             mode="contained"
                             loading={loading}
                             onPress={async () => {
-                                if (!auth.currentUser) return;
                                 if (!checkTokens(30, onDismiss)) return;  // Pass onDismiss to close modal first
+                                const auth = await getFirebaseAuth();
+                                if (!auth.currentUser) return;
                                 const userId = auth.currentUser.uid;
                                 setLoading(true);
                                 try {
@@ -484,20 +489,18 @@ export const SkillAdditionModal = ({
                             {selectedDate ? format(selectedDate, 'PPP') : 'Select Date'}
                         </Button>
 
-                        <DatePickerModal
-                            locale="en"
-                            mode="single"
-                            visible={showDatePicker}
-                            onDismiss={() => setShowDatePicker(false)}
-                            date={selectedDate}
-                            onConfirm={(params) => {
-                                setShowDatePicker(false);
-                                if (params.date) setSelectedDate(params.date);
-                            }}
-                            validRange={{
-                                endDate: new Date()
-                            }}
-                        />
+                        {showDatePicker && (
+                            <DateTimePicker
+                                value={selectedDate}
+                                mode="date"
+                                display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                                maximumDate={new Date()}
+                                onChange={(event: any, date?: Date) => {
+                                    setShowDatePicker(Platform.OS === 'ios');
+                                    if (date) setSelectedDate(date);
+                                }}
+                            />
+                        )}
 
                         <View style={styles.actions}>
                             <Button mode="outlined" onPress={() => setStep('path_selection')} style={{ flex: 1, marginRight: 8 }}>
@@ -507,6 +510,7 @@ export const SkillAdditionModal = ({
                                 mode="contained"
                                 loading={loading}
                                 onPress={async () => {
+                                    const auth = await getFirebaseAuth();
                                     if (!auth.currentUser) return;
                                     const userId = auth.currentUser.uid;
                                     setLoading(true);

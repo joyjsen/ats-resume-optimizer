@@ -156,7 +156,9 @@ export class BackgroundWorker {
                             console.log('[BackgroundWorker] Task completed successfully');
                             resolve();
                         } catch (error: any) {
-                            console.error('[BackgroundWorker] Task failed:', error);
+                            if (!error?.message?.includes('force stopped')) {
+                                console.error('[BackgroundWorker] Task failed:', error);
+                            }
                             reject(error);
                         } finally {
                             this.cleanup();

@@ -1,34 +1,23 @@
-import {
-    collection,
-    doc,
-    getDoc,
-    addDoc,
-    updateDoc,
-    deleteDoc,
-    getDocs,
-    query,
-    where,
-    onSnapshot,
-    serverTimestamp,
-    Timestamp,
-    writeBatch
-} from 'firebase/firestore';
-import { db, auth } from './config';
+import { getFirestoreDb, getFirebaseAuth } from './config';
 import { Application, ApplicationStage, TimelineEvent } from '../../types/application.types';
 import { SavedAnalysis } from '../../types/history.types';
 
 export class ApplicationService {
     private collectionName = 'user_applications';
 
-    private get applicationsCollection() {
+    private async getApplicationsCollection() {
+        const { collection } = await import('firebase/firestore');
+        const db = await getFirestoreDb();
         return collection(db, this.collectionName);
     }
 
     async createApplicationFromAnalysis(analysis: SavedAnalysis): Promise<string> {
         try {
+            const { doc, addDoc, updateDoc, serverTimestamp } = await import('firebase/firestore');
+            const auth = await getFirebaseAuth();
+            const db = await getFirestoreDb();
             const user = auth.currentUser;
-            if (!user) throw new Error("User must be authenticated to create applications");
-            const userId = user.uid;
+            if (!user) throw new Error("User must be authenticated");
 
             const existing = await this.getApplicationByAnalysisId(analysis.id);
             if (existing) {
@@ -41,7 +30,6 @@ export class ApplicationService {
                     analysisStatus: 'optimized',
                     isReadOnly: false
                 });
-                console.log('Application updated with new analysis stats:', existing.id);
                 return existing.id;
             }
 
@@ -53,7 +41,7 @@ export class ApplicationService {
             };
 
             const appData: any = {
-                userId,
+                userId: user.uid,
                 analysisId: analysis.id,
                 jobTitle: analysis.jobTitle || 'Untitled Position',
                 company: analysis.company || 'Unknown Company',
@@ -68,24 +56,19 @@ export class ApplicationService {
                 updatedAt: serverTimestamp()
             };
 
-            const docRef = await addDoc(this.applicationsCollection, appData);
-            console.log('Application created with ID:', docRef.id);
+            const coll = await this.getApplicationsCollection();
+            const docRef = await addDoc(coll, appData);
             return docRef.id;
-
         } catch (error) {
             console.error('Error creating application:', error);
             throw error;
         }
     }
 
-    async updateStatus(
-        applicationId: string,
-        newStage: ApplicationStage,
-        note?: string,
-        customStageName?: string,
-        date: Date = new Date()
-    ): Promise<boolean> {
+    async updateStatus(applicationId: string, newStage: ApplicationStage, note?: string, customStageName?: string, date: Date = new Date()): Promise<boolean> {
         try {
+            const { doc, getDoc, updateDoc, serverTimestamp, Timestamp } = await import('firebase/firestore');
+            const db = await getFirestoreDb();
             const appRef = doc(db, this.collectionName, applicationId);
             const snapshot = await getDoc(appRef);
             if (!snapshot.exists()) return false;
@@ -110,41 +93,29 @@ export class ApplicationService {
             };
 
             const terminalStages = ['offer', 'rejected', 'withdrawn'];
-            if (terminalStages.includes(newStage)) {
-                updates.isArchived = true;
-            } else {
-                updates.isArchived = false;
-            }
+            updates.isArchived = terminalStages.includes(newStage);
 
             await updateDoc(appRef, updates);
 
             if (currentData?.analysisId) {
                 const isLocked = ['submitted', 'phone_screen', 'technical', 'final_round', 'offer', 'rejected', 'withdrawn'].includes(newStage);
-
                 await updateDoc(doc(db, 'user_analyses', currentData.analysisId), {
                     applicationStatus: newStage,
                     isLocked: isLocked,
                     updatedAt: serverTimestamp()
-                }).catch((err: any) => console.error("Failed to sync status to analysis:", err));
+                }).catch(() => { });
             }
 
-            // TODO: Dynamic require to avoid circular dependency. Consider extracting
-            // shared logic into a utility module or using an event-based pattern.
             try {
-                const { activityService } = require('./activityService');
+                const { activityService } = await import('./activityService');
                 const stageName = customStageName || newStage.replace('_', ' ').replace(/\b\w/g, c => c.toUpperCase());
                 await activityService.logActivity({
                     type: 'application_status_update',
                     description: `Updated status to ${stageName} for ${currentData?.jobTitle || 'Application'}`,
                     resourceId: applicationId,
-                    contextData: {
-                        applicationId,
-                        newStage,
-                        previousStage: currentData?.currentStage
-                    },
-                    platform: 'web'
+                    contextData: { applicationId, newStage, previousStage: currentData?.currentStage }
                 });
-            } catch (logError) { }
+            } catch (e) { }
 
             return true;
         } catch (error) {
@@ -155,10 +126,9 @@ export class ApplicationService {
 
     async setArchived(applicationId: string, isArchived: boolean): Promise<boolean> {
         try {
-            await updateDoc(doc(db, this.collectionName, applicationId), {
-                isArchived,
-                updatedAt: serverTimestamp()
-            });
+            const { doc, updateDoc, serverTimestamp } = await import('firebase/firestore');
+            const db = await getFirestoreDb();
+            await updateDoc(doc(db, this.collectionName, applicationId), { isArchived, updatedAt: serverTimestamp() });
             return true;
         } catch (error) {
             console.error('Error modifying archive status:', error);
@@ -168,6 +138,8 @@ export class ApplicationService {
 
     async deleteApplication(applicationId: string): Promise<boolean> {
         try {
+            const { doc, deleteDoc } = await import('firebase/firestore');
+            const db = await getFirestoreDb();
             await deleteDoc(doc(db, this.collectionName, applicationId));
             return true;
         } catch (error) {
@@ -178,35 +150,25 @@ export class ApplicationService {
 
     async updatePrepStatus(applicationId: string, status: any, forceNewHistory: boolean = false): Promise<void> {
         try {
+            const { doc, getDoc, updateDoc, serverTimestamp, Timestamp } = await import('firebase/firestore');
+            const db = await getFirestoreDb();
             const appRef = doc(db, this.collectionName, applicationId);
             const appSnap = await getDoc(appRef);
             if (!appSnap.exists()) throw new Error("App not found");
             const appData = appSnap.data();
 
             const updates: any = {};
-
             if (status.status) updates['prepGuide.status'] = status.status;
             if (status.progress !== undefined) updates['prepGuide.progress'] = status.progress;
             if (status.currentStep) updates['prepGuide.currentStep'] = status.currentStep;
-
-            if (status.sections) {
-                Object.keys(status.sections).forEach(key => {
-                    updates[`prepGuide.sections.${key}`] = status.sections[key];
-                });
-            }
+            if (status.sections) Object.keys(status.sections).forEach(key => { updates[`prepGuide.sections.${key}`] = status.sections[key]; });
             if (status.startedAt) updates['prepGuide.startedAt'] = Timestamp.fromDate(status.startedAt);
             if (status.generatedAt) updates['prepGuide.generatedAt'] = Timestamp.fromDate(status.generatedAt);
             if (status.downloadUrl) updates['prepGuide.downloadUrl'] = status.downloadUrl;
 
             let history = appData?.prepGuideHistory || [];
-
             if (forceNewHistory) {
-                const runId = `run_${Date.now()}`;
-                history.push({
-                    id: runId,
-                    status: 'generating',
-                    startedAt: Timestamp.now()
-                });
+                history.push({ id: `run_${Date.now()}`, status: 'generating', startedAt: Timestamp.now() });
             } else if (history.length > 0) {
                 const currentRun = history[history.length - 1];
                 if (status.historyStatus || status.status) currentRun.status = status.historyStatus || status.status;
@@ -216,7 +178,6 @@ export class ApplicationService {
 
             updates['prepGuideHistory'] = history;
             updates['updatedAt'] = serverTimestamp();
-
             await updateDoc(appRef, updates);
         } catch (error) {
             console.error('Error updating prep status:', error);
@@ -226,13 +187,10 @@ export class ApplicationService {
 
     async saveCoverLetter(applicationId: string, content: string): Promise<boolean> {
         try {
+            const { doc, updateDoc, serverTimestamp } = await import('firebase/firestore');
+            const db = await getFirestoreDb();
             await updateDoc(doc(db, this.collectionName, applicationId), {
-                coverLetter: {
-                    content,
-                    status: 'completed',
-                    generatedAt: serverTimestamp(),
-                    lastEditedAt: serverTimestamp()
-                },
+                coverLetter: { content, status: 'completed', generatedAt: serverTimestamp(), lastEditedAt: serverTimestamp() },
                 updatedAt: serverTimestamp()
             });
             return true;
@@ -244,21 +202,15 @@ export class ApplicationService {
 
     async getApplicationByAnalysisId(analysisId: string): Promise<Application | null> {
         try {
-            const user = auth.currentUser;
-            if (!user) return null;
-            const userId = user.uid;
+            const { query, where, getDocs } = await import('firebase/firestore');
+            const auth = await getFirebaseAuth();
+            if (!auth.currentUser) return null;
 
-            const q = query(
-                this.applicationsCollection,
-                where('userId', '==', userId),
-                where('analysisId', '==', analysisId)
-            );
+            const coll = await this.getApplicationsCollection();
+            const q = query(coll, where('userId', '==', auth.currentUser.uid), where('analysisId', '==', analysisId));
             const snapshot = await getDocs(q);
 
-            if (!snapshot.empty) {
-                return this.mapDocToApplication(snapshot.docs[0]);
-            }
-            return null;
+            return snapshot.empty ? null : this.mapDocToApplication(snapshot.docs[0]);
         } catch (error) {
             console.error('Error finding application:', error);
             return null;
@@ -266,38 +218,35 @@ export class ApplicationService {
     }
 
     subscribeToApplications(callback: (apps: Application[]) => void): () => void {
-        try {
-            const user = auth.currentUser;
-            if (!user) return () => { };
-            const userId = user.uid;
+        let unsub: (() => void) | undefined;
+        const init = async () => {
+            const { query, where, onSnapshot } = await import('firebase/firestore');
+            const auth = await getFirebaseAuth();
+            if (!auth.currentUser) return;
 
-            const q = query(
-                this.applicationsCollection,
-                where('userId', '==', userId)
-            );
+            const coll = await this.getApplicationsCollection();
+            const q = query(coll, where('userId', '==', auth.currentUser.uid));
 
-            return onSnapshot(q, (snapshot) => {
-                const apps = snapshot.docs.map(d => this.mapDocToApplication(d));
-                apps.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+            unsub = onSnapshot(q, (snapshot) => {
+                const apps = snapshot.docs.map(d => this.mapDocToApplication(d)).sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
                 callback(apps);
             }, (error) => {
-                // @ts-ignore
-                if (error.code === 'permission-denied' || error.message?.includes('Missing or insufficient permissions')) {
-                    return;
+                const errorCode = (error as any)?.code || '';
+                if (errorCode !== 'permission-denied' && !errorCode.includes('permission')) {
+                    console.error('Error subscribing to applications:', error);
                 }
-                console.error('Error subscribing to applications:', error);
             });
-        } catch (error) {
-            console.error('Error subscribing to applications:', error);
-            return () => { };
-        }
+        };
+        const promise = init();
+        return () => { promise.then(() => unsub?.()); };
     }
 
     async getApplicationById(applicationId: string): Promise<Application | null> {
         try {
-            const docSnap = await getDoc(doc(this.applicationsCollection, applicationId));
-            if (!docSnap.exists()) return null;
-            return this.mapDocToApplication(docSnap);
+            const { doc, getDoc } = await import('firebase/firestore');
+            const db = await getFirestoreDb();
+            const docSnap = await getDoc(doc(db, this.collectionName, applicationId));
+            return docSnap.exists() ? this.mapDocToApplication(docSnap) : null;
         } catch (error) {
             console.error('Error fetching application by ID:', error);
             return null;
@@ -306,15 +255,12 @@ export class ApplicationService {
 
     async getApplications(): Promise<Application[]> {
         try {
-            const user = auth.currentUser;
-            if (!user) return [];
-            const userId = user.uid;
+            const { query, where, getDocs } = await import('firebase/firestore');
+            const auth = await getFirebaseAuth();
+            if (!auth.currentUser) return [];
 
-            const q = query(
-                this.applicationsCollection,
-                where('userId', '==', userId)
-            );
-
+            const coll = await this.getApplicationsCollection();
+            const q = query(coll, where('userId', '==', auth.currentUser.uid));
             const snapshot = await getDocs(q);
             return snapshot.docs.map(d => this.mapDocToApplication(d));
         } catch (error) {
@@ -336,59 +282,20 @@ export class ApplicationService {
             currentStage: data.currentStage,
             customStageName: data.customStageName,
             lastStatusUpdate: (data.lastStatusUpdate as any)?.toDate?.() || new Date(),
-            timeline: (data.timeline || []).map((t: any) => ({
-                ...t,
-                date: (t.date as any)?.toDate ? (t.date as any).toDate() : new Date(t.date)
-            })),
+            timeline: (data.timeline || []).map((t: any) => ({ ...t, date: (t.date as any)?.toDate ? (t.date as any).toDate() : new Date(t.date) })),
             isArchived: data.isArchived,
             analysisStatus: data.analysisStatus,
-            isReadOnly: data.analysisStatus === 'pending_resume_update' || data.analysisStatus === 'draft_ready' || data.analysisStatus === 'pending_skill_update',
-
+            isReadOnly: ['pending_resume_update', 'draft_ready', 'pending_skill_update'].includes(data.analysisStatus),
             submittedResumeData: data.submittedResumeData ? (typeof data.submittedResumeData === 'string' ? JSON.parse(data.submittedResumeData) : data.submittedResumeData) : undefined,
             lastResumeUpdateAt: (data.lastResumeUpdateAt as any)?.toDate?.(),
-            coverLetter: data.coverLetter ? this.mapCoverLetter(data.coverLetter) : undefined,
-            prepGuide: data.prepGuide ? this.mapPrepGuide(data.prepGuide, data.company) : undefined,
-            prepGuideHistory: data.prepGuideHistory ? data.prepGuideHistory.map((h: any) => ({
-                ...h,
-                startedAt: (h.startedAt as any)?.toDate?.(),
-                generatedAt: (h.generatedAt as any)?.toDate?.()
-            })) : undefined,
+            coverLetter: data.coverLetter ? { ...data.coverLetter, generatedAt: (data.coverLetter.generatedAt as any)?.toDate?.(), lastEditedAt: (data.coverLetter.lastEditedAt as any)?.toDate?.() } : undefined,
+            prepGuide: data.prepGuide ? { ...data.prepGuide, startedAt: (data.prepGuide.startedAt as any)?.toDate?.(), generatedAt: (data.prepGuide.generatedAt as any)?.toDate?.() } : undefined,
+            prepGuideHistory: data.prepGuideHistory ? data.prepGuideHistory.map((h: any) => ({ ...h, startedAt: (h.startedAt as any)?.toDate?.(), generatedAt: (h.generatedAt as any)?.toDate?.() })) : undefined,
             interviewNotes: data.interviewNotes,
             finalResult: data.finalResult,
             createdAt: (data.createdAt as any)?.toDate?.() || new Date(),
             updatedAt: (data.updatedAt as any)?.toDate?.() || new Date()
         } as Application;
-    }
-
-    private mapCoverLetter(cl: any): any {
-        const status = cl.status || (cl.content ? 'completed' : 'failed');
-        if (__DEV__ && cl.status === 'generating') {
-            console.log(`[AppService] CoverLetter stuck generating: ContentLen=${cl.content?.length || 0}`);
-        }
-        return {
-            status,
-            content: cl.content || cl.text || '',
-            generatedAt: (cl.generatedAt as any)?.toDate?.(),
-            lastEditedAt: (cl.lastEditedAt as any)?.toDate?.(),
-            startedAt: (cl.startedAt as any)?.toDate?.(),
-            completedAt: (cl.completedAt as any)?.toDate?.()
-        };
-    }
-
-    private mapPrepGuide(pg: any, company?: string): any {
-        if (__DEV__) {
-            console.log(`[AppService] PrepGuide for ${company}: status=${pg.status}, sections=${pg.sections ? Object.keys(pg.sections) : 'NONE'}`);
-        }
-        return {
-            status: pg.status,
-            progress: pg.progress,
-            currentStep: pg.currentStep,
-            sections: pg.sections || undefined,
-            downloadUrl: pg.downloadUrl,
-            storagePath: pg.storagePath,
-            startedAt: (pg.startedAt as any)?.toDate?.(),
-            generatedAt: (pg.generatedAt as any)?.toDate?.()
-        };
     }
 }
 

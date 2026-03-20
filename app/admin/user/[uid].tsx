@@ -5,7 +5,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { userService } from '../../../src/services/firebase/userService';
 import { activityService } from '../../../src/services/firebase/activityService';
 import { historyService } from '../../../src/services/firebase/historyService';
-import { getFunctions, httpsCallable } from 'firebase/functions';
+import { getFirebaseFunctions } from '../../../src/services/firebase/config';
 import { UserProfile, UserActivity, ACTIVITY_COSTS } from '../../../src/types/profile.types';
 import { SavedAnalysis } from '../../../src/types/history.types';
 import { ProfileHeader } from '../../../src/components/profile/ProfileHeader';
@@ -63,7 +63,7 @@ export default function AdminUserDetailScreen() {
             const [userProfile, userActivities, userHistory] = await Promise.all([
                 userService.getUserProfile(uid as string),
                 activityService.getUserActivitiesAdmin(uid as string),
-                historyService.getUserHistoryByUid(uid as string)
+                historyService.getUserHistory(uid as string)
             ]);
             setProfile(userProfile);
             setActivities(userActivities);
@@ -219,7 +219,8 @@ export default function AdminUserDetailScreen() {
 
             // Send email notification
             try {
-                const functions = getFunctions();
+                const { httpsCallable } = await import('firebase/functions');
+                const functions = await getFirebaseFunctions();
                 const sendAccountStatusEmail = httpsCallable(functions, 'sendAccountStatusEmail');
                 await sendAccountStatusEmail({
                     email: profile.email,

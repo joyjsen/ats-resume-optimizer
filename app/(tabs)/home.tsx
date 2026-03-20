@@ -1,17 +1,18 @@
-
 import React, { useState, useEffect, useCallback } from "react";
-import { View, ScrollView, StyleSheet, Platform, RefreshControl, Dimensions, TouchableOpacity, Alert, useWindowDimensions } from "react-native";
-import { Text, useTheme, Card, ProgressBar, IconButton, Surface, Avatar, Button, Chip } from 'react-native-paper';
+import { View, ScrollView, StyleSheet, Platform, RefreshControl, Dimensions, TouchableOpacity, Alert, useWindowDimensions, Animated as RNAnimated } from "react-native";
+import { Text, useTheme, Card, ProgressBar, IconButton, Surface, Avatar, Button, Chip, ActivityIndicator } from 'react-native-paper';
 import { useAppTheme } from '../../src/context/ThemeContext';
-import { useRouter } from "expo-router";
+import { useRouter, useFocusEffect } from "expo-router";
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { StatusBar } from "expo-status-bar";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useProfileStore } from "../../src/store/profileStore";
+import { useResumeStore } from "../../src/store/resumeStore";
 import { historyService } from "../../src/services/firebase/historyService";
 import { applicationService } from "../../src/services/firebase/applicationService";
 import { SavedAnalysis } from "../../src/types/history.types";
 import { Application } from "../../src/types/application.types";
-import { auth } from "../../src/services/firebase/config";
+import { getFirebaseAuth } from "../../src/services/firebase/config";
 import { DAILY_TIPS } from "../../src/data/dailyTips";
 
 const isAndroid = Platform.OS === 'android';
@@ -28,7 +29,8 @@ const RiResumeHome = () => {
     const cardWidth = Math.floor((width - 32 - 16) / 3) - 1;
 
     const [time, setTime] = useState(new Date());
-    const [animatedTokens, setAnimatedTokens] = useState(0);
+    const [authInstance, setAuthInstance] = useState<any>(null);
+    const [animatedProgress] = useState(new RNAnimated.Value(0));
 
     // Data stores
     const { userProfile, refreshProfile, activities } = useProfileStore();
@@ -41,6 +43,8 @@ const RiResumeHome = () => {
     const [history, setHistory] = useState<SavedAnalysis[]>([]);
     const [applications, setApplications] = useState<Application[]>([]);
     const [refreshing, setRefreshing] = useState(false);
+    const [dataLoaded, setDataLoaded] = useState(false);
+    const [subsReady, setSubsReady] = useState({ profile: false, history: false, apps: false });
 
     const tokenBalance = userProfile?.tokenBalance || 0;
     const userName = userProfile?.displayName?.split(" ")[0] || "User";
@@ -50,43 +54,69 @@ const RiResumeHome = () => {
         return () => clearInterval(timer);
     }, []);
 
-    // Token Animation
+    // Mark data as loaded when all subscriptions have fired
     useEffect(() => {
-        let start = 0;
-        const step = Math.max(1, Math.ceil(tokenBalance / 30));
-        const interval = setInterval(() => {
-            start += step;
-            if (start >= tokenBalance) {
-                setAnimatedTokens(tokenBalance);
-                clearInterval(interval);
-            } else {
-                setAnimatedTokens(start);
-            }
-        }, 25);
-        return () => clearInterval(interval);
-    }, [tokenBalance]);
+        if (subsReady.profile && subsReady.history && subsReady.apps) {
+            setDataLoaded(true);
+        }
+    }, [subsReady]);
 
-    // Data Subscription
+    // Animate progress bar when token balance changes
     useEffect(() => {
-        const user = auth.currentUser;
-        if (!user) return;
+        const WELCOME_BONUS = 110;
+        const totalOwned = (userProfile?.totalTokensPurchased || 0) + WELCOME_BONUS;
+        const progress = totalOwned > 0 ? tokenBalance / totalOwned : 0;
+        RNAnimated.timing(animatedProgress, {
+            toValue: progress,
+            duration: 800,
+            useNativeDriver: false,
+        }).start();
+    }, [tokenBalance, userProfile?.totalTokensPurchased]);
 
-        // Initial fetch
-        refreshProfile();
+    // Initialize Auth and Data Subscription
+    useEffect(() => {
+        let isMounted = true;
+        let unsubscribeHistory: (() => void) | undefined;
+        let unsubscribeApps: (() => void) | undefined;
 
-        const unsubscribeHistory = historyService.subscribeToUserHistory((data) => {
-            setHistory(data);
-        });
+        const init = async () => {
+            const auth = await getFirebaseAuth();
+            if (!isMounted) return;
+            setAuthInstance(auth);
 
-        const unsubscribeApps = applicationService.subscribeToApplications((data) => {
-            setApplications(data);
-        });
+            const user = auth?.currentUser;
+            if (!user) return;
+
+            // Initial fetch
+            refreshProfile().then(() => {
+                setSubsReady(prev => ({ ...prev, profile: true }));
+            }).catch(() => {
+                setSubsReady(prev => ({ ...prev, profile: true }));
+            });
+
+            unsubscribeHistory = historyService.subscribeToUserHistory((data) => {
+                if (isMounted) {
+                    setHistory(data);
+                    setSubsReady(prev => ({ ...prev, history: true }));
+                }
+            });
+
+            unsubscribeApps = applicationService.subscribeToApplications((data) => {
+                if (isMounted) {
+                    setApplications(data);
+                    setSubsReady(prev => ({ ...prev, apps: true }));
+                }
+            });
+        };
+
+        init();
 
         return () => {
-            unsubscribeHistory();
-            unsubscribeApps();
+            isMounted = false;
+            unsubscribeHistory?.();
+            unsubscribeApps?.();
         };
-    }, [auth.currentUser?.uid, refreshProfile]);
+    }, [refreshProfile, authInstance?.currentUser?.uid]);
 
     const onRefresh = useCallback(async () => {
         setRefreshing(true);
@@ -199,6 +229,18 @@ const RiResumeHome = () => {
     // Get 3 recent applications
     const recentApplications = history.slice(0, 3);
 
+    if (!dataLoaded) {
+        return (
+            <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
+                <StatusBar style={theme.dark ? "light" : "dark"} />
+                <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', paddingTop: insets.top }}>
+                    <ActivityIndicator size="large" />
+                    <Text variant="bodyMedium" style={{ marginTop: 16, color: theme.colors.onSurfaceVariant }}>Loading your dashboard...</Text>
+                </View>
+            </View>
+        );
+    }
+
     return (
         <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
             <StatusBar style={theme.dark ? "light" : "dark"} />
@@ -227,19 +269,33 @@ const RiResumeHome = () => {
                                 <View>
                                     <Text variant="labelMedium" style={{ color: theme.colors.onSurfaceVariant }}>TOKEN BALANCE</Text>
                                     <View style={{ flexDirection: 'row', alignItems: 'baseline', marginTop: 4 }}>
-                                        <Text variant="displaySmall" style={{ fontWeight: 'bold', color: theme.colors.primary }}>{animatedTokens}</Text>
-                                        <Text variant="bodyMedium" style={{ marginLeft: 4, color: theme.colors.onSurfaceVariant }}>tokens</Text>
+                                        {!dataLoaded ? (
+                                            <ActivityIndicator size="small" style={{ marginVertical: 8 }} />
+                                        ) : (
+                                            <>
+                                                <Text variant="displaySmall" style={{ fontWeight: 'bold', color: theme.colors.primary }}>{tokenBalance}</Text>
+                                                <Text variant="bodyMedium" style={{ marginLeft: 4, color: theme.colors.onSurfaceVariant }}>tokens</Text>
+                                            </>
+                                        )}
                                     </View>
                                 </View>
                             </View>
                             <View style={{ marginTop: 16 }}>
                                 {(() => {
-                                    const WELCOME_BONUS = 110;
-                                    const totalOwned = (userProfile?.totalTokensPurchased || 0) + WELCOME_BONUS;
-                                    const progress = totalOwned > 0 ? (userProfile?.tokenBalance || 0) / totalOwned : 0;
                                     return (
                                         <>
-                                            <ProgressBar progress={progress} color={theme.colors.primary} style={{ height: 6, borderRadius: 3 }} />
+                                            <View style={{ height: 6, borderRadius: 3, backgroundColor: theme.colors.surfaceVariant, overflow: 'hidden' }}>
+                                                <RNAnimated.View style={{
+                                                    height: '100%',
+                                                    borderRadius: 3,
+                                                    backgroundColor: theme.colors.primary,
+                                                    width: animatedProgress.interpolate({
+                                                        inputRange: [0, 1],
+                                                        outputRange: ['0%', '100%'],
+                                                        extrapolate: 'clamp',
+                                                    }),
+                                                }} />
+                                            </View>
                                             <Text variant="bodySmall" style={{ marginTop: 8, color: theme.colors.onSurfaceVariant }}>
                                                 ~{Math.floor(tokenBalance / 8)} analyses or ~{Math.floor(tokenBalance / 15)} optimizations remaining
                                             </Text>
@@ -256,34 +312,37 @@ const RiResumeHome = () => {
                     <Text variant="titleMedium" style={styles.sectionTitle}>Quick Actions</Text>
                     <View style={styles.grid}>
                         {quickActions.map((action) => (
-                            <Card
-                                key={action.id}
-                                style={[styles.actionCard, { width: cardWidth }]}
-                                onPress={() => router.push(action.route as any)}
-                                mode="outlined"
-                            >
-                                <View style={{ position: 'relative' }}>
-                                    {/* Info Button */}
-                                    {action.infoMessage && (
-                                        <View style={{ position: 'absolute', top: -4, right: -4, zIndex: 10 }}>
-                                            <IconButton
-                                                icon="information-variant"
-                                                size={16}
-                                                onPress={(e) => {
-                                                    e.preventDefault();
-                                                    e.stopPropagation();
-                                                    Alert.alert("Info", action.infoMessage);
-                                                }}
-                                            />
-                                        </View>
-                                    )}
-                                    <Card.Content style={{ alignItems: 'center', padding: isAndroid ? 4 : 8, paddingTop: action.infoMessage ? (isAndroid ? 12 : 16) : (isAndroid ? 4 : 8) }}>
-                                        <IconButton icon={action.icon} size={isAndroid ? 20 : 24} iconColor={theme.colors.primary} style={{ margin: 0 }} />
-                                        <Text variant="labelSmall" style={{ textAlign: 'center', marginTop: isAndroid ? 2 : 4, fontWeight: 'bold', fontSize: isAndroid ? 9 : 11 }}>{action.label}</Text>
-                                        <Text variant="labelSmall" style={{ color: theme.colors.onSurfaceVariant, fontSize: isAndroid ? 8 : 10 }}>{action.cost}</Text>
-                                    </Card.Content>
-                                </View>
-                            </Card>
+                            <View key={action.id} style={{ width: cardWidth, marginBottom: 8, height: isAndroid ? 90 : 110 }}>
+                                <Card
+                                    style={[styles.actionCard, { width: '100%', marginBottom: 0 }]}
+                                    onPress={() => {
+                                        router.push(action.route as any);
+                                    }}
+                                    mode="outlined"
+                                >
+                                    <View style={{ position: 'relative' }}>
+                                        {/* Info Button */}
+                                        {action.infoMessage && (
+                                            <View style={{ position: 'absolute', top: -4, right: -4, zIndex: 10 }}>
+                                                <IconButton
+                                                    icon="information-variant"
+                                                    size={16}
+                                                    onPress={(e) => {
+                                                        e.preventDefault();
+                                                        e.stopPropagation();
+                                                        Alert.alert("Info", action.infoMessage);
+                                                    }}
+                                                />
+                                            </View>
+                                        )}
+                                        <Card.Content style={{ alignItems: 'center', padding: isAndroid ? 4 : 8, paddingTop: action.infoMessage ? (isAndroid ? 12 : 16) : (isAndroid ? 4 : 8) }}>
+                                            <IconButton icon={action.icon} size={isAndroid ? 20 : 24} iconColor={theme.colors.primary} style={{ margin: 0 }} />
+                                            <Text variant="labelSmall" style={{ textAlign: 'center', marginTop: isAndroid ? 2 : 4, fontWeight: 'bold', fontSize: isAndroid ? 9 : 11 }}>{action.label}</Text>
+                                            <Text variant="labelSmall" style={{ color: theme.colors.onSurfaceVariant, fontSize: isAndroid ? 8 : 10 }}>{action.cost}</Text>
+                                        </Card.Content>
+                                    </View>
+                                </Card>
+                            </View>
                         ))}
                     </View>
                 </View>
@@ -291,22 +350,28 @@ const RiResumeHome = () => {
                 {/* Stats Summary */}
                 <View style={styles.section}>
                     <Text variant="titleMedium" style={styles.sectionTitle}>Overview - This Week</Text>
-                    <View style={styles.statsGrid}>
-                        {weeklyStats.map((stat, i) => (
-                            <View key={i} style={[styles.statItem, { borderColor: theme.colors.outlineVariant, backgroundColor: theme.colors.elevation.level1 }, isAndroid && { padding: 8 }]}>
-                                <IconButton icon={stat.icon} size={isAndroid ? 18 : 20} style={{ margin: 0 }} />
-                                <Text variant={isAndroid ? "titleMedium" : "titleLarge"} style={{ fontWeight: 'bold' }}>{stat.value}</Text>
-                                <Text
-                                    variant="labelSmall"
-                                    numberOfLines={1}
-                                    adjustsFontSizeToFit
-                                    style={{ color: theme.colors.onSurfaceVariant, fontSize: isAndroid ? 9 : 10 }}
-                                >
-                                    {stat.label}
-                                </Text>
-                            </View>
-                        ))}
-                    </View>
+                    {!dataLoaded ? (
+                        <View style={{ alignItems: 'center', paddingVertical: 24 }}>
+                            <ActivityIndicator size="small" />
+                        </View>
+                    ) : (
+                        <View style={styles.statsGrid}>
+                            {weeklyStats.map((stat, i) => (
+                                <View key={i} style={[styles.statItem, { borderColor: theme.colors.outlineVariant, backgroundColor: theme.colors.elevation.level1 }, isAndroid && { padding: 8 }]}>
+                                    <IconButton icon={stat.icon} size={isAndroid ? 18 : 20} style={{ margin: 0 }} />
+                                    <Text variant={isAndroid ? "titleMedium" : "titleLarge"} style={{ fontWeight: 'bold' }}>{stat.value}</Text>
+                                    <Text
+                                        variant="labelSmall"
+                                        numberOfLines={1}
+                                        adjustsFontSizeToFit
+                                        style={{ color: theme.colors.onSurfaceVariant, fontSize: isAndroid ? 9 : 10 }}
+                                    >
+                                        {stat.label}
+                                    </Text>
+                                </View>
+                            ))}
+                        </View>
+                    )}
                 </View>
 
                 {/* Recent Applications */}

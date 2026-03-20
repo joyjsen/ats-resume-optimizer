@@ -2,7 +2,7 @@ import React from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
 import { useTheme } from 'react-native-paper';
 import { useRouter } from 'expo-router';
-import Markdown from 'react-native-markdown-display';
+import LazyMarkdown from '../../src/components/common/LazyMarkdown';
 
 const PRIVACY_CONTENT = `
 # RiResume Privacy Policy
@@ -248,7 +248,7 @@ export default function PrivacyScreen() {
     return (
         <>
             <ScrollView style={[styles.container, { backgroundColor: theme.colors.background }]}>
-                <Markdown
+                <LazyMarkdown
                     style={{
                         body: {
                             color: theme.colors.onSurface,
@@ -273,7 +273,7 @@ export default function PrivacyScreen() {
                     }}
                 >
                     {PRIVACY_CONTENT}
-                </Markdown>
+                </LazyMarkdown>
                 <View style={{ height: 40 }} />
             </ScrollView>
         </>

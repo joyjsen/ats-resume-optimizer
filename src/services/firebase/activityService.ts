@@ -1,31 +1,17 @@
-import {
-    collection,
-    doc,
-    getDoc,
-    getDocs,
-    query,
-    where,
-    orderBy,
-    limit,
-    onSnapshot,
-    serverTimestamp,
-    runTransaction,
-    updateDoc,
-    deleteDoc
-} from 'firebase/firestore';
-import { db, auth } from './config';
+import { getFirestoreDb, getFirebaseAuth } from './config';
 import { UserActivity, ActivityType, ACTIVITY_COSTS, ActivityStatus, AIProvider } from '../../types/profile.types';
 
 export class ActivityService {
     private collectionName = 'activities';
 
-    private get activitiesCollection() {
+    private async getActivitiesCollection() {
+        const { collection } = await import('firebase/firestore');
+        const db = await getFirestoreDb();
         return collection(db, this.collectionName);
     }
 
     /**
      * Log a user activity and optionally deduct tokens in a transaction
-     * @param skipTokenDeduction - Set to true if tokens were already deducted server-side (e.g., by Cloud Function)
      */
     async logActivity(params: {
         type: ActivityType,
@@ -39,15 +25,16 @@ export class ActivityService {
         skipTokenDeduction?: boolean,
         tokensUsed?: number
     }): Promise<string> {
+        const { doc, runTransaction, serverTimestamp } = await import('firebase/firestore');
+        const auth = await getFirebaseAuth();
+        const db = await getFirestoreDb();
         const user = auth.currentUser;
         if (!user) throw new Error("User not authenticated");
 
         const targetUid = params.targetUserId || user.uid;
-
-        // If skipTokenDeduction is true, don't deduct tokens (already done server-side)
         const cost = params.skipTokenDeduction ? 0 : (ACTIVITY_COSTS[params.type] || 0);
 
-        return await runTransaction(db, async (transaction) => {
+        return await runTransaction(db, async (transaction: any) => {
             const userRef = doc(db, 'users', targetUid);
             const userSnap = await transaction.get(userRef);
 
@@ -58,10 +45,9 @@ export class ActivityService {
                 throw new Error("Insufficient token balance");
             }
 
-            // 1. Create activity record
-            const activityRef = doc(this.activitiesCollection);
+            const activitiesColl = await this.getActivitiesCollection();
+            const activityRef = doc(activitiesColl);
             const activityId = activityRef.id;
-
             const newBalance = userData.tokenBalance - cost;
 
             const activityData: any = {
@@ -72,18 +58,15 @@ export class ActivityService {
                 tokenBalance: newBalance,
                 aiProvider: params.aiProvider || 'none',
                 status: 'completed',
-                platform: params.platform || 'ios',
+                platform: params.platform || 'web',
                 timestamp: serverTimestamp()
             };
 
-            // Remove undefined fields
             if (params.resourceId !== undefined) activityData.resourceId = params.resourceId;
             if (params.resourceName !== undefined) activityData.resourceName = params.resourceName;
             if (params.contextData !== undefined) activityData.contextData = params.contextData;
 
             transaction.set(activityRef, activityData);
-
-            // 2. Update user balance
             transaction.update(userRef, {
                 tokenBalance: newBalance,
                 totalTokensUsed: (userData.totalTokensUsed || 0) + cost,
@@ -94,13 +77,11 @@ export class ActivityService {
         });
     }
 
-    /**
-     * Update an existing activity record
-     */
     async updateActivity(activityId: string, updates: Partial<UserActivity>): Promise<void> {
+        const { doc, updateDoc, serverTimestamp } = await import('firebase/firestore');
+        const db = await getFirestoreDb();
         const docRef = doc(db, this.collectionName, activityId);
 
-        // Remove prohibited fields for updates
         const cleanUpdates = { ...updates };
         // @ts-ignore
         delete cleanUpdates.activityId;
@@ -109,142 +90,106 @@ export class ActivityService {
         // @ts-ignore
         delete cleanUpdates.timestamp;
 
-        await updateDoc(docRef, {
-            ...cleanUpdates,
-            updatedAt: serverTimestamp()
-        });
-        console.log(`[ActivityService] Updated activity: ${activityId}`);
+        await updateDoc(docRef, { ...cleanUpdates, updatedAt: serverTimestamp() });
     }
 
-    /**
-     * Fetch recent activity for current user
-     */
     async getRecentActivity(limitCount: number = 5): Promise<UserActivity[]> {
+        const { query, where, orderBy, limit, getDocs } = await import('firebase/firestore');
+        const auth = await getFirebaseAuth();
         const user = auth.currentUser;
         if (!user) return [];
 
-        const q = query(
-            this.activitiesCollection,
-            where('uid', '==', user.uid),
-            orderBy('timestamp', 'desc'),
-            limit(limitCount)
-        );
+        const activitiesColl = await this.getActivitiesCollection();
+        const q = query(activitiesColl, where('uid', '==', user.uid), orderBy('timestamp', 'desc'), limit(limitCount));
         const snapshot = await getDocs(q);
 
-        return snapshot.docs.map(docSnap => ({
+        return snapshot.docs.map((docSnap: any) => ({
             activityId: docSnap.id,
             ...docSnap.data(),
             timestamp: (docSnap.data().timestamp as any)?.toDate?.() || new Date()
         })) as UserActivity[];
     }
 
-    /**
-     * Subscribe to activities (real-time)
-     */
-    subscribeToActivities(callback: (activities: UserActivity[]) => void, limitCount: number = 20) {
-        const user = auth.currentUser;
-        if (!user) return () => { };
+    async subscribeToActivities(callback: (activities: UserActivity[]) => void, limitCount: number = 20): Promise<() => void> {
+        let unsub: (() => void) | undefined;
+        const init = async () => {
+            const { query, where, orderBy, limit, onSnapshot } = await import('firebase/firestore');
+            const auth = await getFirebaseAuth();
+            const user = auth.currentUser;
+            if (!user) return;
 
-        const q = query(
-            this.activitiesCollection,
-            where('uid', '==', user.uid),
-            orderBy('timestamp', 'desc'),
-            limit(limitCount)
-        );
+            const activitiesColl = await this.getActivitiesCollection();
+            const q = query(activitiesColl, where('uid', '==', user.uid), orderBy('timestamp', 'desc'), limit(limitCount));
 
-        return onSnapshot(q, (snapshot) => {
-            const activities = snapshot.docs.map(docSnap => ({
-                activityId: docSnap.id,
-                ...docSnap.data(),
-                timestamp: (docSnap.data().timestamp as any)?.toDate?.() || new Date()
-            })) as UserActivity[];
-            callback(activities);
-        }, (error) => {
-            // @ts-ignore
-            if (error.code === 'permission-denied' || error.message?.includes('Missing or insufficient permissions')) {
-                return;
-            }
-            console.error('Error in activities subscription:', error);
-        });
+            unsub = onSnapshot(q, (snapshot: any) => {
+                const activities = snapshot.docs.map((docSnap: any) => ({
+                    activityId: docSnap.id,
+                    ...docSnap.data(),
+                    timestamp: (docSnap.data().timestamp as any)?.toDate?.() || new Date()
+                })) as UserActivity[];
+                callback(activities);
+            }, (error: any) => {
+                if (error.code !== 'permission-denied') console.error('Error in activities sub:', error);
+            });
+        };
+        const promise = init();
+        return () => {
+            promise.then(() => unsub?.());
+        };
     }
 
-    /**
-     * Get all activities across platform (Admin only)
-     */
     async getAllActivities(limitCount: number = 50): Promise<UserActivity[]> {
-        const q = query(
-            this.activitiesCollection,
-            orderBy('timestamp', 'desc'),
-            limit(limitCount)
-        );
+        const { query, orderBy, limit, getDocs } = await import('firebase/firestore');
+        const activitiesColl = await this.getActivitiesCollection();
+        const q = query(activitiesColl, orderBy('timestamp', 'desc'), limit(limitCount));
         const snapshot = await getDocs(q);
 
-        return snapshot.docs.map(docSnap => ({
+        return snapshot.docs.map((docSnap: any) => ({
             activityId: docSnap.id,
             ...docSnap.data(),
             timestamp: (docSnap.data().timestamp as any)?.toDate?.() || new Date()
         })) as UserActivity[];
     }
 
-    /**
-     * Get activities for a specific user (Admin only)
-     */
     async getUserActivitiesAdmin(uid: string, limitCount: number = 50): Promise<UserActivity[]> {
-        const q = query(
-            this.activitiesCollection,
-            where('uid', '==', uid),
-            orderBy('timestamp', 'desc'),
-            limit(limitCount)
-        );
+        const { query, where, orderBy, limit, getDocs } = await import('firebase/firestore');
+        const activitiesColl = await this.getActivitiesCollection();
+        const q = query(activitiesColl, where('uid', '==', uid), orderBy('timestamp', 'desc'), limit(limitCount));
         const snapshot = await getDocs(q);
 
-        return snapshot.docs.map(docSnap => ({
+        return snapshot.docs.map((docSnap: any) => ({
             activityId: docSnap.id,
             ...docSnap.data(),
             timestamp: (docSnap.data().timestamp as any)?.toDate?.() || new Date()
         })) as UserActivity[];
     }
 
-    /**
-     * Get purchase history for a specific user
-     */
     async getPurchaseHistory(): Promise<UserActivity[]> {
+        const { query, where, orderBy, getDocs } = await import('firebase/firestore');
+        const auth = await getFirebaseAuth();
         const user = auth.currentUser;
         if (!user) return [];
 
-        const q = query(
-            this.activitiesCollection,
-            where('uid', '==', user.uid),
-            where('type', '==', 'token_purchase'),
-            orderBy('timestamp', 'desc')
-        );
+        const activitiesColl = await this.getActivitiesCollection();
+        const q = query(activitiesColl, where('uid', '==', user.uid), where('type', '==', 'token_purchase'), orderBy('timestamp', 'desc'));
         const snapshot = await getDocs(q);
 
-        return snapshot.docs.map(docSnap => ({
+        return snapshot.docs.map((docSnap: any) => ({
             activityId: docSnap.id,
             ...docSnap.data(),
             timestamp: (docSnap.data().timestamp as any)?.toDate?.() || new Date()
         })) as UserActivity[];
     }
 
-    /**
-     * Delete all activities for a user (Admin only - for permanent deletion)
-     */
     async deleteAllUserActivities(uid: string): Promise<void> {
-        // Query all activities for this user
-        const q = query(
-            this.activitiesCollection,
-            where('uid', '==', uid)
-        );
+        const { query, where, getDocs, doc, deleteDoc } = await import('firebase/firestore');
+        const db = await getFirestoreDb();
+        const activitiesColl = await this.getActivitiesCollection();
+        const q = query(activitiesColl, where('uid', '==', uid));
         const snapshot = await getDocs(q);
 
-        // Delete each activity document
-        const deletePromises = snapshot.docs.map(activityDoc =>
-            deleteDoc(doc(db, this.collectionName, activityDoc.id))
-        );
-
+        const deletePromises = snapshot.docs.map((activityDoc: any) => deleteDoc(doc(db, this.collectionName, activityDoc.id)));
         await Promise.all(deletePromises);
-        console.log(`[ActivityService] Deleted ${snapshot.docs.length} activities for user ${uid}`);
     }
 }
 

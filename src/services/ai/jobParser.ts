@@ -1,7 +1,6 @@
 import axios from 'axios';
 import { JobPosting } from '../../types/job.types';
-import { openai, safeOpenAICall } from '../../config/ai';
-
+import { createSafeAPICall } from '../../config/ai';
 
 export class JobParserService {
     /**
@@ -9,16 +8,13 @@ export class JobParserService {
      */
     async parseJobFromURL(url: string): Promise<JobPosting> {
         try {
-            // Step 1: Scrape the job page (LinkedIn direct or generic via Perplexity)
             let textContent: string;
             let title = '';
             let company = '';
 
-            // Scraping logic using direct scrape only
             const htmlContent = await this.scrapeJobPage(url);
             textContent = this.extractTextFromHTML(htmlContent);
 
-            // Try to extract title/company from HTML for quicker results if available
             if (url.toLowerCase().includes('linkedin.com')) {
                 const titleMatch = htmlContent.match(/class="top-card-layout__title[^"]*"[^>]*>([\s\S]*?)<\/h2>/i)
                     || htmlContent.match(/<title>([\s\S]*?) \| LinkedIn/i);
@@ -36,16 +32,12 @@ export class JobParserService {
                 company = companyMatch ? this.decodeSimpleEntities(companyMatch[1].trim()) : '';
             }
 
-            // Generic fallback for any site using OG tags
             if (!company) {
                 const ogCompany = htmlContent.match(/<meta property="og:site_name" content="([^"]*)"/i);
                 if (ogCompany) company = this.decodeSimpleEntities(ogCompany[1].trim());
             }
 
-
-            // Step 3: Use OpenAI to parse structured data
             const parsedData = await this.parseWithAI(textContent, url, title, company);
-
             return parsedData;
         } catch (error) {
             console.error('Error parsing job URL:', error);
@@ -78,8 +70,8 @@ export class JobParserService {
                 image_url: { url: `data:image/jpeg;base64,${base64}` }
             }));
 
-            const response = await safeOpenAICall(() => openai.chat.completions.create({
-                model: 'gpt-4o-mini',
+            const options = {
+                model: 'gpt-5.4-mini',
                 messages: [
                     {
                         role: 'user',
@@ -90,12 +82,13 @@ export class JobParserService {
                     },
                 ],
                 max_tokens: 1500,
-            }), 'Job from Image');
+            };
+
+            const response = await createSafeAPICall(options as any, 'Job from Image');
 
             const contentResponse = response.choices[0].message.content;
-            if (!contentResponse) throw new Error('No response from OpenAI Vision');
+            if (!contentResponse) throw new Error('No response from AI');
 
-            // Clean up markdown code blocks if present
             const cleanContent = contentResponse.replace(/```json/g, '').replace(/```/g, '').trim();
             const parsed = JSON.parse(cleanContent);
 
@@ -123,10 +116,8 @@ export class JobParserService {
      */
     async fetchJobDescription(url: string): Promise<{ title: string; company: string; description: string }> {
         try {
-            // Step 1: Direct Scrape for all URLs
             console.log(`[JobParser] Fetching Job via direct scrape: ${url}`);
 
-            // Normalize Indeed URLs first
             let fetchUrl = url;
             if (url.toLowerCase().includes('indeed.com')) {
                 const indeedJobId = this.extractIndeedJobId(url);
@@ -138,9 +129,6 @@ export class JobParserService {
             const htmlContent = await this.scrapeJobPage(fetchUrl);
             let rawText = this.extractTextFromHTML(htmlContent);
 
-            // Step 2: Structure the raw content using AI
-            // We use a small, fast model to identify the title/company
-            // BUT we demand the description be COPIED VERBATIM.
             const prompt = `
                 You are a job posting parser. From the raw text below, extract:
                 1. Job Title
@@ -162,11 +150,13 @@ export class JobParserService {
             `.trim();
 
             try {
-                const response = await safeOpenAICall(() => openai.chat.completions.create({
-                    model: 'gpt-4o-mini',
+                const options = {
+                    model: 'gpt-5.4-mini',
                     messages: [{ role: 'user', content: prompt }],
                     response_format: { type: 'json_object' },
-                }), 'Structure Job Scrape');
+                };
+
+                const response = await createSafeAPICall(options as any, 'Structure Job Scrape');
 
                 const content = response.choices[0].message.content;
                 const parsed = JSON.parse(content || '{}');
@@ -195,33 +185,22 @@ export class JobParserService {
             .replace(/&quot;/g, '"')
             .replace(/&#39;/g, "'")
             .replace(/&#x27;/g, "'")
-            .replace(/<[^>]+>/g, '') // Strip any nested tags
+            .replace(/<[^>]+>/g, '')
             .trim();
     }
 
-
-
-    /**
-     * Scrape job page HTML
-     */
-    /**
-     * Scrape job page HTML
-     */
     private async scrapeJobPage(url: string): Promise<string> {
         let headers: any = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
         };
 
-        // LinkedIn extraction strategy: Use jobs-guest API
         if (url.includes('linkedin.com')) {
             const jobId = this.extractLinkedInJobId(url);
             if (jobId) {
-                console.log(`Detected LinkedIn URL. Extracted Job ID: ${jobId}`);
                 url = `https://www.linkedin.com/jobs-guest/jobs/api/jobPosting/${jobId}`;
             }
         }
 
-        // Indeed extraction: use mobile headers to potentially bypass some hurdles
         if (url.includes('indeed.com')) {
             headers = {
                 'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 14_8 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.1.2 Mobile/15E148 Safari/604.1',
@@ -230,39 +209,25 @@ export class JobParserService {
             };
         }
 
-        console.log(`[JobParser] Direct Scrape: ${url}`);
-        const response = await axios.get(url, {
-            headers,
-            timeout: 10000,
-        });
+        const response = await axios.get(url, { headers, timeout: 10000 });
         return response.data;
     }
 
-    /**
-     * Extract LinkedIn Job ID from various URL formats
-     */
     private extractLinkedInJobId(url: string): string | null {
-        // Pattern 1: /jobs/view/(optional-slug-)ID
         const viewMatch = url.match(/\/jobs\/view\/(?:.*-)?(\d+)(?:\/|\?|$)/);
         if (viewMatch) return viewMatch[1];
 
-        // Pattern 2: currentJobId=ID
         const queryMatch = url.match(/currentJobId=(\d+)/);
         if (queryMatch) return queryMatch[1];
 
         return null;
     }
 
-    /**
-     * Extract Indeed Job ID (jk parameter)
-     */
     private extractIndeedJobId(url: string): string | null {
         try {
-            // Pattern 1: jk=XXXX
             const jkMatch = url.match(/[?&]jk=([^&]+)/);
             if (jkMatch) return jkMatch[1];
 
-            // Pattern 2: /viewjob?jk=XXXX
             const viewJobMatch = url.match(/viewjob\?jk=([^&]+)/);
             if (viewJobMatch) return viewJobMatch[1];
 
@@ -272,34 +237,20 @@ export class JobParserService {
         }
     }
 
-    /**
-     * Extract clean text from HTML
-     */
-    /**
-     * Extract clean text from HTML
-     */
     private extractTextFromHTML(html: string): string {
         try {
-            // 0. Attempt to extract specific container first (LinkedIn specific)
-            // LinkedIn 'jobs-guest' API often puts the description in a 'description__text' class
             const descriptionMatch = html.match(/class="[^"]*description__text[^"]*">([\s\S]*?)<\/section>/i)
                 || html.match(/class="[^"]*show-more-less-html__markup[^"]*">([\s\S]*?)<\/(div|section)>/i);
 
             let text = descriptionMatch ? descriptionMatch[1] : html;
 
-            // 1. Remove script and style tags and their content
             text = text.replace(/<script\b[^>]*>([\s\S]*?)<\/script>/gim, '');
             text = text.replace(/<style\b[^>]*>([\s\S]*?)<\/style>/gim, '');
-
-            // 2. Convert block elements to newlines to preserve structure
             text = text.replace(/<(br|p|div|li|h[1-6])\b[^>]*>/gim, '\n');
-            text = text.replace(/<\/li>/gim, '\n'); // End of list item matches new line
-            text = text.replace(/<\/ul>|<\/ol>/gim, '\n'); // End of list matches new line
-
-            // 3. Remove all other HTML tags
+            text = text.replace(/<\/li>/gim, '\n');
+            text = text.replace(/<\/ul>|<\/ol>/gim, '\n');
             text = text.replace(/<[^>]+>/g, ' ');
 
-            // 4. Decode common HTML entities
             text = text.replace(/&nbsp;/g, ' ')
                 .replace(/&amp;/g, '&')
                 .replace(/&lt;/g, '<')
@@ -308,25 +259,18 @@ export class JobParserService {
                 .replace(/&#39;/g, "'")
                 .replace(/&#x27;/g, "'");
 
-            // 5. Clean up "LinkedIn Noise" and excessive whitespace
             text = text.replace(/Show more|Show less/gi, '');
             text = text.replace(/Posted \d+ days? ago/gi, '');
 
-            // Collapse multiple spaces
             text = text.replace(/[ \t]+/g, ' ');
-            // Collapse multiple newlines (max 2)
             text = text.replace(/\n\s*\n\s*\n+/g, '\n\n');
 
             return text.trim();
         } catch (e) {
-            console.error("Error cleaning HTML, falling back to basic strip", e);
             return html.replace(/<[^>]+>/g, ' ').trim();
         }
     }
 
-    /**
-     * Use OpenAI to parse job posting into structured data
-     */
     private async parseWithAI(
         content: string,
         url: string,
@@ -337,7 +281,7 @@ export class JobParserService {
 You are an expert job posting analyzer. Extract structured information from this job posting.
 
 Job Posting Content:
-${content.substring(0, 15000)} // Limit content length
+${content.substring(0, 15000)}
 
 Extract and return JSON with the following structure:
 {
@@ -381,23 +325,18 @@ ${company ? `Known company: ${company}` : ''}
     `.trim();
 
         const options = {
-            model: 'gpt-4o-mini',
+            model: 'gpt-5.4-mini',
             messages: [{ role: 'user', content: prompt }],
             response_format: { type: 'json_object' },
         };
 
-        const response = await safeOpenAICall(
-            () => openai.chat.completions.create(options as any),
-            'Job from Text',
-            options
-        );
+        const response = await createSafeAPICall(options as any, 'Job from Text');
 
         const contentResponse = response.choices[0].message.content;
-        if (!contentResponse) throw new Error('No response from OpenAI');
+        if (!contentResponse) throw new Error('No response from AI');
 
         const parsed = JSON.parse(contentResponse);
 
-        // Defensive helper for "null" strings or "unknown"
         const cleanValue = (val: any, fallback: string) => {
             if (val === null || val === undefined) return fallback;
             const s = String(val).trim();

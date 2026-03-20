@@ -1,19 +1,15 @@
-import axios from 'axios';
+import { getFirebaseFunctions } from '../firebase/config';
+import { httpsCallable } from 'firebase/functions';
 import { ParsedResume } from '../../types/resume.types';
-import { ENV } from '../../config/env';
-
-const PERPLEXITY_API_KEY = ENV.PERPLEXITY_API_KEY;
-const API_URL = 'https://api.perplexity.ai/chat/completions';
 
 export class PerplexityService {
 
     /**
-     * Generate a tailored cover letter using Perplexity AI
+     * Generate a tailored cover letter using Perplexity AI via backend Proxy
      */
     async generateCoverLetter(resume: ParsedResume, jobTitle: string, company: string, jobDescription?: string): Promise<string> {
         try {
             if (!jobDescription || jobDescription.length < 50) {
-                // If JD is weak, rely on Title/Company context
                 console.warn("Weak Job Description for Cover Letter, using generic prompt.");
             }
 
@@ -40,35 +36,24 @@ Description: ${jobDescription || "N/A"}
 Please output ONLY the text of the cover letter, starting with the header. Do not include markdown naming blocks or introductory conversational text.
             `;
 
-            const response = await axios.post(
-                API_URL,
-                {
-                    model: 'sonar-pro',
-                    messages: [
-                        { role: 'system', content: 'You are a helpful, professional career assistant.' },
-                        { role: 'user', content: prompt }
-                    ],
-                    temperature: 0.7,
-                    max_tokens: 2000, // Cover letters shouldn't be too long
-                    top_p: 0.9,
-                    stream: false
-                },
-                {
-                    headers: {
-                        'Authorization': `Bearer ${PERPLEXITY_API_KEY}`,
-                        'Content-Type': 'application/json'
-                    }
-                }
-            );
+            const functions = await getFirebaseFunctions();
+            const aiProxyFunc = httpsCallable(functions, 'aiProxy');
 
-            const content = response.data.choices[0]?.message?.content;
-            if (!content) throw new Error("No content returned from AI");
+            const response = await aiProxyFunc({
+                provider: 'perplexity',
+                systemPrompt: 'You are a helpful, professional career assistant.',
+                userPrompt: prompt,
+                options: { jsonMode: false }
+            });
 
-            return content.trim();
+            const data = response.data as any;
+            if (!data.success) throw new Error("No content returned from AI Proxy");
+
+            return data.result.trim();
 
         } catch (error: any) {
-            console.error("Perplexity API Error:", error.response?.data || error.message);
-            throw new Error(error.response?.data?.error?.message || "Failed to generate cover letter.");
+            console.error("Perplexity API Error:", error);
+            throw new Error(error.message || "Failed to generate cover letter.");
         }
     }
 
@@ -129,34 +114,24 @@ Search for current information about:
 
 Use RECENT, credible sources from 2024-2026. Include specific dates when mentioning news or events. Be specific and actionable for interview preparation.`;
 
-            const response = await axios.post(
-                API_URL,
-                {
-                    model: 'sonar-pro', // WEB-CONNECTED MODEL
-                    messages: [
-                        { role: 'system', content: 'You are a company research analyst providing detailed, CURRENT information for interview preparation. Always use recent sources from 2024-2026 and include specific dates when relevant.' },
-                        { role: 'user', content: prompt }
-                    ],
-                    temperature: 0.3,
-                    max_tokens: 4000,
-                    return_citations: true
-                },
-                {
-                    headers: {
-                        'Authorization': `Bearer ${PERPLEXITY_API_KEY}`,
-                        'Content-Type': 'application/json'
-                    }
-                }
-            );
+            const functions = await getFirebaseFunctions();
+            const aiProxyFunc = httpsCallable(functions, 'aiProxy');
 
-            const content = response.data.choices[0]?.message?.content;
-            if (!content) throw new Error("No content returned from AI");
+            const response = await aiProxyFunc({
+                provider: 'perplexity',
+                systemPrompt: 'You are a company research analyst providing detailed, CURRENT information for interview preparation. Always use recent sources from 2024-2026 and include specific dates when relevant.',
+                userPrompt: prompt,
+                options: { jsonMode: false }
+            });
 
-            return content.trim();
+            const data = response.data as any;
+            if (!data.success) throw new Error("No content returned from AI Proxy");
+
+            return data.result.trim();
 
         } catch (error: any) {
-            console.error("Perplexity API Error (Research):", error.response?.data || error.message);
-            throw new Error(error.response?.data?.error?.message || "Failed to generate company research.");
+            console.error("Perplexity API Error (Research):", error);
+            throw new Error(error.message || "Failed to generate company research.");
         }
     }
 
@@ -166,32 +141,23 @@ Use RECENT, credible sources from 2024-2026. Include specific dates when mention
      */
     async chatCompletion(systemPrompt: string, userPrompt: string, taskName: string): Promise<string> {
         try {
-            const response = await axios.post(
-                API_URL,
-                {
-                    model: 'sonar-pro',
-                    messages: [
-                        { role: 'system', content: systemPrompt },
-                        { role: 'user', content: userPrompt }
-                    ],
-                    temperature: 0.5,
-                    max_tokens: 5000,
-                },
-                {
-                    headers: {
-                        'Authorization': `Bearer ${PERPLEXITY_API_KEY}`,
-                        'Content-Type': 'application/json'
-                    }
-                }
-            );
+            const functions = await getFirebaseFunctions();
+            const aiProxyFunc = httpsCallable(functions, 'aiProxy');
 
-            const content = response.data.choices[0]?.message?.content;
-            if (!content) throw new Error("No content returned from AI");
+            const response = await aiProxyFunc({
+                provider: 'perplexity',
+                systemPrompt,
+                userPrompt,
+                options: { jsonMode: false }
+            });
 
-            return content.trim();
+            const data = response.data as any;
+            if (!data.success) throw new Error("No content returned from AI Proxy");
+
+            return data.result.trim();
 
         } catch (error: any) {
-            console.error(`Perplexity API Error (${taskName}):`, error.response?.data || error.message);
+            console.error(`Perplexity API Error (${taskName}):`, error);
             throw error;
         }
     }

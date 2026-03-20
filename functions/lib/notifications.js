@@ -14,8 +14,8 @@ const getTransporter = () => {
     return nodemailer.createTransport({
         service: "gmail",
         auth: {
-            user: smtpEmail.value(),
-            pass: smtpPassword.value(),
+            user: smtpEmail.value().trim(),
+            pass: smtpPassword.value().trim(),
         },
     });
 };
@@ -30,7 +30,7 @@ async function sendEmail(to, subject, html) {
     try {
         const transporter = getTransporter();
         await transporter.sendMail({
-            from: `"RiResume" <${smtpEmail.value()}>`,
+            from: `"RiResume" <${smtpEmail.value().trim()}>`,
             to,
             subject,
             html,
@@ -193,6 +193,8 @@ exports.onBackgroundTaskUpdated = functionsV1
             data.resultId = savedId;
             data.route = '/analysis-result';
             data.params = { id: savedId };
+        }
+        else if (type === "optimize_resume") {
             title = "Resume Optimized!";
             body = "Your resume rewrite and optimization is complete. Tap to review.";
             emailSubject = "Resume Optimization Complete";
@@ -266,7 +268,7 @@ exports.onUserDocUpdated = functionsV1
     if (!before.profileCompleted && after.profileCompleted && after.email) {
         console.log(`[Onboarding] Profile completed for ${after.uid}. Generating roadmap...`);
         try {
-            const openai = getOpenAI(openaiApiKey.value());
+            const openai = getOpenAI(openaiApiKey.value().trim());
             const firstName = after.firstName || after.displayName?.split(' ')[0] || "there";
             const currentJob = after.jobTitle || "Professional";
             const targetJob = after.targetJobTitle || "Next Role";
@@ -281,12 +283,12 @@ exports.onUserDocUpdated = functionsV1
                     - Format: Clean HTML for mobile-friendly emails. Use <h3> for phase titles, <ul> for steps.
                 `.trim();
             const response = await openai.chat.completions.create({
-                model: "gpt-4o-mini",
+                model: "gpt-5.4-mini",
                 messages: [
                     { role: "system", content: "You are a professional career advisor specializing in AI-driven job searching." },
                     { role: "user", content: prompt }
                 ],
-                max_tokens: 1500,
+                max_completion_tokens: 1500,
                 temperature: 0.7,
             });
             const roadmapHtml = response.choices[0].message.content || "<p>Explore RiResume to start your journey.</p>";

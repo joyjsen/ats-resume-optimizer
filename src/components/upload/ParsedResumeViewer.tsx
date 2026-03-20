@@ -1,6 +1,7 @@
 import React from 'react';
-import { View, ScrollView, StyleSheet, Modal, Dimensions } from 'react-native';
+import { View, ScrollView, StyleSheet, Modal, Dimensions, Platform } from 'react-native';
 import { Text, Button, Card, Divider, IconButton, useTheme, Portal, Dialog } from 'react-native-paper';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 interface Props {
     visible: boolean;
@@ -13,6 +14,7 @@ const { height } = Dimensions.get('window');
 
 export const ParsedResumeViewer = ({ visible, onClose, parsedData, rawText }: Props) => {
     const theme = useTheme();
+    const insets = useSafeAreaInsets();
     const [activeTab, setActiveTab] = React.useState<'json' | 'text'>('json');
 
     const renderJsonContent = () => {
@@ -188,7 +190,13 @@ export const ParsedResumeViewer = ({ visible, onClose, parsedData, rawText }: Pr
                     )}
                 </ScrollView>
 
-                <View style={{ padding: 16, borderTopWidth: 1, borderTopColor: theme.colors.outlineVariant }}>
+                <View style={{ 
+                    padding: 16, 
+                    paddingBottom: Math.max(insets.bottom, 16) + 8,
+                    borderTopWidth: 1, 
+                    borderTopColor: theme.colors.outlineVariant,
+                    backgroundColor: theme.colors.surface,
+                }}>
                     <Button mode="contained" onPress={onClose}>
                         Close & Continue
                     </Button>

@@ -7,12 +7,10 @@ import { useProfileStore } from '../../src/store/profileStore';
 import { userService } from '../../src/services/firebase/userService';
 import { authService } from '../../src/services/firebase/authService';
 import { storageService } from '../../src/services/firebase/storageService';
-import { auth } from '../../src/services/firebase/config';
+import { getFirebaseAuth, getFirebaseApp, getFirebaseFunctions } from '../../src/services/firebase/config';
 import RecaptchaVerifierModal from '../../src/components/auth/RecaptchaVerifierModal';
-import { PhoneAuthProvider } from 'firebase/auth';
 import { CountryCodeSelector } from '../../src/components/auth/CountryCodeSelector';
 import { COUNTRY_CALLING_CODES, CountryCallingCode } from '../../src/constants/countries';
-import { getFunctions, httpsCallable } from 'firebase/functions';
 
 export default function EditProfileScreen() {
     const router = useRouter();
@@ -105,6 +103,7 @@ export default function EditProfileScreen() {
             };
 
             // Only update phone/email in Firestore if they match auth state now
+            const auth = await getFirebaseAuth();
             const currentUser = auth.currentUser;
             const fullPhone = `${selectedCountry.code}${phone}`;
             if (currentUser?.email?.toLowerCase() === email.toLowerCase() || forceLogoutAfter) {
@@ -200,6 +199,7 @@ export default function EditProfileScreen() {
     const handleConfirmPhone = async () => {
         setLoading(true);
         try {
+            const { PhoneAuthProvider } = await import('firebase/auth');
             const credential = PhoneAuthProvider.credential(
                 // @ts-ignore -confirmationResult is stored in authService
                 authService['confirmationResult'].verificationId,
@@ -265,9 +265,9 @@ export default function EditProfileScreen() {
                     return;
                 }
 
-                // Check for duplicate email before triggering verification
                 try {
-                    const functions = getFunctions();
+                    const { httpsCallable } = await import('firebase/functions');
+                    const functions = await getFirebaseFunctions();
                     const checkUserProvider = httpsCallable(functions, 'checkUserProvider');
                     const result = await checkUserProvider({ email });
                     const emailCheck = result.data as any;
@@ -367,7 +367,7 @@ export default function EditProfileScreen() {
                 <ScrollView contentContainerStyle={styles.container}>
                     <RecaptchaVerifierModal
                         ref={recaptchaVerifier}
-                        firebaseConfig={auth.app.options}
+                        getApp={getFirebaseApp}
                         title="Verify you are human"
                         cancelLabel="Close"
                     />

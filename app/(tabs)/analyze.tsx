@@ -1,7 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { View, ScrollView, StyleSheet, Alert, Image, KeyboardAvoidingView, Platform, TouchableWithoutFeedback, Keyboard, AppState } from 'react-native';
 import { Button, Text, ActivityIndicator, IconButton, Dialog, Portal, TextInput, useTheme, List, ProgressBar } from 'react-native-paper';
-import { useRouter, useNavigation } from 'expo-router'; // Add useNavigation
+import { useRouter, useNavigation } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import JobBrowser from '../../src/components/job/JobBrowser';
 import { JobURLInput } from '../../src/components/upload/JobURLInput';
@@ -106,9 +106,18 @@ export default function AnalyzeScreen() {
         }
     }, [jobUrl]);
 
-    // Simplified effect: Always auto-replace content when a new share arrives
+    // Track focus state manually to avoid importing @react-navigation/native directly
+    const analyzeNavigation = useNavigation();
+    const [isFocused, setIsFocused] = React.useState(false);
     React.useEffect(() => {
-        if (pendingSharedUrl) {
+        const unsubFocus = analyzeNavigation.addListener('focus', () => setIsFocused(true));
+        const unsubBlur = analyzeNavigation.addListener('blur', () => setIsFocused(false));
+        return () => { unsubFocus(); unsubBlur(); };
+    }, [analyzeNavigation]);
+
+    // Only consume pending URL when this tab is actually focused
+    React.useEffect(() => {
+        if (pendingSharedUrl && isFocused) {
             console.log("[Analyze] Found pending shared URL in store:", pendingSharedUrl);
             const urlToUse = pendingSharedUrl;
 
@@ -118,7 +127,7 @@ export default function AnalyzeScreen() {
             // Auto-replace existing content
             applyPendingUrl(urlToUse);
         }
-    }, [pendingSharedUrl]);
+    }, [pendingSharedUrl, isFocused]);
     // Clear parsed data if resume changes
     React.useEffect(() => {
         if (parsedResumeData) {
@@ -260,6 +269,7 @@ export default function AnalyzeScreen() {
 
             setParsedResumeData(result);
             setIsViewerVisible(true);
+            notificationService.notifyParsingComplete();
         } catch (error: any) {
             console.error("Parse Preview Failed:", error);
 
@@ -413,7 +423,7 @@ export default function AnalyzeScreen() {
         console.log(`Subscribing to task updates for: ${currentTaskId}`);
         setLoading(true); // Ensure loading is ON when we start watching a task
 
-        const unsubscribe = taskService.subscribeToTask(currentTaskId, (task) => {
+        const subscriptionPromise = taskService.subscribeToTask(currentTaskId, (task) => {
             console.log(`Task update: ${task.id} [${task.status}] - ${task.progress}%`);
             setStage(`${task.stage} (${task.progress}%)`);
             progressRef.current = task.progress; // Update ref
@@ -460,11 +470,10 @@ export default function AnalyzeScreen() {
                         setCurrentTaskId(null); // Stop watching
 
                         if (AppState.currentState === 'active') {
-                            console.log("App is active, navigating to results...");
+                            console.log("[Analyze] Task completed. Navigating to results...");
                             router.push({ pathname: '/analysis-result', params: { id: saved.id } } as any);
                         } else {
-                            console.log("App is backgrounded, skipping auto-navigation. User should tap notification.");
-                            // We still clear the current task ID so the UI resets when they return
+                            console.log("[Analyze] App backgrounded, skipping auto-navigation. User should tap notification.");
                         }
 
                         setCurrentTaskId(null); // Stop watching
@@ -508,7 +517,11 @@ export default function AnalyzeScreen() {
             Alert.alert("Connection Error", "Lost connection to task status.");
         });
 
-        return () => unsubscribe();
+        return () => {
+            Promise.resolve(subscriptionPromise).then(unsub => {
+                if (typeof unsub === 'function') unsub();
+            }).catch(e => console.error("Unsubscribe error:", e));
+        };
     }, [currentTaskId]);
 
     // Background Listener for "Parsing Paused" notification

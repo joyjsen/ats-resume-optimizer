@@ -11,6 +11,8 @@ import { optimizeResume as optimize, addSkillToResume as addSkill } from "./feat
 import { generatePrepGuide as prep, generateCoverLetter as cover } from "./features/prepGuide";
 import { onBackgroundTaskCreated as background } from "./features/backgroundTasks";
 import { generateTrainingSlideshow as training } from "./features/trainingSlideshow";
+import { parseResume as parser } from "./features/resumeParser";
+import { aiProxy as proxy } from "./features/aiProxy";
 
 export const performGapAnalysis = gap(openaiApiKey, perplexityApiKey);
 export const generateRecommendation = recommend(openaiApiKey, perplexityApiKey);
@@ -20,3 +22,5 @@ export const generatePrepGuide = prep(openaiApiKey, perplexityApiKey);
 export const generateCoverLetter = cover(openaiApiKey, perplexityApiKey);
 export const onBackgroundTaskCreated = background(openaiApiKey, perplexityApiKey);
 export const generateTrainingSlideshow = training(openaiApiKey);
+export const parseResume = parser(openaiApiKey);
+export const aiProxy = proxy(openaiApiKey, perplexityApiKey);

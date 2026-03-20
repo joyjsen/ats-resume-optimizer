@@ -28,14 +28,14 @@ const generatePrepGuide = (openaiApiKey, perplexityApiKey) => (0, https_1.onCall
             "prepGuide.progress": 0,
             "prepGuide.currentStep": "Starting generation...",
         });
-        const openai = new openai_1.default({ apiKey: openaiApiKey.value() });
+        const openai = new openai_1.default({ apiKey: openaiApiKey.value().trim() });
         const sections = {};
         const callGpt = async (prompt, taskName) => {
-            return await (0, aiUtils_1.callAiWithFallback)(openai, perplexityApiKey.value(), "You are an expert technical interview coach.", prompt, { maxTokens: 5000, jsonMode: false });
+            return await (0, aiUtils_1.callAiWithFallback)(openai, perplexityApiKey.value().trim(), "You are an expert technical interview coach.", prompt, { maxTokens: 5000, jsonMode: false });
         };
         // Step 1: Company Research
         await appRef.update({ "prepGuide.progress": 5, "prepGuide.currentStep": "Researching company..." });
-        sections.companyIntelligence = await (0, aiUtils_1.callPerplexity)(perplexityApiKey.value(), "You are a company research analyst providing detailed, CURRENT information.", `Research ${companyName} for a ${jobTitle} role. mission, values, news (90 days), culture, products, competition, interview culture.`, false);
+        sections.companyIntelligence = await (0, aiUtils_1.callPerplexity)(perplexityApiKey.value().trim(), "You are a company research analyst providing detailed, CURRENT information.", `Research ${companyName} for a ${jobTitle} role. mission, values, news (90 days), culture, products, competition, interview culture.`, false);
         await appRef.update({ "prepGuide.progress": 15, "prepGuide.sections.companyIntelligence": sections.companyIntelligence });
         // Step 2: Role Analysis
         sections.roleAnalysis = await callGpt(`Analyze ${jobTitle} at ${companyName}. JD: ${jobDescription || "N/A"}`, "Role Analysis");
@@ -78,8 +78,38 @@ const generateCoverLetter = (openaiApiKey, perplexityApiKey) => (0, https_1.onCa
     const appRef = db.collection("user_applications").doc(applicationId);
     try {
         await appRef.update({ "coverLetter.status": "generating", "coverLetter.startedAt": admin.firestore.FieldValue.serverTimestamp() });
-        const prompt = `Write a compelling cover letter for "${jobTitle}" at "${company}". RESUME: ${JSON.stringify(resume, null, 2)}`;
-        const coverLetterText = await (0, aiUtils_1.callAiWithFallback)(new openai_1.default({ apiKey: openaiApiKey.value() }), perplexityApiKey.value(), "You are a professional Executive Resume Writer. Output ONLY the cover letter text.", prompt, { jsonMode: false });
+        // Extract the candidate's name from the resume
+        const candidateName = resume?.contactInfo?.name || resume?.contactInfo?.fullName || "";
+        const prompt = `Write a compelling, professional cover letter for the position of "${jobTitle}" at "${company}".
+
+CANDIDATE NAME: ${candidateName || "Use the name from the resume below"}
+
+RESUME DATA:
+${JSON.stringify(resume, null, 2)}
+
+${jobDescription ? `JOB DESCRIPTION:\n${jobDescription}` : ""}
+
+CRITICAL FORMATTING RULES:
+- Output ONLY plain text. Do NOT use any markdown formatting (no **, no ##, no *, no _).
+- Use the candidate's ACTUAL NAME (${candidateName}) at the top, NOT "[Your Name]" or any placeholder.
+- Do NOT include any placeholder text like [Your Name], [Your Address], [Company Address], [Date], etc.
+- Start directly with the greeting (e.g., "Dear Hiring Manager,").
+- End with a professional closing using the candidate's actual name.
+- Keep it concise: 3-4 paragraphs maximum.`;
+        let coverLetterText = await (0, aiUtils_1.callAiWithFallback)(new openai_1.default({ apiKey: openaiApiKey.value().trim() }), perplexityApiKey.value().trim(), "You are a professional Executive Resume Writer. Output ONLY plain text cover letters with NO markdown formatting whatsoever.", prompt, { jsonMode: false });
+        // Post-process: strip any residual markdown or placeholders
+        coverLetterText = coverLetterText
+            .replace(/\*\*/g, '') // Remove ** bold markers
+            .replace(/\*/g, '') // Remove * italic markers
+            .replace(/^#+\s*/gm, '') // Remove # heading markers
+            .replace(/\[Your Name\]/gi, candidateName || '') // Replace [Your Name] placeholder
+            .replace(/\[Your Address\]/gi, '')
+            .replace(/\[City,?\s*State,?\s*ZIP\s*(?:Code)?\]/gi, '')
+            .replace(/\[Date\]/gi, '')
+            .replace(/\[Company Address\]/gi, '')
+            .replace(/\[Hiring Manager(?:'s)?\s*Name\]/gi, 'Hiring Manager')
+            .replace(/\n{3,}/g, '\n\n') // Collapse multiple blank lines
+            .trim();
         await appRef.update({
             "coverLetter.status": "completed",
             "coverLetter.text": coverLetterText,

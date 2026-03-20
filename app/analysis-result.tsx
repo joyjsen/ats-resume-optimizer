@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, ScrollView, StyleSheet, TouchableOpacity, Platform, Alert } from 'react-native';
-import { Button, Text, Card, ProgressBar, useTheme, Portal, Dialog, Paragraph, IconButton, Chip } from 'react-native-paper';
+import { Button, Text, Card, ProgressBar, useTheme, Portal, Dialog, Paragraph, IconButton, Chip, ActivityIndicator } from 'react-native-paper';
 import { moderateScale } from '../src/utils/responsive';
 
 const isAndroid = Platform.OS === 'android';
@@ -25,30 +25,53 @@ export default function AnalysisResultScreen() {
     const navigation = useNavigation();
     const { currentAnalysis, setCurrentAnalysis } = useResumeStore();
     const { activeTasks } = useTaskQueue();
-    const { id } = useLocalSearchParams<{ id: string }>();
+    const { id: paramId } = useLocalSearchParams<{ id: string }>();
     const [isAuthReady, setIsAuthReady] = React.useState(false);
     const [error, setError] = React.useState<string | null>(null);
     const [isInitialLoading, setIsInitialLoading] = React.useState(true);
 
+    // Fallback: if params don't carry the ID (Android notification issue), use store ID
+    const id = paramId || currentAnalysis?.id || undefined;
+    console.log(`[AnalysisResult] Render. paramId=${paramId}, storeId=${currentAnalysis?.id}, resolvedId=${id}`);
+
     // 1. Wait for Auth Session to restore (Prevents Permission Denied on cold start)
     React.useEffect(() => {
-        const { auth } = require('../src/services/firebase/config');
-        const { onAuthStateChanged } = require('firebase/auth');
+        let unsubscribeAuth: any = undefined;
 
-        const unsubscribeAuth = onAuthStateChanged(auth, (user: any) => {
-            if (user) {
-                console.log("[AnalysisResult] Auth state ready.");
-                setIsAuthReady(true);
-            } else {
-                console.warn("[AnalysisResult] Auth state changed: No user detected.");
+        const initAuth = async () => {
+            try {
+                const { getFirebaseAuth } = await import('../src/services/firebase/config');
+                const auth = await getFirebaseAuth();
+
+                // If already logged in, set ready immediately
+                if (auth.currentUser) {
+                    console.log("[AnalysisResult] Auth already ready (currentUser exists).");
+                    setIsAuthReady(true);
+                    return; // No need to subscribe if already ready
+                }
+
+                const { onAuthStateChanged } = await import('firebase/auth');
+
+                unsubscribeAuth = onAuthStateChanged(auth, (user: any) => {
+                    if (user) {
+                        console.log("[AnalysisResult] Auth state ready via listener.");
+                        setIsAuthReady(true);
+                    } else {
+                        console.warn("[AnalysisResult] Auth state changed: No user detected.");
+                    }
+                });
+            } catch (error) {
+                console.error("[AnalysisResult] Auth init failed:", error);
             }
-        });
+        };
 
-        if (auth.currentUser) {
-            setIsAuthReady(true);
+        if (!isAuthReady) {
+            initAuth();
         }
 
-        return () => unsubscribeAuth();
+        return () => {
+            if (unsubscribeAuth) unsubscribeAuth();
+        };
     }, []);
 
     const fetchAnalysis = React.useCallback(async () => {
@@ -91,10 +114,12 @@ export default function AnalysisResultScreen() {
     React.useEffect(() => {
         if (!isAuthReady || !id) return;
 
-        if (!currentAnalysis || currentAnalysis.id !== id) {
-            fetchAnalysis();
-        } else {
+        if (currentAnalysis && currentAnalysis.id === id) {
+            console.log("[AnalysisResult] Data already in store, clearing initial loading.");
             setIsInitialLoading(false);
+        } else {
+            console.log("[AnalysisResult] Store mismatch or empty. Fetching analysis...");
+            fetchAnalysis();
         }
     }, [isAuthReady, id, currentAnalysis?.id, fetchAnalysis]);
 
@@ -105,11 +130,15 @@ export default function AnalysisResultScreen() {
                 console.warn("[AnalysisResult] Loading timeout reached.");
                 if (!isAuthReady) {
                     setError("Auth session taking longer than expected. Please ensure you are logged in.");
+                } else if (!id) {
+                    setError("Could not determine which analysis to load. Please go back and try again from the Optimize tab.");
+                } else {
+                    setError("The analysis is taking too long to load. Please try again.");
                 }
             }
-        }, 12000); // 12 seconds
+        }, 10000); // 10 seconds
         return () => clearTimeout(timer);
-    }, [isInitialLoading, isAuthReady]);
+    }, [isInitialLoading, isAuthReady, id]);
 
     // Local state
     const [optimizing, setOptimizing] = React.useState(false);
@@ -188,7 +217,8 @@ export default function AnalysisResultScreen() {
                     setCurrentTaskId(null);
                 }
 
-                // FIX: Ensure optimizing state is cleared even if draft already existed (sequential additions)
+                // FIX: Only clear optimizing state via timestamp if we also have NEW optimization data
+                // A timestamp change alone doesn't mean optimization is done — it could be from task creation
                 const currentUpdatedAt = (analysisRef.current as any)?.updatedAt;
                 const updatedUpdatedAt = (updated as any)?.updatedAt;
 
@@ -196,8 +226,8 @@ export default function AnalysisResultScreen() {
                     const currentMillis = typeof currentUpdatedAt.toMillis === 'function' ? currentUpdatedAt.toMillis() : new Date(currentUpdatedAt).getTime();
                     const updatedMillis = typeof updatedUpdatedAt.toMillis === 'function' ? updatedUpdatedAt.toMillis() : new Date(updatedUpdatedAt).getTime();
 
-                    if (updatedMillis > currentMillis) {
-                        console.log("[AnalysisResult] Detect update via timestamp change. Clearing optimizing state.");
+                    if (updatedMillis > currentMillis && (updated.draftOptimizedResumeData || updated.optimizedResumeData)) {
+                        console.log("[AnalysisResult] Detect update with optimization data. Clearing optimizing state.");
                         setOptimizing(false);
                         setCurrentTaskId(null);
                         processingRef.current = false;
@@ -230,11 +260,24 @@ export default function AnalysisResultScreen() {
     }, [isAuthReady, currentAnalysis?.id, id]);
 
     // Cleanup active task if we see it finish via context (Just for spinner state management)
+    const optimizingClearedRef = React.useRef(false);
     React.useEffect(() => {
         if (!currentTaskId) {
-            // If optimizing is still true but task is gone, clear it
+            // If optimizing is still true but no task ID and no active tasks,
+            // use a grace period to allow the task queue to pick up the task
             if (optimizing && activeTasks.length === 0) {
-                setOptimizing(false);
+                if (!optimizingClearedRef.current) {
+                    optimizingClearedRef.current = true;
+                    // Grace period: wait 5 seconds before clearing — task queue may just be starting
+                    const timer = setTimeout(() => {
+                        // Re-check: still no task after waiting?
+                        if (!currentTaskId && activeTasks.length === 0) {
+                            setOptimizing(false);
+                        }
+                        optimizingClearedRef.current = false;
+                    }, 5000);
+                    return () => { clearTimeout(timer); optimizingClearedRef.current = false; };
+                }
             }
             return;
         }
@@ -270,7 +313,9 @@ export default function AnalysisResultScreen() {
                             if (router.canGoBack()) {
                                 router.back();
                             } else {
-                                router.replace('/(tabs)/optimize' as any);
+                                // Cold start from notification: no back stack exists.
+                                // Use replace to properly initialize the tab navigator.
+                                router.replace('/(tabs)/home' as any);
                             }
                         }}
                         size={moderateScale(24)}
@@ -286,13 +331,20 @@ export default function AnalysisResultScreen() {
 
     // Derived State and Safety Check
     if (!isAuthReady || isInitialLoading || !currentAnalysis || (id && currentAnalysis.id !== id)) {
+        // Determine a helpful status message
+        const loadingStatus = !isAuthReady
+            ? 'Restoring your session...'
+            : !id
+                ? 'Preparing analysis data...'
+                : 'Loading analysis results...';
+
         return (
             <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20, backgroundColor: theme.colors.background }}>
                 {!error ? (
                     <>
-                        <MaterialCommunityIcons name="loading" size={48} color={theme.colors.primary} style={{ marginBottom: 16 }} />
-                        <Text variant="titleMedium" style={{ marginBottom: 16, fontWeight: 'bold' }}>Loading, Please Wait ...</Text>
-                        {!isAuthReady && <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>Waiting for secure session...</Text>}
+                        <ActivityIndicator size="large" color={theme.colors.primary} style={{ marginBottom: 24 }} />
+                        <Text variant="titleMedium" style={{ marginBottom: 8, fontWeight: 'bold' }}>Loading Analysis</Text>
+                        <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>{loadingStatus}</Text>
                     </>
                 ) : (
                     <>
@@ -300,12 +352,20 @@ export default function AnalysisResultScreen() {
                         <Text variant="titleMedium" style={{ color: theme.colors.error, marginBottom: 8, textAlign: 'center' }}>Something went wrong</Text>
                         <Text variant="bodyMedium" style={{ marginBottom: 24, textAlign: 'center' }}>{error}</Text>
                         <View style={{ flexDirection: 'row', gap: 12 }}>
-                            <Button mode="outlined" onPress={() => router.replace('/(tabs)/analyze')}>
-                                Back
+                            <Button mode="outlined" onPress={() => {
+                                if (router.canGoBack()) {
+                                    router.back();
+                                } else {
+                                    router.replace('/(tabs)/home' as any);
+                                }
+                            }}>
+                                Go Back
                             </Button>
-                            <Button mode="contained" onPress={fetchAnalysis}>
-                                Retry
-                            </Button>
+                            {id && (
+                                <Button mode="contained" onPress={fetchAnalysis}>
+                                    Retry
+                                </Button>
+                            )}
                         </View>
                     </>
                 )}
@@ -437,6 +497,7 @@ export default function AnalysisResultScreen() {
             } catch (deductError: any) {
                 console.error("[AnalysisResult] Skill addition token deduction failed:", deductError);
                 setOptimizing(false);
+                processingRef.current = false; // Release lock on token error
                 const { Alert } = require('react-native');
                 Alert.alert("Token Error", deductError.message || "Failed to deduct tokens. Please try again.");
                 return;
@@ -457,6 +518,7 @@ export default function AnalysisResultScreen() {
 
             console.log("[handleConfirmAddSkill] Created new task:", taskId);
             setCurrentTaskId(taskId);
+            processingRef.current = false; // Release lock — task is now created and tracked by currentTaskId
 
         } catch (error: any) {
             console.error(error);
@@ -502,25 +564,19 @@ export default function AnalysisResultScreen() {
                         skipTokenDeduction: true
                     }).catch((e: any) => console.error("Validation activity log failed:", e));
 
-                    // Trigger Push Notification via Ghost Task - with timeout protection
+                    // Trigger a local push notification for the save
                     try {
-                        const { taskService } = require('../src/services/firebase/taskService');
-                        const ghostTaskPromise = (async () => {
-                            const taskId = await taskService.createTask('resume_validation', {
-                                analysisId: currentAnalysis.id,
-                                jobTitle: currentAnalysis.job.title
-                            });
-                            await taskService.completeTask(taskId, currentAnalysis.id);
-                        })();
-
-                        // Race against a 5 second timeout for the ghost task
-                        await Promise.race([
-                            ghostTaskPromise,
-                            new Promise((_, reject) => setTimeout(() => reject(new Error('Ghost task timeout')), 5000))
-                        ]);
+                        const { notificationService } = require('../src/services/firebase/notificationService');
+                        await notificationService.scheduleLocalNotification(
+                            "Resume Validated & Saved",
+                            `Your optimized resume for ${currentAnalysis.job.title} has been saved to your dashboard.`,
+                            {
+                                route: '/analysis-result',
+                                params: { id: currentAnalysis.id }
+                            }
+                        );
                     } catch (pushError) {
                         console.warn("Failed to trigger validation push notification:", pushError);
-                        // Don't block save for notification failure
                     }
 
                     // Update local store immediately to reflect "Saved" state
@@ -919,11 +975,12 @@ export default function AnalysisResultScreen() {
                 </View>
 
             </ScrollView >
+
             <SkillAdditionModal
                 visible={skillModalVisible}
                 skill={selectedSkillToAdd}
                 skillMatch={selectedSkillMatch}
-                resume={optimizedResume || resume} // Pass current visible resume for section selection context
+                resume={optimizedResume || resume}
                 onDismiss={() => {
                     setSkillModalVisible(false);
                     setSelectedSkillMatch(null);
@@ -934,6 +991,7 @@ export default function AnalysisResultScreen() {
                 jobTitle={currentAnalysis.job.title}
                 companyName={currentAnalysis.job.company}
             />
+
             <Portal>
                 <Dialog visible={revertDialogVisible} onDismiss={() => setRevertDialogVisible(false)} style={{ backgroundColor: theme.colors.elevation.level3 }}>
                     <Dialog.Title style={{ color: theme.colors.error, fontWeight: 'bold' }}>

@@ -42,7 +42,7 @@ export const AppLogo = () => {
             activeOpacity={0.7}
         >
             <Image
-                source={require('../../../assets/logo.png')}
+                source={require('../../../assets/logo-72.png')}
                 style={styles.logo}
                 resizeMode="contain"
             />

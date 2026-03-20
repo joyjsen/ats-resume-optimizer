@@ -161,6 +161,8 @@ export const ls = StyleSheet.create({
     testiAvatarText: { color: C.white, fontWeight: '700', fontSize: 14 },
     testiName: { fontSize: 16, fontWeight: '500', color: C.textPrimary },
     testiRole: { fontSize: 14, color: C.textMuted },
+    testiViewAllBtn: { marginTop: 48, paddingVertical: 16, paddingHorizontal: 36, borderRadius: 100, backgroundColor: C.primary, alignSelf: 'center', shadowColor: C.primaryGlow, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 10 },
+    testiViewAllBtnText: { color: C.white, fontSize: 16, fontWeight: '600' },
 
     // ==================== FAQ ====================
     faqList: { maxWidth: 800, width: '100%', alignSelf: 'center' },
@@ -170,6 +172,19 @@ export const ls = StyleSheet.create({
     faqChevron: { fontSize: 18, color: C.textMuted },
     faqAnswer: { paddingBottom: 20, paddingHorizontal: 4 },
     faqAnswerText: { fontSize: 15, color: C.textSecondary, lineHeight: 24 },
+
+    // ==================== MOBILE APP BANNER ====================
+    appBanner: { paddingVertical: 72, paddingHorizontal: 24, alignItems: 'center' },
+    appBannerInner: { maxWidth: 900, width: '100%', alignItems: 'center', gap: 24 },
+    appBannerIcon: { width: 72, height: 72, borderRadius: 20, marginBottom: 8 },
+    appBannerTitle: { fontSize: 32, fontWeight: '500', color: C.white, textAlign: 'center', letterSpacing: -0.5, marginBottom: 4 },
+    appBannerSubtitle: { fontSize: 17, color: 'rgba(255,255,255,0.7)', textAlign: 'center', lineHeight: 26, maxWidth: 560 },
+    appBannerBadges: { flexDirection: 'row', gap: 16, marginTop: 12, flexWrap: 'wrap', justifyContent: 'center' },
+    appBadgeBtn: { height: 52, paddingHorizontal: 20, borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.12)', flexDirection: 'row', alignItems: 'center', gap: 10, borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)' },
+    appBadgeIcon: { width: 24, height: 24 },
+    appBadgeTextWrap: {},
+    appBadgeSmallText: { fontSize: 10, color: 'rgba(255,255,255,0.6)', fontWeight: '500', textTransform: 'uppercase' as any, letterSpacing: 0.5 },
+    appBadgeBigText: { fontSize: 17, fontWeight: '600', color: C.white },
 
     // ==================== FOOTER ====================
     footer: { backgroundColor: C.footerBg, paddingHorizontal: 32, paddingTop: 64, paddingBottom: 32 },

@@ -4,18 +4,21 @@ import { Text, TextInput, Button, useTheme, Card } from 'react-native-paper';
 import { useRouter } from 'expo-router';
 import { authService, UserInactiveError } from '../../src/services/firebase/authService';
 import { userService } from '../../src/services/firebase/userService';
-import { auth } from '../../src/services/firebase/config';
+import { getFirebaseAuth, getFirebaseApp } from '../../src/services/firebase/config';
 import { useProfileStore } from '../../src/store/profileStore';
 import RecaptchaVerifierModal from '../../src/components/auth/RecaptchaVerifierModal';
 import { CountryCodeSelector } from '../../src/components/auth/CountryCodeSelector';
 import { COUNTRY_CALLING_CODES, CountryCallingCode } from '../../src/constants/countries';
-import { ConfirmationResult, PhoneAuthProvider, AuthCredential } from 'firebase/auth';
+import type { ConfirmationResult, AuthCredential } from 'firebase/auth';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Keyboard } from 'react-native';
+import { ThemeToggle } from '../../src/components/common/ThemeToggle';
+import { useAppTheme } from '../../src/context/ThemeContext';
 
 export default function SignUp() {
     const router = useRouter();
     const theme = useTheme();
+    const { isDark } = useAppTheme();
     const { setUserProfile } = useProfileStore();
     const [fullName, setFullName] = useState('');
     const [phoneNumber, setPhoneNumber] = useState('');
@@ -38,13 +41,18 @@ export default function SignUp() {
 
     // Anti-hang: Reset loading states whenever auth state changes to "signed out"
     useEffect(() => {
-        const unsubscribe = auth.onAuthStateChanged((user) => {
-            if (!user) {
-                setLoading(false);
-                setSocialLoading(null);
-            }
-        });
-        return unsubscribe;
+        let unsubscribe: any = null;
+        const initAuth = async () => {
+            const auth = await getFirebaseAuth();
+            unsubscribe = auth.onAuthStateChanged((user: any) => {
+                if (!user) {
+                    setLoading(false);
+                    setSocialLoading(null);
+                }
+            });
+        };
+        initAuth();
+        return () => unsubscribe && unsubscribe();
     }, []);
 
     const handleSocialLogin = async (provider: 'google' | 'apple' | 'microsoft') => {
@@ -53,9 +61,8 @@ export default function SignUp() {
             if (provider === 'google') await authService.signInWithGoogle();
             else if (provider === 'apple') await authService.signInWithApple();
             else if (provider === 'microsoft') await authService.signInWithMicrosoft();
-
-            // Explicitly redirect after social login success
-            router.replace('/(tabs)/home' as any);
+            
+            // Layout guard automatically handles navigation here
         } catch (error: any) {
             console.error(`${provider} Login Error:`, error);
             const isInactive = error instanceof UserInactiveError ||
@@ -114,15 +121,12 @@ export default function SignUp() {
         if (!verificationCode || !confirmation) return;
         setLoading(true);
         try {
-            // We verify the OTP. Note: For a clean flow, you might want to link the phone to the user
-            // but if we are in the middle of sign-up (before account creation), we just verify validity.
-            // Actually, Firebase phone OTP usually requires a user or results in a credential.
-            // Create phone credential for linkage
+            const { PhoneAuthProvider } = await import('firebase/auth');
             const credential = PhoneAuthProvider.credential(confirmation.verificationId, verificationCode);
             setPhoneCredential(credential);
 
             setIsPhoneVerified(true);
-            setStep('details'); // Go back to details to finish or auto-trigger handleSignUp
+            setStep('details');
             Alert.alert("Success", "Phone number verified!");
         } catch (error: any) {
             Alert.alert("Error", "Invalid verification code.");
@@ -175,8 +179,9 @@ export default function SignUp() {
             );
             if (profile) setUserProfile(profile);
 
+            const auth = await getFirebaseAuth();
             if (auth.currentUser) {
-                await authService.sendVerificationEmail(auth.currentUser);
+                await authService.sendVerificationEmail();
                 setStep('email_verify');
             }
         } catch (error: any) {
@@ -190,15 +195,12 @@ export default function SignUp() {
     const handleCheckEmailVerified = async () => {
         setLoading(true);
         try {
+            const auth = await getFirebaseAuth();
             await auth.currentUser?.reload();
             if (auth.currentUser?.emailVerified) {
-                // Persist verification status to Firestore
                 await authService.updateVerificationStatus(auth.currentUser.uid, { emailVerified: true });
-                // Refresh local store
                 const profile = await authService.refreshProfile();
                 if (profile) setUserProfile(profile);
-
-                // If both verified, proceed to onboarding
                 router.replace('/(auth)/onboarding' as any);
             } else {
                 Alert.alert("Not Verified", "Please verify your email address by clicking the link in your inbox.");
@@ -210,12 +212,30 @@ export default function SignUp() {
         }
     };
 
+    // State for Recaptcha config visibility
+    const [firebaseOptions, setFirebaseOptions] = useState<any>(null);
+
+    useEffect(() => {
+        const loadConfig = async () => {
+            const auth = await getFirebaseAuth();
+            setFirebaseOptions(auth.app.options);
+        }
+        loadConfig();
+    }, []);
+
     return (
         <ScrollView contentContainerStyle={[styles.container, { backgroundColor: theme.colors.background }]}>
-            <RecaptchaVerifierModal
-                ref={recaptchaVerifier}
-                firebaseConfig={auth.app.options}
-            />
+            {/* Theme toggle in top-right */}
+            <View style={{ position: 'absolute', top: 8, right: 8, zIndex: 10 }}>
+                <ThemeToggle />
+            </View>
+
+            {firebaseOptions && (
+                <RecaptchaVerifierModal
+                    ref={recaptchaVerifier}
+                    getApp={getFirebaseApp}
+                />
+            )}
 
             <View style={styles.header}>
                 <Text variant="displaySmall" style={styles.title}>
@@ -338,7 +358,7 @@ export default function SignUp() {
                             <Button
                                 mode="text"
                                 onPress={async () => {
-                                    if (auth.currentUser) await authService.sendVerificationEmail(auth.currentUser);
+                                    await authService.sendVerificationEmail();
                                     Alert.alert("Sent", "Verification email resent.");
                                 }}
                                 style={styles.button}

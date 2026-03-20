@@ -10,7 +10,7 @@ import { useProfileStore } from '../../src/store/profileStore';
 import { useAppTheme } from '../../src/context/ThemeContext';
 import { authService } from '../../src/services/firebase/authService';
 import { userService } from '../../src/services/firebase/userService';
-import { auth } from '../../src/services/firebase/config';
+
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 
 const isAndroid = Platform.OS === 'android';
@@ -30,6 +30,7 @@ export default function ProfileScreen() {
         subscribeToProfile
     } = useProfileStore();
     const [loading, setLoading] = useState(false);
+    const [profileReady, setProfileReady] = useState(false);
     const [deleteDialogVisible, setDeleteDialogVisible] = useState(false);
     const [deletionReason, setDeletionReason] = useState('');
     const [otherReason, setOtherReason] = useState('');
@@ -50,9 +51,11 @@ export default function ProfileScreen() {
             // Subscribe to real-time profile updates (tokens, etc.)
             const unsubscribe = subscribeToProfile(userProfile.uid);
 
-            // Fetch other data
-            fetchActivities();
-            fetchUserStats();
+            // Fetch other data and mark ready when done
+            Promise.all([
+                fetchActivities(),
+                fetchUserStats()
+            ]).finally(() => setProfileReady(true));
 
             return () => unsubscribe();
         }
@@ -163,10 +166,13 @@ export default function ProfileScreen() {
         }
     };
 
-    if (!userProfile) {
+    if (!userProfile || !profileReady) {
         return (
-            <View style={styles.centered}>
+            <View style={[styles.centered, { backgroundColor: theme.colors.background }]}>
                 <ActivityIndicator size="large" />
+                <Text variant="bodyMedium" style={{ marginTop: 16, color: theme.colors.onSurfaceVariant }}>
+                    Loading profile...
+                </Text>
             </View>
         );
     }

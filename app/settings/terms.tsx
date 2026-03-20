@@ -2,7 +2,7 @@ import React from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
 import { useTheme } from 'react-native-paper';
 import { useRouter } from 'expo-router';
-import Markdown from 'react-native-markdown-display';
+import LazyMarkdown from '../../src/components/common/LazyMarkdown';
 
 const TERMS_CONTENT = `
 # RiResume Terms of Service
@@ -212,7 +212,7 @@ export default function TermsScreen() {
     return (
         <>
             <ScrollView style={[styles.container, { backgroundColor: theme.colors.background }]}>
-                <Markdown
+                <LazyMarkdown
                     style={{
                         body: {
                             color: theme.colors.onSurface,
@@ -237,7 +237,7 @@ export default function TermsScreen() {
                     }}
                 >
                     {TERMS_CONTENT}
-                </Markdown>
+                </LazyMarkdown>
                 <View style={{ height: 40 }} />
             </ScrollView>
         </>

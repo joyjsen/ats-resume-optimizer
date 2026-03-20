@@ -33,7 +33,7 @@ const onBackgroundTaskCreated = (openaiApiKey, perplexityApiKey) => (0, firestor
     const taskRef = db.collection("background_tasks").doc(taskId);
     try {
         await taskRef.update({ status: "processing", startedAt: admin.firestore.FieldValue.serverTimestamp() });
-        const openai = new openai_1.default({ apiKey: openaiApiKey.value() });
+        const openai = new openai_1.default({ apiKey: openaiApiKey.value().trim() });
         // Ensure payload is parsed (TaskService stringifies it)
         if (typeof task.payload === 'string') {
             try {
@@ -45,20 +45,20 @@ const onBackgroundTaskCreated = (openaiApiKey, perplexityApiKey) => (0, firestor
         }
         switch (task.type) {
             case "optimize_resume":
-                await processOptimizeResume(task, taskRef, openai, db, perplexityApiKey.value());
+                await processOptimizeResume(task, taskRef, openai, db, perplexityApiKey.value().trim());
                 break;
             case "add_skill":
-                await processAddSkill(task, taskRef, openai, db, perplexityApiKey.value());
+                await processAddSkill(task, taskRef, openai, db, perplexityApiKey.value().trim());
                 break;
             case "prep_guide":
-                await processPrepGuide(task, taskRef, openai, db, perplexityApiKey.value());
+                await processPrepGuide(task, taskRef, openai, db, perplexityApiKey.value().trim());
                 break;
             case "cover_letter":
             case "cover_letter":
-                await processCoverLetter(task, taskRef, db, perplexityApiKey.value());
+                await processCoverLetter(task, taskRef, db, perplexityApiKey.value().trim());
                 break;
             case "analyze_resume":
-                await processAnalyzeResume(task, taskRef, openai, db, perplexityApiKey.value());
+                await processAnalyzeResume(task, taskRef, openai, db, perplexityApiKey.value().trim());
                 break;
             default:
                 throw new Error(`Unknown task type: ${task.type}`);

@@ -36,7 +36,7 @@ export const createStripePaymentIntent = functionsV1
         }
 
         try {
-            const stripe = new Stripe(stripeSecretKey.value(), {
+            const stripe = new Stripe(stripeSecretKey.value().trim(), {
                 apiVersion: "2022-11-15", // Use a stable version
             });
 
@@ -85,7 +85,7 @@ export const createStripeCheckoutSession = functionsV1
         const { amount, packageId, tokens, successUrl, cancelUrl, currency = "usd" } = data;
 
         try {
-            const stripe = new Stripe(stripeSecretKey.value(), {
+            const stripe = new Stripe(stripeSecretKey.value().trim(), {
                 apiVersion: "2022-11-15",
             });
 

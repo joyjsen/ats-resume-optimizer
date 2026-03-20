@@ -56,12 +56,13 @@ export type BlogPost = {
     image: string;
     category: string;
     readTime: string;
+    url: string;
 };
 
 export type BlogCategory = {
     title: string;
     icon: string;
-    topics: string[];
+    topics: { label: string; url: string }[];
 };
 
 export const ANALYSIS_ITEMS: NavDropdownItem[] = [
@@ -88,44 +89,44 @@ export const BLOG_CATEGORIES: BlogCategory[] = [
         title: 'Resume Resources',
         icon: 'file-text',
         topics: [
-            'How to Write an ATS-Friendly Resume in 2026',
-            'Resume Formatting Best Practices for Modern Job Markets',
-            'Keywords That Get Your Resume Past ATS Scanners',
-            'Quantifying Achievements: The #1 Resume Improvement',
-            'Common Resume Mistakes That Kill Your ATS Score',
+            { label: 'How to Write an ATS-Friendly Resume in 2026', url: '/blog/ats-friendly-resume-2026' },
+            { label: 'Resume Formatting Best Practices for Modern Job Markets', url: '/blog/resume-formatting-best-practices' },
+            { label: 'Keywords That Get Your Resume Past ATS Scanners', url: '/blog/resume-ats-keywords' },
+            { label: 'Quantifying Achievements: The #1 Resume Improvement', url: '/blog/resume-quantify-achievements' },
+            { label: 'Common Resume Mistakes That Kill Your ATS Score', url: '/blog/common-resume-mistakes-ats' },
         ],
     },
     {
         title: 'Cover Letter',
         icon: 'mail',
         topics: [
-            'How to Write a Cover Letter That Gets Read',
-            'Cover Letter Structure: The Perfect Format',
-            'Customizing Your Cover Letter for Every Application',
-            'Opening Lines That Hook Hiring Managers',
-            'When to Skip the Cover Letter (and When You Can\'t)',
+            { label: 'How to Write a Cover Letter That Gets Read', url: '/blog/how-to-write-cover-letter' },
+            { label: 'Cover Letter Structure: The Perfect Format', url: '/blog/cover-letter-format' },
+            { label: 'Customizing Your Cover Letter for Every Application', url: '/blog/customizing-cover-letter' },
+            { label: 'Opening Lines That Hook Hiring Managers', url: '/blog/cover-letter-opening-lines' },
+            { label: 'When to Skip the Cover Letter (and When You Can\'t)', url: '/blog/when-to-skip-cover-letter' },
         ],
     },
     {
         title: 'Interview',
         icon: 'message-circle',
         topics: [
-            'Mastering the STAR Method for Behavioral Interviews',
-            'How to Research a Company Before Your Interview',
-            'Top 20 Interview Questions and How to Answer Them',
-            'Virtual Interview Best Practices for Remote Roles',
-            'Salary Negotiation: How to Get What You\'re Worth',
+            { label: 'Mastering the STAR Method for Behavioral Interviews', url: '/blog/star-method-behavioral-interview' },
+            { label: 'How to Research a Company Before Your Interview', url: '/blog/research-company-before-interview' },
+            { label: 'Top 20 Interview Questions and How to Answer Them', url: '/blog/top-interview-questions-answers' },
+            { label: 'Virtual Interview Best Practices for Remote Roles', url: '/blog/virtual-interview-best-practices' },
+            { label: 'Salary Negotiation: How to Get What You\'re Worth', url: '/blog/salary-negotiation' },
         ],
     },
     {
         title: 'Career Growth',
         icon: 'trending-up',
         topics: [
-            'Building a Personal Brand on LinkedIn',
-            'Transitioning Careers: A Step-by-Step Guide',
-            'Upskilling Strategies for the AI-Powered Workforce',
-            'Networking in 2026: Digital-First Approaches',
-            'From Individual Contributor to Manager: The Career Leap',
+            { label: 'Building a Personal Brand on LinkedIn', url: '/blog/building-personal-brand-linkedin' },
+            { label: 'Transitioning Careers: A Step-by-Step Guide', url: '/blog/career-transition-guide' },
+            { label: 'Upskilling Strategies for the AI-Powered Workforce', url: '/blog/upskilling-strategies-ai' },
+            { label: 'Networking in 2026: Digital-First Approaches', url: '/blog/digital-networking-2026' },
+            { label: 'From Individual Contributor to Manager: The Career Leap', url: '/blog/individual-contributor-to-manager' },
         ],
     },
 ];
@@ -523,8 +524,8 @@ export const FOOTER_COLUMNS = [
         title: 'Company',
         links: [
             { label: 'About Us', href: '/settings/about' },
-            { label: 'Careers', href: '/settings/about' },
-            { label: 'Reviews', href: '#' },
+            { label: 'Careers', href: '/careers' },
+            { label: 'Reviews', href: '/reviews' },
             { label: 'Contact Us', href: 'mailto:support@riresume.com' },
         ],
     },
@@ -533,14 +534,14 @@ export const FOOTER_COLUMNS = [
         links: [
             { label: 'Terms & Conditions', href: '/settings/terms' },
             { label: 'Privacy Policy', href: '/settings/privacy' },
-            { label: 'LLM info', href: '#' },
+            { label: 'LLM info', href: '/llm_info' },
         ],
     },
     {
         title: 'Resources',
         links: [
             { label: 'Help & Support', href: '/settings/help' },
-            { label: 'Blog', href: '#' },
+            { label: 'Blog', href: '/blog' },
             { label: 'FAQ', href: '#faq-section' },
             { label: 'Pricing', href: '#pricing-section' },
         ],
@@ -553,27 +554,30 @@ export const BLOG_POSTS: BlogPost[] = [
         title: 'How AI is Revolutionizing Resume Writing in 2026',
         description: 'Discover how LLMs like GPT-5 and Gemini 2.0 Pro are helping candidates beat sophisticated ATS algorithms and land dream jobs.',
         date: 'Oct 24, 2025',
-        image: 'https://images.unsplash.com/photo-1677442136019-21780ecad995?w=800&auto=format&fit=crop',
+        image: 'https://images.unsplash.com/photo-1677442136019-21780ecad995?auto=format&fit=crop&q=80&w=1335&h=575',
         category: 'Technology',
-        readTime: '6 min read'
+        readTime: '6 min read',
+        url: '/blog/ai-revolution'
     },
     {
         id: 'skills-2026',
         title: '10 Skills Every Tech Professional Needs to Add to Their Resume',
         description: 'From prompt engineering to ethical AI, here are the most sought-after skills this year to make your profile stand out.',
         date: 'Oct 15, 2025',
-        image: 'https://images.unsplash.com/photo-1542744173-8e7e53415bb0?w=800&auto=format&fit=crop',
+        image: 'https://images.unsplash.com/photo-1542744173-8e7e53415bb0?w=716&h=400&auto=format&fit=crop',
         category: 'Careers',
-        readTime: '8 min read'
+        readTime: '8 min read',
+        url: '/blog/skills-2026'
     },
     {
         id: 'interview-mastery',
         title: 'Mastering the Behavioral Interview: A Guide',
         description: 'Learn how to use AI-powered Prep Guides to anticipate even the toughest architectural and leadership questions during your interviews.',
         date: 'Oct 02, 2025',
-        image: 'https://images.unsplash.com/photo-1573497019940-1c28c88b4f3e?w=800&auto=format&fit=crop',
+        image: 'https://images.unsplash.com/photo-1573497019940-1c28c88b4f3e?w=716&h=400&auto=format&fit=crop',
         category: 'Interview Prep',
-        readTime: '10 min read'
+        readTime: '10 min read',
+        url: '/blog/interview-mastery'
     },
 ];
 

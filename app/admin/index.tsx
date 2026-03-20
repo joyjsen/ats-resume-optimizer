@@ -5,12 +5,14 @@ import { useRouter } from 'expo-router';
 import { userService } from '../../src/services/firebase/userService';
 import { activityService } from '../../src/services/firebase/activityService';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { PushDiagnosticModal } from '../../src/components/admin/PushDiagnosticModal';
 
 export default function AdminHomeScreen() {
     const theme = useTheme();
     const router = useRouter();
     const [stats, setStats] = useState<any>(null);
     const [loading, setLoading] = useState(true);
+    const [diagnosticVisible, setDiagnosticVisible] = useState(false);
 
     useEffect(() => {
         loadStats();
@@ -71,7 +73,20 @@ export default function AdminHomeScreen() {
                     right={props => <List.Icon {...props} icon="chevron-right" />}
                     onPress={() => router.push('/admin/analytics' as any)}
                 />
+                <Divider />
+                <List.Item
+                    title="Push Diagnostics"
+                    description="Verify notification tokens and test delivery"
+                    left={props => <List.Icon {...props} icon="bell-cog" />}
+                    right={props => <List.Icon {...props} icon="chevron-right" />}
+                    onPress={() => setDiagnosticVisible(true)}
+                />
             </List.Section>
+
+            <PushDiagnosticModal
+                visible={diagnosticVisible}
+                onDismiss={() => setDiagnosticVisible(false)}
+            />
         </ScrollView>
     );
 }

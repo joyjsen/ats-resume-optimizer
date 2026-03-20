@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { View, StyleSheet, FlatList, TouchableOpacity, Alert, Platform } from 'react-native';
 import { Text, Card, Chip, useTheme, ActivityIndicator, Button, IconButton } from 'react-native-paper';
 import { learningService } from '../../src/services/firebase/learningService';
-import { auth } from '../../src/services/firebase/config';
+
 import { LearningEntry, LearningPath } from '../../src/types/learning.types';
 import { ACTIVITY_COSTS } from '../../src/types/profile.types';
 import { TrainingSlideshow } from '../../src/components/learning/TrainingSlideshow';
@@ -12,13 +12,14 @@ import { activityService } from '../../src/services/firebase/activityService';
 import { notificationService } from '../../src/services/firebase/notificationService';
 import { useNavigation } from 'expo-router'; // Add useNavigation
 import { UserHeader } from '../../src/components/layout/UserHeader'; // Add UserHeader import
+import { useProfileStore } from '../../src/store/profileStore';
 import { useTokenCheck } from '../../src/hooks/useTokenCheck';
 
 const isAndroid = Platform.OS === 'android';
 
 export default function LearningScreen() {
     const theme = useTheme();
-    const { user } = { user: auth.currentUser }; // Simple replacement for useAuth
+    const { userProfile } = useProfileStore();
     const { checkTokens } = useTokenCheck();
     const navigation = useNavigation();
     const [entries, setEntries] = useState<LearningEntry[]>([]);
@@ -53,7 +54,7 @@ export default function LearningScreen() {
     }, [navigation]);
 
     useEffect(() => {
-        const userId = auth.currentUser?.uid || 'anonymous_user';
+        const userId = userProfile?.uid || 'anonymous_user';
 
         const unsubscribe = learningService.subscribeToEntries(userId, (data) => {
             setEntries(data);

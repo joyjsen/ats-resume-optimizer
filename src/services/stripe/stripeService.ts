@@ -1,100 +1,60 @@
-import { Platform, Appearance } from 'react-native';
+import { Appearance } from 'react-native';
 import { initPaymentSheet, presentPaymentSheet } from '@stripe/stripe-react-native';
-import { httpsCallable } from 'firebase/functions';
 import { ENV } from '../../config/env';
-import { activityService } from '../firebase/activityService';
-import { userService } from '../firebase/userService';
-import { functions } from '../firebase/config';
+import { getFirebaseFunctions } from '../firebase/config';
 import { useProfileStore } from '../../store/profileStore';
 
 export class StripeService {
     private isInitialized = false;
 
     async initialize() {
-        // Initialization is handled by StripeProvider in _layout.tsx
         this.isInitialized = true;
         return Promise.resolve();
     }
 
-    async initializePaymentSheet(uid: string, amount: number, currency: string = 'usd', isDark: boolean = false) {
+    async initializePaymentSheet(uid: string, amount: number, currency: string = 'usd') {
         try {
-            // Detect system color scheme
-            const systemColorScheme = Appearance.getColorScheme();
-            const isSystemDark = systemColorScheme === 'dark';
-
-            console.log(`[Stripe] Initializing PaymentSheet. systemColorScheme: ${systemColorScheme}, isSystemDark: ${isSystemDark}`);
-
             const { userProfile } = useProfileStore.getState();
 
-            // 1. Call the Firebase Cloud Function
+            const { httpsCallable } = await import('firebase/functions');
+            const functions = await getFirebaseFunctions();
             const createIntent = httpsCallable(functions, 'createStripePaymentIntent');
-            const response = await createIntent({ amount, currency: currency.toLowerCase() });
+            const response = (await createIntent({ amount, currency: currency.toLowerCase() })) as any;
             const { clientSecret } = response.data as { clientSecret: string };
 
-            if (!clientSecret) {
-                throw new Error("Failed to receive client secret from backend.");
-            }
+            if (!clientSecret) throw new Error("No client secret");
 
-            // 2. Initialize the native payment sheet
             const { error } = await initPaymentSheet({
                 merchantDisplayName: 'RiResume',
                 paymentIntentClientSecret: clientSecret,
-                defaultBillingDetails: {
-                    name: userProfile?.displayName || 'User',
-                },
+                defaultBillingDetails: { name: userProfile?.displayName || 'User' },
                 allowsDelayedPaymentMethods: true,
                 returnURL: 'riresume://stripe-redirect',
-                // Use 'automatic' to let the native Stripe SDK detect the OS theme directly.
-                // This bypasses the app's 'userInterfaceStyle: light' setting which was confusing the logic.
                 style: 'automatic',
-                appearance: {
-                    colors: {
-                        primary: '#6200ee',
-                        error: '#ff1744',
-                    },
-                    shapes: {
-                        borderRadius: 10,
-                        borderWidth: 1,
-                    }
-                }
+                appearance: { colors: { primary: '#6200ee', error: '#ff1744' }, shapes: { borderRadius: 10, borderWidth: 1 } }
             });
 
-            if (error) {
-                console.error("Error initializing payment sheet:", error);
-                throw error;
-            }
-
+            if (error) throw error;
             return { success: true };
-        } catch (error: any) {
+        } catch (error) {
             console.error("Payment initialization failed:", error);
             throw error;
         }
     }
 
-    /**
-     * Open the Payment Sheet and process the transaction
-     */
-    async openPaymentSheet(uid: string, tokens: number, packageId: string, amount: number, currency: string = 'usd') {
-        // SIMULATION: Only use simulation if we specifically want to skip Stripe (handled by backend or env)
-        // For now, we always try to present the sheet unless we are in a dev environment without a key.
-
+    async openPaymentSheet(uid: string, tokens: number, packageId: string, amount: number) {
         if (ENV.STRIPE_PUBLISHABLE_KEY === 'pk_test_sample') {
-            const { Alert } = require('react-native');
+            const { Alert } = await import('react-native');
             return new Promise((resolve, reject) => {
-                Alert.alert(
+                Alert.Alert.alert(
                     "Stripe Checkout (Simulation)",
-                    `This is a simulation of the Stripe Payment Sheet for a $${amount} purchase.\n\nNote: A real Stripe sheet requires a secure backend to generate a Client Secret.`,
+                    `Simulation for $${amount}`,
                     [
                         { text: "Cancel", style: 'cancel', onPress: () => resolve({ success: false }) },
                         {
-                            text: "Simulate Success",
-                            onPress: async () => {
-                                try {
-                                    await this.completePurchase(uid, tokens, packageId, amount);
-                                    resolve({ success: true });
-                                } catch (e) {
-                                    reject(e);
-                                }
+                            text: "Simulate Success", onPress: async () => {
+                                try { await this.completePurchase(uid, tokens, packageId, amount); resolve({ success: true }); }
+                                catch (e) { reject(e); }
                             }
                         }
                     ]
@@ -103,32 +63,22 @@ export class StripeService {
         }
 
         const { error } = await presentPaymentSheet();
-
         if (error) {
-            if (error.code === 'Canceled') {
-                return { success: false, message: 'canceled' };
-            }
-            throw error;
-        } else {
-            // STEP 3: Handle successful payment
-            await this.completePurchase(uid, tokens, packageId, amount);
-            return { success: true };
+            return error.code === 'Canceled' ? { success: false, message: 'canceled' } : { success: false, error };
         }
+        await this.completePurchase(uid, tokens, packageId, amount);
+        return { success: true };
     }
 
-    /**
-     * Internal method to credit tokens and log activity after payment
-     */
     private async completePurchase(uid: string, tokens: number, packageId: string, amount: number) {
-        // 1. Credit user tokens
+        const { userService } = await import('../firebase/userService');
         await userService.creditTokens(uid, tokens);
-
-        // 2. Log activity
+        const { activityService } = await import('../firebase/activityService');
         await activityService.logActivity({
             type: 'token_purchase',
             description: `Purchased ${tokens} tokens`,
             contextData: { packageId, amount, tokens },
-            platform: 'ios'
+            platform: 'web'
         });
     }
 }

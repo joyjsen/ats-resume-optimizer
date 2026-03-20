@@ -1,14 +1,15 @@
 
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { View, StyleSheet, FlatList, RefreshControl, Alert, Platform } from 'react-native';
-import { Text, Button, Card, Chip, FAB, useTheme, IconButton, ProgressBar } from 'react-native-paper';
+import { Text, Button, Card, Chip, FAB, useTheme, IconButton, ProgressBar, ActivityIndicator } from 'react-native-paper';
 import { useRouter, useFocusEffect, useNavigation } from 'expo-router';
 import { historyService } from '../../src/services/firebase/historyService';
 import { SavedAnalysis } from '../../src/types/history.types';
 import { useResumeStore } from '../../src/store/resumeStore';
+import { useProfileStore } from '../../src/store/profileStore';
 import { useTaskQueue } from '../../src/context/TaskQueueContext';
 import { DashboardFilters, SortOption, FilterState } from '../../src/components/dashboard/DashboardFilters';
-import { auth } from '../../src/services/firebase/config';
+
 import { getATSScoreRecommendation } from '../../src/utils/scoreColors';
 import { UserHeader } from '../../src/components/layout/UserHeader';
 import { scaleFont } from '../../src/utils/responsive';
@@ -17,6 +18,7 @@ export default function Dashboard() {
     const router = useRouter();
     const theme = useTheme();
     const { setCurrentAnalysis } = useResumeStore();
+    const { userProfile } = useProfileStore();
     const { activeTasks } = useTaskQueue();
     // Using require for taskService to avoid circular dependency issues if any
     const { taskService } = require('../../src/services/firebase/taskService');
@@ -48,6 +50,7 @@ export default function Dashboard() {
 
     const [history, setHistory] = useState<SavedAnalysis[]>([]);
     const [loading, setLoading] = useState(true);
+    const [isDeleting, setIsDeleting] = useState(false);
     const [refreshing, setRefreshing] = useState(false);
     const [isAnalysesExpanded, setIsAnalysesExpanded] = useState(true);
 
@@ -63,12 +66,11 @@ export default function Dashboard() {
     // Real-time Subscription (replace loadHistory)
     useEffect(() => {
         setLoading(true);
-        const user = auth.currentUser;
-        if (!user) {
+        if (!userProfile?.uid) {
             setLoading(false);
             return;
         }
-        console.log("Subscribing to history for user:", user.uid);
+        console.log("Subscribing to history for user:", userProfile.uid);
 
         const unsubscribe = historyService.subscribeToUserHistory((data) => {
             setHistory(data);
@@ -77,7 +79,7 @@ export default function Dashboard() {
         });
 
         return () => unsubscribe();
-    }, [auth.currentUser?.uid]);
+    }, [userProfile?.uid]);
 
     const navigation = useNavigation();
 
@@ -199,6 +201,7 @@ export default function Dashboard() {
                     text: "Delete",
                     style: "destructive",
                     onPress: async () => {
+                        setIsDeleting(true);
                         try {
                             const success = await historyService.deleteAnalysis(item.id);
                             if (success) {
@@ -208,6 +211,8 @@ export default function Dashboard() {
                             }
                         } catch (error) {
                             console.error(error);
+                        } finally {
+                            setIsDeleting(false);
                         }
                     }
                 }
@@ -259,9 +264,23 @@ export default function Dashboard() {
                                             variant={Platform.OS === 'android' ? "labelMedium" : "titleSmall"}
                                             style={{ fontWeight: 'bold', color: theme.dark ? theme.colors.primary : 'black' }}
                                         >
-                                            {task.type === 'analyze_resume' ? 'Analyzing Resume...' :
-                                                task.type === 'add_skill' ? 'Adding Skill...' : 'Optimizing...'}
+                                            {task.type === 'analyze_resume' ? '🔍 Analyzing Resume...' :
+                                                task.type === 'add_skill' ? `➕ Adding Skill: ${task.payload?.skill || 'Skill'}` :
+                                                task.type === 'optimize_resume' ? '✨ Optimizing Resume...' : 'Processing...'}
                                         </Text>
+                                        {task.payload?.currentAnalysis?.job?.title && (
+                                            <Text
+                                                variant="bodySmall"
+                                                style={{
+                                                    fontSize: Platform.OS === 'android' ? 10 : 12,
+                                                    color: theme.dark ? theme.colors.onSurfaceVariant : '#666',
+                                                    marginBottom: 2,
+                                                }}
+                                                numberOfLines={1}
+                                            >
+                                                For: {task.payload.currentAnalysis.job.title} at {task.payload.currentAnalysis.job.company}
+                                            </Text>
+                                        )}
                                         <Text
                                             variant="bodySmall"
                                             style={{
@@ -497,6 +516,13 @@ export default function Dashboard() {
                 style={styles.fab}
                 onPress={() => router.push('/(tabs)/analyze')}
             />
+
+            {isDeleting && (
+                <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', alignItems: 'center', zIndex: 9999 }]}>
+                    <ActivityIndicator animating={true} size="large" color={"white"} />
+                    <Text style={{ marginTop: 16, color: '#fff', fontWeight: 'bold', fontSize: 16 }}>Delete in progress...</Text>
+                </View>
+            )}
         </View>
     );
 }

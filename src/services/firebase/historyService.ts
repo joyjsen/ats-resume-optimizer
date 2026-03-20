@@ -1,19 +1,4 @@
-import {
-    collection,
-    doc,
-    getDoc,
-    addDoc,
-    updateDoc,
-    deleteDoc,
-    getDocs,
-    query,
-    where,
-    onSnapshot,
-    serverTimestamp,
-    writeBatch
-} from 'firebase/firestore';
-import { db, auth } from './config';
-import { activityService } from './activityService';
+import { getFirestoreDb, getFirebaseAuth } from './config';
 import { SavedAnalysis } from '../../types/history.types';
 import { AnalysisResult } from '../../types/analysis.types';
 import { JobPosting } from '../../types/job.types';
@@ -22,13 +7,12 @@ import { ParsedResume } from '../../types/resume.types';
 export class HistoryService {
     private collectionName = 'user_analyses';
 
-    private get analysesCollection() {
+    private async getAnalysesCollection() {
+        const { collection } = await import('firebase/firestore');
+        const db = await getFirestoreDb();
         return collection(db, this.collectionName);
     }
 
-    /**
-     * Save a completed analysis to Firestore
-     */
     async saveAnalysis(
         analysis: AnalysisResult,
         job: JobPosting,
@@ -40,12 +24,13 @@ export class HistoryService {
         isDraft: boolean = false
     ): Promise<string> {
         try {
+            const { addDoc, serverTimestamp } = await import('firebase/firestore');
+            const auth = await getFirebaseAuth();
             const user = auth.currentUser;
-            if (!user) throw new Error("User must be authenticated to save analysis");
-            const userId = user.uid;
+            if (!user) throw new Error("User must be authenticated");
 
             const docData: any = {
-                userId,
+                userId: user.uid,
                 jobTitle: job.title,
                 company: job.company,
                 atsScore: analysis.atsScore,
@@ -57,8 +42,6 @@ export class HistoryService {
                 resumeData: JSON.stringify(resume || {}),
                 jobHash: jobHash || null,
                 resumeHash: resumeHash || null,
-                optimizedResumeData: null,
-                changesData: null
             };
 
             if (optimizedResume && changes) {
@@ -71,31 +54,26 @@ export class HistoryService {
                 }
             }
 
-            const docRef = await addDoc(this.analysesCollection, docData);
-            console.log('Analysis saved with ID: ', docRef.id);
+            const coll = await this.getAnalysesCollection();
+            const docRef = await addDoc(coll, docData);
 
-            // Log activity
             try {
+                const { activityService } = await import('./activityService');
                 await activityService.logActivity({
                     type: 'gap_analysis',
                     description: `Analyzed the resume for ${job.title} at ${job.company}`,
                     resourceId: docRef.id,
                     skipTokenDeduction: true
                 });
-            } catch (logError) {
-                console.warn("[HistoryService] Failed to log creation activity:", logError);
-            }
+            } catch (e) { }
 
             return docRef.id;
         } catch (error) {
             console.error('Error saving analysis history:', error);
-            throw new Error(`Failed to save analysis: ${(error as Error).message}`);
+            throw error;
         }
     }
 
-    /**
-     * Update an existing analysis
-     */
     async updateAnalysis(
         docId: string,
         analysis: AnalysisResult,
@@ -108,9 +86,9 @@ export class HistoryService {
         draftMatchAnalysis?: any
     ): Promise<boolean> {
         try {
-            const docData: any = {
-                updatedAt: serverTimestamp()
-            };
+            const { doc, updateDoc, getDoc, serverTimestamp } = await import('firebase/firestore');
+            const db = await getFirestoreDb();
+            const docData: any = { updatedAt: serverTimestamp() };
 
             if (!isDraft) {
                 docData.atsScore = analysis.atsScore;
@@ -129,62 +107,37 @@ export class HistoryService {
                 }
             }
 
-            let newStatus = '';
-            if (isDraft) {
-                newStatus = 'draft_ready';
-            } else if (optimizedResume) {
-                newStatus = 'optimized';
-            }
+            let newStatus = isDraft ? 'draft_ready' : (optimizedResume ? 'optimized' : '');
             if (newStatus) docData.analysisStatus = newStatus;
 
             const docRef = doc(db, this.collectionName, docId);
             await updateDoc(docRef, docData);
-            console.log('Analysis updated for ID: ', docId);
 
-            // Sync to Application
             try {
                 const snap = await getDoc(docRef);
-                if (snap.exists()) {
-                    const data = snap.data();
-                    if (data?.applicationId) {
-                        const appUpdate: any = { updatedAt: serverTimestamp() };
-                        if (newStatus) appUpdate.analysisStatus = newStatus;
-
-                        await updateDoc(doc(db, 'user_applications', data.applicationId), appUpdate);
-                    } else {
-                        // TODO: Dynamic require to avoid circular dependency.
-                        // Consider extracting shared logic into a utility module.
-                        const { applicationService } = require('./applicationService');
-                        const app = await applicationService.getApplicationByAnalysisId(docId);
-                        if (app) {
-                            const appUpdate: any = { updatedAt: serverTimestamp() };
-                            if (newStatus) appUpdate.analysisStatus = newStatus;
-                            await updateDoc(docRef, { applicationId: app.id });
-                            await updateDoc(doc(db, 'user_applications', app.id), appUpdate);
-                        }
-                    }
+                if (snap.exists() && snap.data()?.applicationId) {
+                    const appId = snap.data().applicationId;
+                    const appUpdate: any = { updatedAt: serverTimestamp() };
+                    if (newStatus) appUpdate.analysisStatus = newStatus;
+                    await updateDoc(doc(db, 'user_applications', appId), appUpdate);
                 }
-            } catch (syncErr) {
-                console.error("Failed to sync analysis update to application:", syncErr);
-            }
+            } catch (e) { }
 
             return true;
         } catch (error) {
             console.error('Error updating analysis history:', error);
-            throw new Error(`Failed to update analysis: ${(error as Error).message}`);
+            return false;
         }
     }
 
-    /**
-     * Promote draft optimization to final
-     */
     async promoteDraftToFinal(docId: string): Promise<boolean> {
         try {
+            const { doc, getDoc, updateDoc, serverTimestamp } = await import('firebase/firestore');
+            const db = await getFirestoreDb();
             const docRef = doc(db, this.collectionName, docId);
             const snapshot = await getDoc(docRef);
 
             if (!snapshot.exists()) return false;
-
             const data = snapshot.data();
             if (!data?.draftOptimizedResumeData) return false;
 
@@ -199,10 +152,9 @@ export class HistoryService {
                 updatedAt: serverTimestamp(),
                 ...(data.draftAtsScore ? { atsScore: data.draftAtsScore } : {})
             });
-            console.log('Analysis promoted to final for ID: ', docId);
 
             try {
-                const { applicationService } = require('./applicationService');
+                const { applicationService } = await import('./applicationService');
                 const analysisForApp = {
                     id: docId,
                     userId: data.userId,
@@ -211,14 +163,9 @@ export class HistoryService {
                     atsScore: data.draftAtsScore || data.atsScore,
                     jobData: typeof data.jobData === 'string' ? JSON.parse(data.jobData) : data.jobData,
                 } as SavedAnalysis;
-
                 const appId = await applicationService.createApplicationFromAnalysis(analysisForApp);
-                if (appId) {
-                    await updateDoc(docRef, { applicationId: appId });
-                }
-            } catch (appError) {
-                console.error("Failed to auto-create application:", appError);
-            }
+                if (appId) await updateDoc(docRef, { applicationId: appId });
+            } catch (e) { }
 
             return true;
         } catch (error) {
@@ -227,55 +174,27 @@ export class HistoryService {
         }
     }
 
-    async ensureApplicationSync(analysis: SavedAnalysis): Promise<void> {
-        try {
-            const { applicationService } = require('./applicationService');
-            await applicationService.createApplicationFromAnalysis(analysis);
-        } catch (error) {
-            console.error("Self-healing sync failed:", error);
-        }
-    }
-
     async discardDraft(docId: string): Promise<boolean> {
         try {
+            const { doc, getDoc, updateDoc, serverTimestamp } = await import('firebase/firestore');
+            const db = await getFirestoreDb();
             const docRef = doc(db, this.collectionName, docId);
             const snapshot = await getDoc(docRef);
             if (!snapshot.exists()) return false;
             const data = snapshot.data();
 
-            const hasFinal = !!data?.optimizedResumeData;
-            const newStatus = hasFinal ? 'optimized' : 'pending_resume_update';
-
-            const updates: any = {
+            const newStatus = data?.optimizedResumeData ? 'optimized' : 'pending_resume_update';
+            await updateDoc(docRef, {
                 draftOptimizedResumeData: null,
                 draftChangesData: null,
                 draftAtsScore: null,
                 draftMatchAnalysis: null,
                 updatedAt: serverTimestamp(),
                 analysisStatus: newStatus
-            };
-
-            await updateDoc(docRef, updates);
-            console.log(`Draft discarded for ID: ${docId}. Status: ${newStatus}`);
+            });
 
             if (data?.applicationId) {
-                await updateDoc(doc(db, 'user_applications', data.applicationId), {
-                    analysisStatus: newStatus,
-                    updatedAt: serverTimestamp()
-                }).catch((err: any) => console.error("Failed to sync revert:", err));
-            } else {
-                try {
-                    const { applicationService } = require('./applicationService');
-                    const app = await applicationService.getApplicationByAnalysisId(docId);
-                    if (app) {
-                        await updateDoc(doc(db, 'user_applications', app.id), {
-                            analysisStatus: newStatus,
-                            updatedAt: serverTimestamp()
-                        });
-                    }
-                } catch (findErr) {
-                    console.warn("Could not find linked application:", findErr);
-                }
+                await updateDoc(doc(db, 'user_applications', data.applicationId), { analysisStatus: newStatus, updatedAt: serverTimestamp() });
             }
 
             return true;
@@ -287,56 +206,29 @@ export class HistoryService {
 
     async deleteAnalysis(docId: string): Promise<boolean> {
         try {
-            const { activityService } = require('./activityService');
-
+            const { doc, getDoc, deleteDoc, query, where, collection, getDocs, writeBatch } = await import('firebase/firestore');
+            const db = await getFirestoreDb();
             const docRef = doc(db, this.collectionName, docId);
             const snapshot = await getDoc(docRef);
             let description = 'Deleted analysis';
 
             if (snapshot.exists()) {
                 const data = snapshot.data();
-                if (data?.jobTitle && data?.company) {
-                    description = `Deleted analysis for ${data.jobTitle} at ${data.company}`;
-                }
+                if (data?.jobTitle && data?.company) description = `Deleted analysis for ${data.jobTitle} at ${data.company}`;
+                if (data.applicationId) await deleteDoc(doc(db, 'user_applications', data.applicationId)).catch(() => { });
+
+                const appsSnap = await getDocs(query(collection(db, 'user_applications'), where('userId', '==', data.userId), where('analysisId', '==', docId)));
+                const batch = writeBatch(db);
+                appsSnap.forEach(d => batch.delete(d.ref));
+                if (!appsSnap.empty) await batch.commit();
             }
 
             await deleteDoc(docRef);
-            console.log('Analysis deleted: ', docId);
-
-            if (snapshot.exists()) {
-                const data = snapshot.data();
-                if (data?.applicationId) {
-                    try {
-                        await deleteDoc(doc(db, 'user_applications', data.applicationId));
-                    } catch (appErr) {
-                        console.error('Failed to cascade delete application:', appErr);
-                    }
-                } else {
-                    try {
-                        const appsQuery = query(
-                            collection(db, 'user_applications'),
-                            where('analysisId', '==', docId),
-                            where('userId', '==', auth.currentUser?.uid)
-                        );
-                        const appsSnap = await getDocs(appsQuery);
-
-                        const batch = writeBatch(db);
-                        appsSnap.forEach(d => batch.delete(d.ref));
-                        if (!appsSnap.empty) await batch.commit();
-                    } catch (qErr) {
-                        console.warn("Failed fallback cascade delete:", qErr);
-                    }
-                }
-            }
 
             try {
-                await activityService.logActivity({
-                    type: 'analysis_deleted',
-                    description: description,
-                    resourceId: docId,
-                    platform: 'web'
-                });
-            } catch (logError) { }
+                const { activityService } = await import('./activityService');
+                await activityService.logActivity({ type: 'analysis_deleted', description, resourceId: docId });
+            } catch (e) { }
 
             return true;
         } catch (error) {
@@ -347,22 +239,15 @@ export class HistoryService {
 
     async findExistingAnalysis(jobHash: string, resumeHash: string): Promise<SavedAnalysis | null> {
         try {
-            const user = auth.currentUser;
-            if (!user) return null;
-            const userId = user.uid;
+            const { query, where, getDocs } = await import('firebase/firestore');
+            const auth = await getFirebaseAuth();
+            if (!auth.currentUser) return null;
 
-            const q = query(
-                this.analysesCollection,
-                where('userId', '==', userId),
-                where('jobHash', '==', jobHash),
-                where('resumeHash', '==', resumeHash)
-            );
-            const querySnapshot = await getDocs(q);
+            const coll = await this.getAnalysesCollection();
+            const q = query(coll, where('userId', '==', auth.currentUser.uid), where('jobHash', '==', jobHash), where('resumeHash', '==', resumeHash));
+            const snap = await getDocs(q);
 
-            if (!querySnapshot.empty) {
-                const docSnap = querySnapshot.docs[0];
-                return this.mapDocToAnalysis(docSnap);
-            }
+            if (!snap.empty) return this.mapDocToAnalysis(snap.docs[0]);
             return null;
         } catch (error) {
             console.error('Error finding existing analysis:', error);
@@ -372,111 +257,49 @@ export class HistoryService {
 
     async findExistingAnalysisByDetails(jobTitle: string, company: string, resumeHash: string, jobUrl?: string): Promise<SavedAnalysis | null> {
         try {
-            const user = auth.currentUser;
-            if (!user) return null;
-            const userId = user.uid;
+            const { query, where, getDocs } = await import('firebase/firestore');
+            const auth = await getFirebaseAuth();
+            if (!auth.currentUser) return null;
 
-            // Strategy: Query by userId + resumeHash (indexed/exact).
-            // Then filter in-memory for Job Title / Company / URL
+            const coll = await this.getAnalysesCollection();
             const q = query(
-                this.analysesCollection,
-                where('userId', '==', userId),
+                coll,
+                where('userId', '==', auth.currentUser.uid),
+                where('jobTitle', '==', jobTitle),
+                where('company', '==', company),
                 where('resumeHash', '==', resumeHash)
             );
-
-            const querySnapshot = await getDocs(q);
-
-            if (querySnapshot.empty) return null;
-
-            const targetTitle = jobTitle.trim().toLowerCase();
-            const targetCompany = company.trim().toLowerCase();
-            const targetUrl = jobUrl ? jobUrl.trim().toLowerCase() : '';
-
-            // Find match
-            const match = querySnapshot.docs.find(doc => {
-                const data = doc.data();
-
-                // Parse Job Data once
-                let jobData: any = {};
-                try {
-                    jobData = typeof data.jobData === 'string' ? JSON.parse(data.jobData) : data.jobData;
-                } catch (e) { }
-
-                // CHECK 1: URL Match (Strongest Signal if provided)
-                if (targetUrl && jobData?.url) {
-                    if (jobData.url.trim().toLowerCase() === targetUrl) {
-                        return true;
-                    }
-                }
-
-                // CHECK 2: Title + Company Match (Fallback)
-                const title = (data.jobTitle || jobData?.title || '').toLowerCase();
-                const comp = (data.company || jobData?.company || '').toLowerCase();
-
-                return title === targetTitle && comp === targetCompany;
-            });
-
-            if (match) {
-                return this.mapDocToAnalysis(match);
+            
+            const snap = await getDocs(q);
+            if (!snap.empty) {
+                 const docs = snap.docs.map(doc => this.mapDocToAnalysis(doc));
+                 docs.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+                 
+                 if (jobUrl) {
+                     const urlMatch = docs.find(d => d.jobData?.url === jobUrl);
+                     if (urlMatch) return urlMatch;
+                 }
+                 return docs[0];
             }
-
             return null;
-
         } catch (error) {
             console.error('Error finding existing analysis by details:', error);
             return null;
         }
     }
 
-    subscribeToUserHistory(callback: (history: SavedAnalysis[]) => void): () => void {
+    async getUserHistory(userId?: string): Promise<SavedAnalysis[]> {
         try {
-            const user = auth.currentUser;
-            if (!user) return () => { };
-            const userId = user.uid;
+            const { query, where, getDocs } = await import('firebase/firestore');
+            const auth = await getFirebaseAuth();
+            const targetUserId = userId || auth.currentUser?.uid;
+            if (!targetUserId) return [];
 
-            const q = query(
-                this.analysesCollection,
-                where('userId', '==', userId)
-            );
+            const coll = await this.getAnalysesCollection();
+            const q = query(coll, where('userId', '==', targetUserId));
+            const snap = await getDocs(q);
 
-            return onSnapshot(q, (snapshot) => {
-                const fetchedHistory = snapshot.docs.map(docSnap => this.mapDocToAnalysis(docSnap));
-
-                const sorted = fetchedHistory.sort((a, b) => {
-                    const timeA = a.updatedAt ? a.updatedAt.getTime() : a.createdAt.getTime();
-                    const timeB = b.updatedAt ? b.updatedAt.getTime() : b.createdAt.getTime();
-                    return timeB - timeA;
-                });
-
-                callback(sorted);
-            }, (error) => {
-                // @ts-ignore
-                if (error.code === 'permission-denied' || error.message?.includes('Missing or insufficient permissions')) {
-                    return;
-                }
-                console.error("Error in history subscription:", error);
-            });
-        } catch (error) {
-            console.error("Failed to setup subscription:", error);
-            return () => { };
-        }
-    }
-
-    async getUserHistory(): Promise<SavedAnalysis[]> {
-        try {
-            const user = auth.currentUser;
-            if (!user) return [];
-            const userId = user.uid;
-
-            const q = query(
-                this.analysesCollection,
-                where('userId', '==', userId)
-            );
-            const querySnapshot = await getDocs(q);
-
-            const fetchedHistory = querySnapshot.docs.map(docSnap => this.mapDocToAnalysis(docSnap));
-
-            return fetchedHistory.sort((a, b) => {
+            return snap.docs.map(docSnap => this.mapDocToAnalysis(docSnap)).sort((a, b) => {
                 const timeA = a.updatedAt ? a.updatedAt.getTime() : a.createdAt.getTime();
                 const timeB = b.updatedAt ? b.updatedAt.getTime() : b.createdAt.getTime();
                 return timeB - timeA;
@@ -489,55 +312,67 @@ export class HistoryService {
 
     async getAnalysisById(docId: string): Promise<SavedAnalysis | null> {
         try {
-            const snapshot = await getDoc(doc(db, this.collectionName, docId));
-
-            if (snapshot.exists()) {
-                return this.mapDocToAnalysis(snapshot);
-            }
-            return null;
+            const { doc, getDoc } = await import('firebase/firestore');
+            const db = await getFirestoreDb();
+            const snap = await getDoc(doc(db, this.collectionName, docId));
+            return snap.exists() ? this.mapDocToAnalysis(snap) : null;
         } catch (error) {
             console.error("Error getting analysis by ID:", error);
             return null;
         }
     }
 
-    async getUserHistoryByUid(userId: string): Promise<SavedAnalysis[]> {
-        try {
-            const q = query(
-                this.analysesCollection,
-                where('userId', '==', userId)
-            );
-            const querySnapshot = await getDocs(q);
+    subscribeToUserHistory(callback: (history: SavedAnalysis[]) => void): () => void {
+        let unsub: (() => void) | undefined;
+        const init = async () => {
+            const { query, where, onSnapshot } = await import('firebase/firestore');
+            const auth = await getFirebaseAuth();
+            if (!auth.currentUser) return;
 
-            const fetchedHistory = querySnapshot.docs.map(docSnap => this.mapDocToAnalysis(docSnap));
+            const coll = await this.getAnalysesCollection();
+            const q = query(coll, where('userId', '==', auth.currentUser.uid));
 
-            return fetchedHistory.sort((a, b) => {
-                const timeA = a.updatedAt ? a.updatedAt.getTime() : a.createdAt.getTime();
-                const timeB = b.updatedAt ? b.updatedAt.getTime() : b.createdAt.getTime();
-                return timeB - timeA;
+            unsub = onSnapshot(q, (snapshot) => {
+                const fetchedHistory = snapshot.docs.map(docSnap => this.mapDocToAnalysis(docSnap));
+                const sorted = fetchedHistory.sort((a, b) => {
+                    const timeA = a.updatedAt ? a.updatedAt.getTime() : a.createdAt.getTime();
+                    const timeB = b.updatedAt ? b.updatedAt.getTime() : b.createdAt.getTime();
+                    return timeB - timeA;
+                });
+                callback(sorted);
+            }, (error) => {
+                const errorCode = (error as any)?.code || '';
+                if (errorCode !== 'permission-denied' && !errorCode.includes('permission')) {
+                    console.error("Error in history subscription:", error);
+                }
             });
-        } catch (error) {
-            console.error('Error fetching user history by UID:', error);
-            return [];
-        }
+        };
+        const promise = init();
+        return () => { promise.then(() => unsub?.()); };
     }
 
     subscribeToAnalysis(docId: string, callback: (analysis: SavedAnalysis | null) => void): () => void {
-        try {
+        let unsub: (() => void) | undefined;
+        const init = async () => {
+            const { doc, onSnapshot } = await import('firebase/firestore');
+            const db = await getFirestoreDb();
             const docRef = doc(db, this.collectionName, docId);
-            return onSnapshot(docRef, (docSnap) => {
-                if (docSnap.exists()) {
-                    callback(this.mapDocToAnalysis(docSnap));
+
+            unsub = onSnapshot(docRef, (snap) => {
+                if (snap.exists()) {
+                    callback(this.mapDocToAnalysis(snap));
                 } else {
                     callback(null);
                 }
             }, (error) => {
-                console.error("Error subscribing to analysis:", error);
+                const errorCode = (error as any)?.code || '';
+                if (errorCode !== 'permission-denied' && !errorCode.includes('permission')) {
+                    console.error("Error in analysis subscription:", error);
+                }
             });
-        } catch (error) {
-            console.error("Failed to subscribe to analysis:", error);
-            return () => { };
-        }
+        };
+        const promise = init();
+        return () => { promise.then(() => unsub?.()); };
     }
 
     private mapDocToAnalysis(docSnap: any): SavedAnalysis {
@@ -549,8 +384,8 @@ export class HistoryService {
             company: data.company,
             atsScore: data.atsScore,
             action: data.action,
-            createdAt: (data.createdAt as any)?.toDate ? (data.createdAt as any).toDate() : new Date(),
-            updatedAt: (data.updatedAt as any)?.toDate ? (data.updatedAt as any).toDate() : ((data.createdAt as any)?.toDate ? (data.createdAt as any).toDate() : new Date()),
+            createdAt: (data.createdAt as any)?.toDate?.() || new Date(),
+            updatedAt: (data.updatedAt as any)?.toDate?.() || (data.createdAt as any)?.toDate?.() || new Date(),
             analysisData: typeof data.analysisData === 'string' ? JSON.parse(data.analysisData) : data.analysisData,
             jobData: typeof data.jobData === 'string' ? JSON.parse(data.jobData) : data.jobData,
             resumeData: data.resumeData ? (typeof data.resumeData === 'string' ? JSON.parse(data.resumeData) : data.resumeData) : undefined,

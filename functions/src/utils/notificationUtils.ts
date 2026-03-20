@@ -133,7 +133,7 @@ export async function sendPush(uid: string, title: string, body: string, data?: 
                     const responseData = await response.json() as any;
 
                     if (responseData.data && responseData.data.status === 'error') {
-                        console.error(`[sendPush] Expo error for token ${token}: ${responseData.data.message}`);
+                        console.error(`[sendPush] Expo error for token ${token}: ${responseData.data.message}`, responseData.data.details);
 
                         const isPermanentFailure =
                             responseData.data.details?.error === 'DeviceNotRegistered' ||
@@ -145,8 +145,10 @@ export async function sendPush(uid: string, title: string, body: string, data?: 
                                 pushTokens: admin.firestore.FieldValue.arrayRemove(token)
                             }).catch(e => console.error(`[sendPush] Failed to remove token:`, e));
                         }
+                    } else if (responseData.errors) {
+                        console.error(`[sendPush] Expo overall API errors:`, responseData.errors);
                     } else {
-                        console.log(`[sendPush] Expo send successful for token: ${token.substring(0, 25)}...`);
+                        console.log(`[sendPush] Expo send successful for token: ${token.substring(0, 25)}... Ticket: ${responseData.data.id || 'N/A'}`);
                     }
                 } catch (tokenError) {
                     console.error(`[sendPush] Expo send failed for token ${token}:`, tokenError);

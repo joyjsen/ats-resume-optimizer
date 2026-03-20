@@ -28,6 +28,8 @@ const DarkTheme = {
         primary: '#bb86fc',
         secondary: '#03dac6',
         tertiary: '#cf6679',
+        background: '#000000', // Pure black for "Night Mode"
+        surface: '#121212',    // Slightly lighter for cards
     },
 };
 
@@ -35,23 +37,40 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const systemScheme = useColorScheme();
     const { userProfile } = useProfileStore();
 
-    // Initialize from profile if available, otherwise fallback to system
-    const [isDark, setIsDark] = useState(() => {
-        if (userProfile?.theme) {
-            return userProfile.theme === 'dark';
-        }
-        return systemScheme === 'dark';
-    });
+    // Derive base setting from profile or system
+    const profileTheme = userProfile?.theme || 'auto';
+    const isSystemDark = systemScheme === 'dark';
 
-    // Update isDark if profile theme changes (e.g. from another device)
+    // Local state to override until profile updates
+    const [overrideDark, setOverrideDark] = useState<boolean | null>(null);
+
+    // Final derived isDark value
+    const isDark = overrideDark !== null ? overrideDark : (
+        profileTheme === 'dark' ? true :
+            profileTheme === 'light' ? false : isSystemDark
+    );
+
+    // Optional: Synchronize logic - when profile catch up to override, clear override
     useEffect(() => {
-        if (userProfile?.theme) {
-            setIsDark(userProfile.theme === 'dark');
+        if (overrideDark !== null) {
+            const currentProfileIsDark = profileTheme === 'dark' || (profileTheme === 'auto' && isSystemDark);
+            if (currentProfileIsDark === overrideDark) {
+                console.log("[ThemeContext] Profile caught up to toggle, clearing override.");
+                setOverrideDark(null);
+            }
         }
-    }, [userProfile?.theme]);
+    }, [profileTheme, isSystemDark, overrideDark]);
 
-    const theme = useMemo(() => isDark ? DarkTheme : LightTheme, [isDark]);
-    const toggleTheme = () => setIsDark(!isDark);
+    const theme = useMemo(() => {
+        console.log(`[ThemeContext] Applying ${isDark ? 'Dark' : 'Light'} theme. (Profile: ${profileTheme}, SystemDark: ${isSystemDark})`);
+        return isDark ? DarkTheme : LightTheme;
+    }, [isDark, profileTheme, isSystemDark]);
+
+    const toggleTheme = () => {
+        const nextDark = !isDark;
+        console.log("[ThemeContext] Toggling local theme to:", nextDark);
+        setOverrideDark(nextDark);
+    };
 
     return (
         <ThemeContext.Provider value={{ isDark, toggleTheme, theme }}>

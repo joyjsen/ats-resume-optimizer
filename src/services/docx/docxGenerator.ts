@@ -1,5 +1,6 @@
 
-import { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType } from 'docx';
+// import { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType } from 'docx';
+
 import * as FS from 'expo-file-system/legacy';
 const FileSystem = FS as any;
 import * as Sharing from 'expo-sharing';
@@ -8,10 +9,13 @@ import { Buffer } from 'buffer';
 
 export class DocxGenerator {
     static async generateAndShare(resume: ParsedResume) {
-        // ... (code omitted for brevity, logic unchanged) ...
+        // Dynamically import docx to reduce initial bundle size
+        const { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType } = await import('docx');
+
         const doc = new Document({
             sections: [{
                 properties: {},
+
                 children: [
                     // Header
                     new Paragraph({
@@ -130,7 +134,10 @@ export class DocxGenerator {
     }
 
     static async generateCoverLetter(content: string) {
+        const { Document, Packer, Paragraph, TextRun } = await import('docx');
+
         const paragraphs = content.split('\n').map(line => {
+
             // Check if line looks like a header/salutation
             // Simple heuristic: short lines usually header/footer
             return new Paragraph({

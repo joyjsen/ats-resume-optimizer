@@ -19,3 +19,6 @@ export const WebAppLayout: React.FC<Props> = ({ children }) => {
         </View>
     );
 };
+
+export default WebAppLayout;
+

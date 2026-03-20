@@ -58,7 +58,7 @@ export const WebSidebar: React.FC = () => {
             {/* Logo / Brand */}
             <View style={{ paddingHorizontal: 16, paddingBottom: 16, alignItems: isCollapsed ? 'center' : 'flex-start', flexDirection: isCollapsed ? 'column' : 'row', gap: 10 }}>
                 <Image
-                    source={require('../../../assets/logo.png')}
+                    source={require('../../../assets/logo-72.png')}
                     style={{ width: isCollapsed ? 36 : 40, height: isCollapsed ? 36 : 40, borderRadius: 8 }}
                     resizeMode="contain"
                 />

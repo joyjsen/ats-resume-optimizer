@@ -1,6 +1,6 @@
-import React from 'react';
-import { View, StyleSheet, FlatList } from 'react-native';
-import { Text, Card, useTheme } from 'react-native-paper';
+import React, { useState } from 'react';
+import { View, StyleSheet, ScrollView } from 'react-native';
+import { Text, Card, useTheme, ActivityIndicator } from 'react-native-paper';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useProfileStore } from '../src/store/profileStore';
 import { UserActivity } from '../src/types/profile.types';
@@ -12,10 +12,15 @@ export default function UserActivityScreen() {
     const theme = useTheme();
     const router = useRouter();
 
+    const [loading, setLoading] = useState(true);
+
     useFocusEffect(
         React.useCallback(() => {
             if (userProfile) {
-                fetchActivities();
+                setLoading(true);
+                fetchActivities().finally(() => setLoading(false));
+            } else {
+                setLoading(false);
             }
         }, [userProfile?.uid])
     );
@@ -62,8 +67,8 @@ export default function UserActivityScreen() {
         return icons[type] || 'circle-outline';
     };
 
-    const renderActivity = ({ item }: { item: UserActivity }) => (
-        <Card style={styles.activityCard}>
+    const renderActivity = (item: UserActivity) => (
+        <Card key={item.activityId} style={styles.activityCard}>
             <View style={styles.activityItem}>
                 <View style={[styles.activityIcon, { backgroundColor: getActivityColor(item.type) + '20' }]}>
                     <MaterialCommunityIcons
@@ -92,38 +97,37 @@ export default function UserActivityScreen() {
         </Card>
     );
 
-    const renderHeader = () => {
-        // theme is available from closure
-        return (
+    return (
+        <ScrollView
+            style={[styles.container, { backgroundColor: theme.colors.background }]}
+            contentContainerStyle={styles.listContent}
+        >
             <View style={styles.header}>
                 <Text variant="headlineSmall" style={[styles.headerTitle, { color: theme.colors.onSurface }]}>Activity History</Text>
                 <Text variant="bodySmall" style={[styles.headerSubtitle, { color: theme.colors.onSurfaceVariant }]}>
-                    {activities.length} activities
+                    {loading ? 'Loading...' : `${activities.length} activities`}
                 </Text>
             </View>
-        );
-    };
 
-    return (
-        <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
-            <FlatList
-                data={activities}
-                keyExtractor={(item) => item.activityId}
-                renderItem={renderActivity}
-                ListHeaderComponent={renderHeader}
-                style={[styles.container, { backgroundColor: theme.colors.background }]}
-                contentContainerStyle={styles.listContent}
-                ListEmptyComponent={
-                    <View style={styles.emptyState}>
-                        <MaterialCommunityIcons name="history" size={48} color={theme.colors.outlineVariant} />
-                        <Text variant="bodyLarge" style={[styles.emptyText, { color: theme.colors.onSurfaceVariant }]}>No activities yet</Text>
-                        <Text variant="bodySmall" style={[styles.emptySubtext, { color: theme.colors.outline }]}>
-                            Your activity history will appear here
-                        </Text>
-                    </View>
-                }
-            />
-        </View>
+            {loading ? (
+                <View style={{ alignItems: 'center', paddingTop: 60 }}>
+                    <ActivityIndicator size="large" />
+                    <Text variant="bodyMedium" style={{ marginTop: 16, color: theme.colors.onSurfaceVariant }}>
+                        Loading activities...
+                    </Text>
+                </View>
+            ) : activities.length > 0 ? (
+                activities.map(item => renderActivity(item))
+            ) : (
+                <View style={styles.emptyState}>
+                    <MaterialCommunityIcons name="history" size={48} color={theme.colors.outlineVariant} />
+                    <Text variant="bodyLarge" style={[styles.emptyText, { color: theme.colors.onSurfaceVariant }]}>No activities yet</Text>
+                    <Text variant="bodySmall" style={[styles.emptySubtext, { color: theme.colors.outline }]}>
+                        Your activity history will appear here
+                    </Text>
+                </View>
+            )}
+        </ScrollView>
     );
 }
 

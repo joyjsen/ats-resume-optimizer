@@ -41,7 +41,7 @@ exports.createStripePaymentIntent = functionsV1
         throw new functionsV1.https.HttpsError("invalid-argument", "A valid numeric amount is required.");
     }
     try {
-        const stripe = new stripe_1.default(secrets_1.stripeSecretKey.value(), {
+        const stripe = new stripe_1.default(secrets_1.stripeSecretKey.value().trim(), {
             apiVersion: "2022-11-15", // Use a stable version
         });
         // 2. Create Payment Intent
@@ -81,7 +81,7 @@ exports.createStripeCheckoutSession = functionsV1
     }
     const { amount, packageId, tokens, successUrl, cancelUrl, currency = "usd" } = data;
     try {
-        const stripe = new stripe_1.default(secrets_1.stripeSecretKey.value(), {
+        const stripe = new stripe_1.default(secrets_1.stripeSecretKey.value().trim(), {
             apiVersion: "2022-11-15",
         });
         const session = await stripe.checkout.sessions.create({

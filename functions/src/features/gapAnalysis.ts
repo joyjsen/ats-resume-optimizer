@@ -53,7 +53,7 @@ export const performGapAnalysis = (openaiApiKey: any, perplexityApiKey: any) => 
       });
 
       const openai = new OpenAI({
-        apiKey: openaiApiKey.value(),
+        apiKey: openaiApiKey.value().trim(),
         maxRetries: 2,
         timeout: 30000,
       });
@@ -111,17 +111,20 @@ STEP 1: REQUIREMENT INVENTORY
 - Confirm total count. This is your checklist — every REQ must appear in your final output.
 
 STEP 2: RESUME EVIDENCE MAPPING
-- For EACH requirement, scan ALL resume bullet points, skills, certifications, and summary.
-- Look for: exact matches, synonym matches (e.g., "CI/CD" = "continuous integration"), adjacent/transferable skills (e.g., "Ansible" is adjacent to "Puppet" for config management), and experience that demonstrates the capability even if the exact term isn't used.
-- Record the SPECIFIC bullet point(s) or skill entries that serve as evidence.
+- For EACH requirement, scan ALL sections of the resume: experience bullet points, skills, summary, EDUCATION, and CERTIFICATIONS.
+- EDUCATION MATCHING: Degree requirements (e.g., "Bachelor's in Computer Science") MUST be checked against the candidate's education entries. A matching or closely related degree is direct evidence.
+- CERTIFICATION MATCHING: Certification requirements (e.g., "AWS Solutions Architect", "Azure Certified") MUST be checked against the candidate's certifications. An exact or equivalent cert is direct evidence.
+- Look for: exact matches, synonym matches (e.g., "CI/CD" = "continuous integration"), adjacent/transferable skills (e.g., "Ansible" is adjacent to "Puppet" for config management), related degrees (e.g., "Electronics Engineering" is related to "Computer Science"), and same-vendor certifications (e.g., "AWS DevOps" is related to "AWS Cloud Practitioner").
+- Record the SPECIFIC bullet point(s), skill entries, education entries, or certification entries that serve as evidence.
+- EVIDENCE PRIORITY: When a skill appears in multiple resume sections, prioritize: (1) Certifications (most authoritative), (2) Education (formal knowledge), (3) Experience bullet points (practical application), (4) Skills list.
 - If the resume has no relevant section (e.g., empty skills object), note "no resume data for this category" in the evidence field.
 
 STEP 3: MATCH CLASSIFICATION
 For each requirement, classify as:
-- "strong_match": Direct, clear evidence in resume using the same or synonymous terms with demonstrated experience.
-- "partial_match": Related or transferable skill found; candidate could likely perform but doesn't have the exact skill/tool. Explain the connection.
+- "strong_match": Direct, clear evidence in resume using the same or synonymous terms with demonstrated experience. Also applies when: a required degree matches the candidate's degree exactly or in the same field; a required certification matches the candidate's certification exactly.
+- "partial_match": Related or transferable skill found; candidate could likely perform but doesn't have the exact skill/tool. Also applies when: a required degree is in a related field (e.g., job needs CS degree but candidate has Electronics Engineering); a required certification is from the same vendor/platform but different specialty (e.g., job needs "AWS Solutions Architect" but candidate has "AWS DevOps").
 - "weak_match": Tangential connection only — the candidate has worked in the domain but hasn't specifically demonstrated this skill.
-- "no_match": No evidence found in the resume for this requirement.
+- "no_match": No evidence found anywhere in the resume (experience, skills, education, OR certifications) for this requirement.
 
 STEP 4: SCORE CALCULATION
 - strong_match: 100% of the requirement's weight
@@ -312,7 +315,7 @@ FINAL VALIDATION: Before returning your response, verify:
 
       const aiResult = await callAiWithFallback(
         openai,
-        perplexityApiKey.value(),
+        perplexityApiKey.value().trim(),
         systemInstruction,
         userContent,
         { maxTokens: 4096 }
@@ -333,14 +336,46 @@ FINAL VALIDATION: Before returning your response, verify:
       });
 
       // Normalize results into backwards-compatible fields
+      // First, map all categories
+      const rawMatchedSkills = (analysisResult.matchAnalysis?.strongMatches || []).map(mapMatchToSkill);
+      const rawPartialMatches = (analysisResult.matchAnalysis?.partialMatches || []).map(mapMatchToSkill);
+      const rawMissingSkills = [
+        ...(analysisResult.matchAnalysis?.weakMatches || []),
+        ...(analysisResult.matchAnalysis?.noMatches || [])
+      ].map(mapMatchToSkill);
+
+      // Helper: case-insensitive fuzzy match check
+      const skillsOverlap = (a: string, b: string): boolean => {
+        const la = a.toLowerCase().trim();
+        const lb = b.toLowerCase().trim();
+        return la === lb || la.includes(lb) || lb.includes(la);
+      };
+
+      // Deduplicate: matched skills take priority over partial, partial takes priority over missing
+      const dedupedPartialMatches = rawPartialMatches.filter((p: any) =>
+        !rawMatchedSkills.some((m: any) => skillsOverlap(m.skill, p.skill))
+      );
+
+      const dedupedMissingSkills = rawMissingSkills.filter((m: any) =>
+        !rawMatchedSkills.some((s: any) => skillsOverlap(s.skill, m.skill)) &&
+        !dedupedPartialMatches.some((p: any) => skillsOverlap(p.skill, m.skill))
+      );
+
+      // Final self-deduplication within each list (in case AI returns dupes within the same list)
+      const deduplicateList = (list: any[]) => {
+        const seen = new Set<string>();
+        return list.filter(item => {
+          const key = item.skill.toLowerCase().trim();
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
+      };
+
       const matchAnalysis: MatchAnalysis = {
-        // Map the new categories back to the 3 main lists our UI uses
-        matchedSkills: (analysisResult.matchAnalysis?.strongMatches || []).map(mapMatchToSkill),
-        partialMatches: (analysisResult.matchAnalysis?.partialMatches || []).map(mapMatchToSkill),
-        missingSkills: [
-          ...(analysisResult.matchAnalysis?.weakMatches || []),
-          ...(analysisResult.matchAnalysis?.noMatches || [])
-        ].map(mapMatchToSkill),
+        matchedSkills: deduplicateList(rawMatchedSkills),
+        partialMatches: deduplicateList(dedupedPartialMatches),
+        missingSkills: deduplicateList(dedupedMissingSkills),
 
         // Keep raw new fields for detailed UI injection
         strongMatches: analysisResult.matchAnalysis?.strongMatches || [],

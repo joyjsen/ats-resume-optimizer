@@ -12,13 +12,13 @@ export const stripeWebhook = functionsV1
     .runWith({ secrets: [stripeSecretKey, stripeWebhookSecret] })
     .https.onRequest(async (req: any, res: any) => {
         const sig = req.headers["stripe-signature"];
-        const stripe = new Stripe(stripeSecretKey.value(), { apiVersion: "2022-11-15" });
+        const stripe = new Stripe(stripeSecretKey.value().trim(), { apiVersion: "2022-11-15" });
 
         let event;
 
         try {
             // Stripe expects the raw body for signature verification
-            event = stripe.webhooks.constructEvent(req.rawBody, sig, stripeWebhookSecret.value());
+            event = stripe.webhooks.constructEvent(req.rawBody, sig, stripeWebhookSecret.value().trim());
         } catch (err: any) {
             console.error(`Webhook Error: ${err.message}`);
             res.status(400).send(`Webhook Error: ${err.message}`);

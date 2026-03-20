@@ -5,7 +5,7 @@ import { useRouter } from 'expo-router';
 import { useProfileStore } from '../../src/store/profileStore';
 import { locationService } from '../../src/services/locationService';
 import { userService } from '../../src/services/firebase/userService';
-import { auth } from '../../src/services/firebase/config';
+
 
 export default function ProfileCompletionScreen() {
     const theme = useTheme();
@@ -60,7 +60,7 @@ export default function ProfileCompletionScreen() {
     };
 
     const submitProfile = async () => {
-        if (!auth.currentUser) return;
+        if (!userProfile?.uid) return;
         setLoading(true);
 
         try {
@@ -84,7 +84,7 @@ export default function ProfileCompletionScreen() {
                 profileCompletedAt: new Date()
             };
 
-            await userService.updateProfile(auth.currentUser.uid, updates);
+            await userService.updateProfile(userProfile.uid, updates);
             await refreshProfile();
 
             // Navigate to Main App

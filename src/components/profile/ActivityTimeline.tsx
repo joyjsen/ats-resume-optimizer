@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, StyleSheet, FlatList, Platform } from 'react-native';
+import { View, StyleSheet, FlatList, Platform, TouchableOpacity } from 'react-native';
 import { List, Text, Avatar, useTheme, Button, Divider, Card } from 'react-native-paper';
 import { UserActivity, ActivityType } from '../../types/profile.types';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -66,9 +66,9 @@ export const ActivityTimeline: React.FC<ActivityTimelineProps> = ({ activities, 
             right={props => (
                 <View style={styles.statusContainer}>
                     <MaterialCommunityIcons
-                        name={item.status === 'completed' ? 'check-circle' : 'alert-circle'}
+                        name={(item.status || 'completed') === 'completed' ? 'check-circle' : 'alert-circle'}
                         size={isAndroid ? 14 : 16}
-                        color={item.status === 'completed' ? '#4CAF50' : '#F44336'}
+                        color={(item.status || 'completed') === 'completed' ? '#4CAF50' : '#F44336'}
                     />
                 </View>
             )}
@@ -81,7 +81,9 @@ export const ActivityTimeline: React.FC<ActivityTimelineProps> = ({ activities, 
         <View style={styles.container}>
             <View style={styles.header}>
                 <Text variant="titleMedium" style={{ fontWeight: 'bold' }}>Recent Activity</Text>
-                <Button onPress={onViewAll} compact>View All</Button>
+                <TouchableOpacity onPress={onViewAll} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                    <Text variant="labelLarge" style={{ color: theme.colors.primary }}>View All</Text>
+                </TouchableOpacity>
             </View>
 
             <Card style={styles.card} mode="elevated" elevation={2}>

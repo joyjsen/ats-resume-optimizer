@@ -2,11 +2,9 @@ import React, { useEffect, useState } from 'react';
 import { View, StyleSheet, FlatList, TouchableOpacity, Alert, Modal, ScrollView, Pressable, Dimensions } from 'react-native';
 import { Text, Searchbar, List, Avatar, Chip, useTheme, ActivityIndicator, Button, Divider } from 'react-native-paper';
 import { useRouter } from 'expo-router';
-import { collection, getDocs, doc, deleteDoc, setDoc, serverTimestamp } from 'firebase/firestore';
-import { db } from '../../src/services/firebase/config';
+import { getFirestoreDb, getFirebaseFunctions } from '../../src/services/firebase/config';
 import { activityService } from '../../src/services/firebase/activityService';
 import { userService } from '../../src/services/firebase/userService';
-import { getFunctions, httpsCallable } from 'firebase/functions';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { format } from 'date-fns';
 
@@ -46,6 +44,8 @@ export default function DeletedUsersScreen() {
     const loadDeletedAccounts = async () => {
         setLoading(true);
         try {
+            const { collection, getDocs } = await import('firebase/firestore');
+            const db = await getFirestoreDb();
             console.log('[DeletedUsers] Loading deleted accounts...');
             const snapshot = await getDocs(collection(db, 'deleted_accounts'));
             console.log('[DeletedUsers] Found', snapshot.docs.length, 'deleted accounts');
@@ -117,9 +117,10 @@ export default function DeletedUsersScreen() {
                         try {
                             await userService.restoreDeletedAccount(account.uid);
 
-                            // Ensure Auth account exists (it might have been deleted from Firebase Auth console)
+                            // Ensure Auth account exists
                             try {
-                                const functions = getFunctions();
+                                const { httpsCallable } = await import('firebase/functions');
+                                const functions = await getFirebaseFunctions();
                                 const restoreAuth = httpsCallable(functions, 'restoreUserAuth');
                                 const authResult = await restoreAuth({
                                     uid: account.uid,
@@ -150,7 +151,8 @@ export default function DeletedUsersScreen() {
 
                             // Send restoration email
                             try {
-                                const functions = getFunctions();
+                                const { httpsCallable } = await import('firebase/functions');
+                                const functions = await getFirebaseFunctions();
                                 const sendEmail = httpsCallable(functions, 'sendAccountStatusEmail');
                                 await sendEmail({
                                     userId: account.uid,
@@ -189,6 +191,8 @@ export default function DeletedUsersScreen() {
                     onPress: async () => {
                         setDeleting(true);
                         try {
+                            const { doc, setDoc, deleteDoc, serverTimestamp } = await import('firebase/firestore');
+                            const db = await getFirestoreDb();
                             const profile = account.fullProfile || {};
 
                             // Create audit trail
@@ -227,7 +231,8 @@ export default function DeletedUsersScreen() {
 
                             // Delete from Firebase Auth
                             try {
-                                const functions = getFunctions();
+                                const { httpsCallable } = await import('firebase/functions');
+                                const functions = await getFirebaseFunctions();
                                 const deleteAuth = httpsCallable(functions, 'deleteUserAuth');
                                 const authResult = await deleteAuth({ uid: account.uid });
                                 console.log('[Delete] Auth deletion result:', authResult.data);
@@ -237,7 +242,8 @@ export default function DeletedUsersScreen() {
 
                             // Send final email
                             try {
-                                const functions = getFunctions();
+                                const { httpsCallable } = await import('firebase/functions');
+                                const functions = await getFirebaseFunctions();
                                 const sendEmail = httpsCallable(functions, 'sendAccountStatusEmail');
                                 await sendEmail({
                                     userId: account.uid,

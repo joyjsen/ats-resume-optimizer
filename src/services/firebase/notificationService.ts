@@ -1,466 +1,250 @@
-import Constants from 'expo-constants';
 import { Platform } from 'react-native';
-import { doc, updateDoc, arrayUnion } from 'firebase/firestore';
-import { db, auth } from './config';
+import { getFirestoreDb, getFirebaseAuth } from './config';
 import { router } from 'expo-router';
 
-// Notification data types for deep-linking
-export interface NotificationData {
-    route?: string;
-    params?: Record<string, string>;
-}
-
-/**
- * Resilient Notification Service
- * Uses a failsafe approach to load native modules.
- * Now includes local notification scheduling for background task completion.
- */
 export class NotificationService {
     private _Device: any = null;
     private _Notifications: any = null;
     private _deviceFailed = false;
     private _notificationsFailed = false;
-    private _responseListenerSubscription: any = null;
+    private _handledNotificationIds = new Set<string>();
 
-    private getDevice() {
-        if (this._deviceFailed) return null;
+    private async getDevice() {
+        if (this._deviceFailed || Platform.OS === 'web') return null;
         if (this._Device) return this._Device;
-        if (Platform.OS === 'web') return null;
-
         try {
-            // Check if the native module likely exists before requiring
-            // This is a heuristic but often prevents the 'Cannot find native module' error 
-            // from being non-catchable in some environments.
-            this._Device = require('expo-device');
-            if (!this._Device) {
-                this._deviceFailed = true;
-                return null;
-            }
+            this._Device = await import('expo-device');
             return this._Device;
         } catch (e) {
-            console.log("Notification Service: expo-device not available.");
             this._deviceFailed = true;
             return null;
         }
     }
 
-    private getNotifications() {
-        if (this._notificationsFailed) return null;
+    private async getNotifications() {
+        if (this._notificationsFailed || Platform.OS === 'web') return null;
         if (this._Notifications) return this._Notifications;
-        if (Platform.OS === 'web') return null;
-
         try {
-            this._Notifications = require('expo-notifications');
-            if (!this._Notifications || !this._Notifications.getPermissionsAsync) {
-                this._notificationsFailed = true;
-                return null;
-            }
+            this._Notifications = await import('expo-notifications');
             return this._Notifications;
         } catch (e) {
-            console.log("Notification Service: expo-notifications not available.");
             this._notificationsFailed = true;
             return null;
         }
     }
 
-    /**
-     * Set the notification handler safely
-     */
     async initHandler() {
-        const Notifications = this.getNotifications();
-        if (Notifications) {
-            try {
-                // Set the notification handler
-                Notifications.setNotificationHandler({
-                    handleNotification: async () => ({
-                        shouldPlaySound: true,
-                        shouldSetBadge: false,
-                        shouldShowBanner: true,
-                        shouldShowList: true
-                    }),
-                });
-
-                // ALWAYS create the default Android channel on initialization
-                // This ensures local notifications work even before push registration
-                if (Platform.OS === 'android') {
-                    await Notifications.setNotificationChannelAsync('default', {
-                        name: 'default',
-                        importance: Notifications.AndroidImportance.MAX,
-                        vibrationPattern: [0, 250, 250, 250],
-                        lightColor: '#FF231F7C',
-                    });
-                    console.log("Notification Service: Android default channel initialized.");
-                }
-            } catch (e) {
-                console.warn("Notification Service: Failed to initialize handler or channel", e);
-            }
-        }
-    }
-
-    /**
-     * Register for Push Notifications
-     * Returns the token if successful, null otherwise
-     */
-    async registerForPushNotificationsAsync(): Promise<string | undefined> {
-        let token;
-        const Device = this.getDevice();
-        const Notifications = this.getNotifications();
-
-        if (!Device || !Notifications) {
-            // No warning here to keep the console clean in dev environments
-            return;
-        }
-
+        const Notifications = await this.getNotifications();
+        if (!Notifications) return;
         try {
-            // Double check native availability inside try block
-            let isDevice = false;
-            try {
-                isDevice = Device.isDevice;
-            } catch (e) {
-                this._deviceFailed = true;
-                return;
-            }
-
-            if (isDevice) {
-                if (Platform.OS === 'android') {
-                    await Notifications.setNotificationChannelAsync('default', {
-                        name: 'default',
-                        importance: Notifications.AndroidImportance.MAX,
-                        vibrationPattern: [0, 250, 250, 250],
-                        lightColor: '#FF231F7C',
-                    });
-                }
-
-                const { status: existingStatus } = await Notifications.getPermissionsAsync();
-                let finalStatus = existingStatus;
-
-                if (existingStatus !== 'granted') {
-                    const { status } = await Notifications.requestPermissionsAsync();
-                    finalStatus = status;
-                }
-
-                if (finalStatus !== 'granted') {
-                    console.log('❌ Notification Service: Permission not granted! Status:', finalStatus);
-                    return;
-                }
-                console.log('✅ Notification Service: Permission granted.');
-
-                const projectId = Constants?.expoConfig?.extra?.eas?.projectId ?? Constants?.easConfig?.projectId;
-
-                try {
-                    token = (await Notifications.getExpoPushTokenAsync({
-                        projectId,
-                    })).data;
-                    console.log("Expo Push Token:", token);
-
-                    await this.saveTokenToUserProfile(token);
-
-                } catch (e) {
-                    console.error("Error fetching Expo push token:", e);
-                }
-
-                // Also get the native device push token (FCM for Android)
-                // This enables direct FCM messaging from Cloud Functions, which is more
-                // reliable for background delivery on Android than the Expo Push relay.
-                // Note: On iOS, getDevicePushTokenAsync returns an APNs token (hex string),
-                // which is NOT compatible with FCM's direct send method.
-                try {
-                    const deviceToken = await Notifications.getDevicePushTokenAsync();
-                    if (deviceToken?.data && Platform.OS === 'android') {
-                        console.log(`Native Device Push Token (FCM):`, deviceToken.data.substring(0, 30) + '...');
-                        await this.saveFcmTokenToUserProfile(deviceToken.data);
+            Notifications.setNotificationHandler({
+                handleNotification: async (notification: any) => {
+                    const data = notification.request.content.data;
+                    if (data?.uid) {
+                        const { userService } = await import('./userService');
+                        const settings = await userService.getUserProfile(data.uid);
+                        if (settings && !settings.notificationsEnabled) {
+                            return { shouldPlaySound: false, shouldSetBadge: false, shouldShowBanner: false };
+                        }
                     }
-                } catch (e) {
-                    console.warn("Could not get native device push token:", e);
-                }
-            } else {
-                console.log('Must use physical device for Push Notifications');
-            }
-        } catch (error) {
-            console.warn("Notification Service Error:", error);
-        }
-
-        return token;
-    }
-
-    /**
-     * Save the token to the user's profile
-     */
-    async saveTokenToUserProfile(token: string) {
-        const user = auth.currentUser;
-        if (user) {
-            const userRef = doc(db, 'users', user.uid);
-            try {
-                await updateDoc(userRef, {
-                    pushTokens: arrayUnion(token)
-                });
-            } catch (error) {
-                console.error("Error saving push token to profile:", error);
-            }
-        }
-    }
-
-    /**
-     * Save the native FCM/APNs token to the user's profile
-     * This is used for direct FCM messaging from Cloud Functions
-     */
-    async saveFcmTokenToUserProfile(token: string) {
-        const user = auth.currentUser;
-        if (user) {
-            const userRef = doc(db, 'users', user.uid);
-            try {
-                await updateDoc(userRef, {
-                    fcmTokens: arrayUnion(token)
-                });
-                console.log("Saved native FCM token to profile");
-            } catch (error) {
-                console.error("Error saving FCM token to profile:", error);
-            }
-        }
-    }
-
-    /**
-     * Setup listeners with deep-linking support
-     */
-    setupNotificationListeners() {
-        const Notifications = this.getNotifications();
-        if (!Notifications) return () => { };
-
-        try {
-            const notificationListener = Notifications.addNotificationReceivedListener((notification: any) => {
-                console.log("Notification Received:", notification);
-            });
-
-            const responseListener = Notifications.addNotificationResponseReceivedListener((response: any) => {
-                console.log("Notification Clicked:", response);
-                this.handleNotificationResponse(response);
-            });
-
-            // Store subscription for potential cleanup
-            this._responseListenerSubscription = responseListener;
-
-            return () => {
-                notificationListener.remove();
-                responseListener.remove();
-            };
-        } catch (e) {
-            console.warn("Notification Service: Failed to setup listeners", e);
-            return () => { };
-        }
-    }
-
-    /**
-     * Handle notification tap and navigate to the appropriate screen
-     */
-    private handleNotificationResponse(response: any) {
-        try {
-            const data = response?.notification?.request?.content?.data as NotificationData;
-            if (data?.route) {
-                console.log("Navigating to route:", data.route, "with params:", data.params);
-                // Small delay to ensure app is ready
-                setTimeout(() => {
-                    if (data.params) {
-                        router.push({ pathname: data.route as any, params: data.params });
-                    } else {
-                        router.push(data.route as any);
-                    }
-                }, 100);
-            }
-        } catch (e) {
-            console.warn("Notification Service: Failed to handle notification response", e);
-        }
-    }
-
-    /**
-     * Schedule a local push notification
-     * Returns the notification identifier if successful
-     */
-    async scheduleLocalNotification(
-        title: string,
-        body: string,
-        data?: NotificationData
-    ): Promise<string | undefined> {
-        const Notifications = this.getNotifications();
-        if (!Notifications) {
-            console.log("Notification Service: Cannot schedule - notifications not available");
-            return undefined;
-        }
-
-        try {
-            const identifier = await Notifications.scheduleNotificationAsync({
-                content: {
-                    title,
-                    body,
-                    data: data || {},
-                    sound: true,
-                    color: '#2196F3',
-                    channelId: 'default',
-                    priority: 'max',
+                    return { shouldPlaySound: true, shouldSetBadge: false, shouldShowBanner: true, shouldShowList: true };
                 },
-                trigger: null, // Immediate delivery
             });
-            console.log("Local notification scheduled:", identifier);
-            return identifier;
-        } catch (e) {
-            console.warn("Notification Service: Failed to schedule local notification", e);
-            return undefined;
+
+            if (Platform.OS === 'android') {
+                await Notifications.setNotificationChannelAsync('default', {
+                    name: 'default',
+                    importance: Notifications.AndroidImportance.MAX,
+                    vibrationPattern: [0, 250, 250, 250],
+                    lightColor: '#FF231F7C',
+                });
+            }
+        } catch (e) { }
+    }
+
+    async registerForPushNotificationsAsync(): Promise<string | undefined> {
+        const Device = await this.getDevice();
+        const Notifications = await this.getNotifications();
+        console.log(`[NotificationService] Registering. Device: ${!!Device}, Notifications: ${!!Notifications}, IsDevice: ${Device?.isDevice}`);
+        if (!Device || !Notifications || !Device.isDevice) return;
+
+        try {
+            if (Platform.OS === 'android') {
+                await Notifications.setNotificationChannelAsync('default', {
+                    name: 'default',
+                    importance: Notifications.AndroidImportance.MAX,
+                });
+            }
+
+            const { status: existingStatus } = await Notifications.getPermissionsAsync();
+            let finalStatus = existingStatus;
+            console.log(`[NotificationService] Existing status: ${existingStatus}`);
+            if (existingStatus !== 'granted') {
+                const { status } = await Notifications.requestPermissionsAsync();
+                finalStatus = status;
+            }
+            console.log(`[NotificationService] Final status: ${finalStatus}`);
+            if (finalStatus !== 'granted') return;
+
+            const { default: Constants } = await import('expo-constants');
+            const projectId = Constants?.expoConfig?.extra?.eas?.projectId ?? Constants?.easConfig?.projectId;
+
+            const token = (await Notifications.getExpoPushTokenAsync({ projectId })).data;
+            console.log(`[NotificationService] Generated Expo Token: ${token.substring(0, 20)}...`);
+            await this.saveTokenToUserProfile(token);
+
+            if (Platform.OS === 'android') {
+                const deviceToken = await Notifications.getDevicePushTokenAsync();
+                if (deviceToken?.data) await this.saveFcmTokenToUserProfile(deviceToken.data);
+            }
+            return token;
+        } catch (error) { }
+    }
+
+    async saveTokenToUserProfile(token: string) {
+        const auth = await getFirebaseAuth();
+        if (auth.currentUser) {
+            const { doc, updateDoc, arrayUnion } = await import('firebase/firestore');
+            const db = await getFirestoreDb();
+            await updateDoc(doc(db, 'users', auth.currentUser.uid), { pushTokens: arrayUnion(token) });
         }
     }
 
-    // ==========================================
-    // Predefined Notification Templates
-    // ==========================================
-
-    /**
-     * Notify when resume analysis is complete
-     */
-    async notifyAnalysisComplete(
-        jobTitle: string,
-        company: string,
-        score: number,
-        analysisId: string
-    ): Promise<void> {
-        await this.scheduleLocalNotification(
-            "Analysis Complete",
-            `Your resume for ${jobTitle} at ${company} scored ${score}%`,
-            {
-                route: '/analysis-result',
-                params: { id: analysisId }
-            }
-        );
+    async saveFcmTokenToUserProfile(token: string) {
+        const auth = await getFirebaseAuth();
+        if (auth.currentUser) {
+            const { doc, updateDoc, arrayUnion } = await import('firebase/firestore');
+            const db = await getFirestoreDb();
+            await updateDoc(doc(db, 'users', auth.currentUser.uid), { fcmTokens: arrayUnion(token) });
+        }
     }
 
-    /**
-     * Notify when resume optimization is complete
-     */
-    async notifyOptimizationComplete(
-        jobTitle: string,
-        company: string,
-        analysisId: string,
-        score?: number
-    ): Promise<void> {
-        const body = score
-            ? `Your resume for ${jobTitle} at ${company} scored ${score}% after optimization`
-            : `Your resume for ${jobTitle} at ${company} has been optimized`;
+    setupNotificationListeners() {
+        const init = async () => {
+            const Notifications = await this.getNotifications();
+            if (!Notifications) return () => { };
 
-        await this.scheduleLocalNotification(
-            "Resume Optimized",
-            body,
-            {
-                route: '/analysis-result',
-                params: { id: analysisId }
+            const navigateWhenReady = (route: string, params?: any) => {
+
+                // On Android cold starts, the app may not be ready for navigation immediately.
+                // We poll until the profile store is initialized before navigating.
+                const maxWaitMs = 5000;
+                const pollIntervalMs = 200;
+                let waited = 0;
+
+                const attemptNavigation = () => {
+                    try {
+                        // Import profileStore to check if app is initialized
+                        const { useProfileStore } = require('../../store/profileStore');
+                        const state = useProfileStore.getState();
+
+                        if (state.isInitialized && state.userProfile) {
+                            console.log(`[NotificationService] App ready. Navigating to ${route}`);
+                            if (params) {
+                                router.push({ pathname: route as any, params });
+                            } else {
+                                router.push(route as any);
+                            }
+                            return;
+                        }
+                    } catch (e) {
+                        // Store not available yet, keep polling
+                    }
+
+                    waited += pollIntervalMs;
+                    if (waited < maxWaitMs) {
+                        setTimeout(attemptNavigation, pollIntervalMs);
+                    } else {
+                        // Fallback: navigate anyway after max wait
+                        console.warn(`[NotificationService] Max wait reached. Navigating to ${route} anyway.`);
+                        if (params) {
+                            router.push({ pathname: route as any, params });
+                        } else {
+                            router.push(route as any);
+                        }
+                    }
+                };
+
+                // Start with a small initial delay to let React render cycle settle
+                const initialDelay = Platform.OS === 'android' ? 300 : 100;
+                setTimeout(attemptNavigation, initialDelay);
+            };
+
+            const nSub = Notifications.addNotificationReceivedListener((n: any) => console.log(n));
+            const rSub = Notifications.addNotificationResponseReceivedListener((r: any) => {
+                const data = r?.notification?.request?.content?.data;
+                const notifId = r?.notification?.request?.identifier;
+                if (data?.route) {
+                    // Skip if already handled (e.g. from cold start handler)
+                    if (notifId && this._handledNotificationIds.has(notifId)) {
+                        console.log(`[NotificationService] Response listener: notification ${notifId} already handled, skipping.`);
+                        return;
+                    }
+                    if (notifId) this._handledNotificationIds.add(notifId);
+                    console.log(`[NotificationService] Notification tapped. Route: ${data.route}, Params:`, data.params);
+                    navigateWhenReady(data.route, data.params);
+                }
+            });
+
+            // Handle cold start: check if app was opened via a notification tap
+            try {
+                const lastResponse = await Notifications.getLastNotificationResponseAsync();
+                if (lastResponse) {
+                    const notifId = lastResponse?.notification?.request?.identifier;
+                    const data = lastResponse?.notification?.request?.content?.data;
+                    if (data?.route && notifId && !this._handledNotificationIds.has(notifId)) {
+                        console.log(`[NotificationService] Cold start notification detected. Route: ${data.route}, ID: ${notifId}`);
+                        this._handledNotificationIds.add(notifId);
+                        navigateWhenReady(data.route, data.params);
+                    } else if (notifId) {
+                        console.log(`[NotificationService] Cold start notification already handled: ${notifId}`);
+                    }
+                }
+            } catch (e) {
+                console.warn('[NotificationService] Could not check last notification response:', e);
             }
-        );
+
+            return () => { nSub.remove(); rSub.remove(); };
+        };
+        const promise = init();
+        return () => { promise.then(unsub => unsub?.()); };
     }
 
-    /**
-     * Notify when skill addition is complete
-     */
-    async notifySkillAdditionComplete(
-        jobTitle: string,
-        company: string,
-        analysisId: string
-    ): Promise<void> {
-        await this.scheduleLocalNotification(
-            "Optimization Complete",
-            "Your resume has been rewriten and optimized",
-            {
-                route: '/analysis-result',
-                params: { id: analysisId }
+    async scheduleLocalNotification(title: string, body: string, data?: any): Promise<string | undefined> {
+        const Notifications = await this.getNotifications();
+        if (!Notifications) return;
+        try {
+            if (data?.uid) {
+                const { doc, updateDoc, arrayUnion } = await import('firebase/firestore');
+                const db = await getFirestoreDb();
+                await updateDoc(doc(db, 'users', data.uid), {
+                    notifications: arrayUnion({ id: Math.random().toString(36).substr(2, 9), title, body, timestamp: new Date().toISOString(), read: false, data })
+                });
             }
-        );
+            return await Notifications.scheduleNotificationAsync({
+                content: { title, body, data: data || {}, sound: true, priority: 'max' },
+                trigger: null,
+            });
+        } catch (e) { return undefined; }
     }
 
-    /**
-     * Notify when resume validation/save is complete
-     */
-    async notifyValidationComplete(
-        jobTitle: string,
-        analysisId: string
-    ): Promise<void> {
-        await this.scheduleLocalNotification(
-            "Resume Saved",
-            `Your optimized resume for ${jobTitle} has been validated and saved`,
-            {
-                route: '/analysis-result',
-                params: { id: analysisId }
-            }
-        );
+    // Templates
+    async notifyAnalysisComplete(jobTitle: string, company: string, score: number, analysisId: string) {
+        await this.scheduleLocalNotification("Analysis Complete", `Your resume for ${jobTitle} at ${company} scored ${score}%`, { route: '/analysis-result', params: { id: analysisId } });
     }
 
-    /**
-     * Notify when prep guide generation is complete
-     */
-    async notifyPrepGuideComplete(
-        jobTitle: string,
-        company: string,
-        applicationId: string
-    ): Promise<void> {
-        await this.scheduleLocalNotification(
-            "Prep Guide Ready",
-            `Your interview prep guide for ${jobTitle} at ${company} is ready`,
-            {
-                route: '/(tabs)/applications',
-                params: { appId: applicationId, action: 'viewPrep' }
-            }
-        );
+    async notifyParsingFailed() {
+        await this.scheduleLocalNotification("Parsing Failed", "We could not extract text from your document. Please try a different file format (PDF, DOCX).");
     }
 
-    /**
-     * Notify when cover letter generation is complete
-     */
-    async notifyCoverLetterComplete(
-        jobTitle: string,
-        company: string,
-        applicationId: string
-    ): Promise<void> {
-        await this.scheduleLocalNotification(
-            "Cover Letter Ready",
-            `Your cover letter for ${jobTitle} at ${company} is ready`,
-            {
-                route: '/(tabs)/applications',
-                params: { appId: applicationId, action: 'viewCoverLetter' }
-            }
-        );
+    async notifyParsingComplete() {
+        await this.scheduleLocalNotification("Parsing Complete", "Your resume has been successfully parsed and structured. Tap to verify the extracted data.");
     }
 
-    /**
-     * Notify when learning module is complete
-     */
-    async notifyLearningComplete(skillName: string): Promise<void> {
-        await this.scheduleLocalNotification(
-            "Training Complete",
-            `You've completed the ${skillName} training module`,
-            {
-                route: '/(tabs)/learning'
-            }
-        );
-    }
-    // Notify when app is backgrounded during active task
-    async notifyBackgroundWarning(): Promise<void> {
-        await this.scheduleLocalNotification(
-            "Resume Parsing Paused",
-            "Please click here to return within 5 seconds",
-            {
-                route: '/(tabs)/analyze'
-            }
-        );
-    }
-
-    /**
-     * Notify when resume parsing fails
-     */
-    async notifyParsingFailed(): Promise<void> {
-        await this.scheduleLocalNotification(
-            "Resume Parsing Failed",
-            "We encountered an error while parsing your resume. Please try again or paste the text manually.",
-            {
-                route: '/(tabs)/analyze'
-            }
-        );
+    async notifyBackgroundWarning() {
+        await this.scheduleLocalNotification("Parsing Paused", "Resume parsing might be paused because the app was minimized. Return to the app to continue.");
     }
 }
-
 
 export const notificationService = new NotificationService();
 notificationService.initHandler();

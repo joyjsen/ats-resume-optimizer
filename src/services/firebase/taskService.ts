@@ -1,24 +1,12 @@
-import {
-    collection,
-    doc,
-    getDoc,
-    addDoc,
-    updateDoc,
-    deleteDoc,
-    query,
-    where,
-    orderBy,
-    limit,
-    onSnapshot,
-    serverTimestamp
-} from 'firebase/firestore';
-import { db, auth } from './config';
-import { AnalysisTask, TaskStatus, TaskType } from '../../types/task.types';
+import { getFirestoreDb, getFirebaseAuth } from './config';
+import type { AnalysisTask, TaskStatus, TaskType } from '../../types/task.types';
 
 export class TaskService {
     private collectionName = 'analysis_tasks';
 
-    private get tasksCollection() {
+    private async getTasksCollection() {
+        const { collection } = await import('firebase/firestore');
+        const db = await getFirestoreDb();
         return collection(db, this.collectionName);
     }
 
@@ -26,6 +14,8 @@ export class TaskService {
      * Create a new task and add to queue
      */
     async createTask(type: TaskType, payload: any): Promise<string> {
+        const { addDoc, serverTimestamp } = await import('firebase/firestore');
+        const auth = await getFirebaseAuth();
         const user = auth.currentUser;
         if (!user) throw new Error("User must be authenticated to create tasks");
         const userId = user.uid;
@@ -43,7 +33,9 @@ export class TaskService {
             payload: JSON.stringify(payload)
         };
 
-        const docRef = await addDoc(this.tasksCollection, taskData);
+        const tasksColl = await this.getTasksCollection();
+        const docRef = await addDoc(tasksColl, taskData);
+
         console.log(`[TaskService] Task created successfully. ID: ${docRef.id}`);
         return docRef.id;
     }
@@ -52,11 +44,12 @@ export class TaskService {
      * Update task progress
      */
     async updateProgress(taskId: string, progress: number, stage: string) {
+        const { doc, getDoc, updateDoc, serverTimestamp } = await import('firebase/firestore');
+        const db = await getFirestoreDb();
         const docRef = doc(db, this.collectionName, taskId);
 
         try {
             const snap = await getDoc(docRef);
-
             if (!snap.exists()) {
                 console.warn(`[TaskService] Cannot update progress: Task ${taskId} no longer exists.`);
                 throw new Error(`Task ${taskId} no longer exists`);
@@ -68,45 +61,34 @@ export class TaskService {
                 status: 'processing',
                 updatedAt: serverTimestamp()
             });
-            console.log(`[TaskService] updateProgress: Successfully updated task ${taskId} to ${progress}%`);
         } catch (error: any) {
             if (error?.code === 'permission-denied' || error?.message?.includes('permission')) {
-                console.warn(`[TaskService] Task ${taskId} was deleted (permission denied during update).`);
                 throw new Error(`Task ${taskId} no longer exists`);
             }
-            if (error?.message?.includes('no longer exists')) {
-                // Determine if this was the error we threw ourselves
-                // If so, just rethrow it without logging error
-                throw error;
-            }
-            console.error(`[TaskService] Error updating task ${taskId}:`, error);
             throw error;
         }
     }
 
     /**
-     * Get a task by ID (returns null if not found)
+     * Get a task by ID
      */
     async getTask(taskId: string): Promise<AnalysisTask | null> {
+        const { doc, getDoc } = await import('firebase/firestore');
+        const db = await getFirestoreDb();
         const docRef = doc(db, this.collectionName, taskId);
         const snap = await getDoc(docRef);
-        if (!snap.exists()) {
-            return null;
-        }
+
+        if (!snap.exists()) return null;
         return { id: snap.id, ...snap.data() } as AnalysisTask;
     }
 
-    /**
-     * Mark task as completed
-     */
     async completeTask(taskId: string, resultId: string) {
+        const { doc, getDoc, updateDoc, serverTimestamp } = await import('firebase/firestore');
+        const db = await getFirestoreDb();
         const docRef = doc(db, this.collectionName, taskId);
         const snap = await getDoc(docRef);
 
-        if (!snap.exists()) {
-            console.warn(`[TaskService] Cannot complete task: Task ${taskId} no longer exists.`);
-            return;
-        }
+        if (!snap.exists()) return;
 
         await updateDoc(docRef, {
             status: 'completed',
@@ -117,163 +99,121 @@ export class TaskService {
         });
     }
 
-    /**
-     * Mark task as failed
-     */
     async failTask(taskId: string, error: string) {
+        const { doc, getDoc, updateDoc, serverTimestamp } = await import('firebase/firestore');
+        const db = await getFirestoreDb();
         const docRef = doc(db, this.collectionName, taskId);
         try {
             const snap = await getDoc(docRef);
-
-            if (!snap.exists()) {
-                console.warn(`[TaskService] Cannot mark task as failed: Task ${taskId} no longer exists.`);
-                return;
-            }
-
-            await updateDoc(docRef, {
-                status: 'failed',
-                error,
-                updatedAt: serverTimestamp()
-            });
-        } catch (e: any) {
-            if (e?.code === 'not-found' || e?.message?.includes('No document to update')) {
-                console.warn(`[TaskService] Ignore failTask error: Task ${taskId} already deleted.`);
-                return;
-            }
-            console.error(`[TaskService] Error failing task ${taskId}:`, e);
-        }
+            if (!snap.exists()) return;
+            await updateDoc(docRef, { status: 'failed', error, updatedAt: serverTimestamp() });
+        } catch (e: any) { }
     }
 
-    /**
-     * Delete a task
-     */
     async deleteTask(taskId: string) {
-        console.log(`[TaskService] Attempting to delete task: ${taskId}`);
+        const { doc, getDoc, deleteDoc } = await import('firebase/firestore');
+        const db = await getFirestoreDb();
+        const auth = await getFirebaseAuth();
         const docRef = doc(db, this.collectionName, taskId);
-
         const snap = await getDoc(docRef);
-        if (!snap.exists()) {
-            console.warn(`[TaskService] Cannot delete task: Task ${taskId} does not exist.`);
-            return;
-        }
+        if (!snap.exists()) return;
 
         const data = snap.data();
-        if (data?.userId !== auth.currentUser?.uid) {
-            throw new Error("Unauthorized: Cannot delete another user's task");
-        }
+        if (data?.userId !== auth.currentUser?.uid) throw new Error("Unauthorized");
 
         await deleteDoc(docRef);
-        console.log(`[TaskService] Successfully deleted task: ${taskId}`);
     }
 
-    /**
-     * Subscribe to a specific task (by ID)
-     */
-    subscribeToTask(taskId: string, callback: (task: AnalysisTask) => void, onError?: (error: any) => void) {
-        const docRef = doc(db, this.collectionName, taskId);
-        return onSnapshot(docRef, (docSnap) => {
-            if (docSnap.exists()) {
-                const data = docSnap.data();
-                const task = {
-                    id: docSnap.id,
-                    ...data,
-                    createdAt: (data?.createdAt as any)?.toDate ? (data.createdAt as any).toDate() : new Date(),
-                    updatedAt: (data?.updatedAt as any)?.toDate ? (data.updatedAt as any).toDate() : new Date(),
-                    payload: data?.payload ? JSON.parse(data.payload) : {}
-                } as AnalysisTask;
-                callback(task);
-            } else {
-                console.log(`[TaskService] Task ${taskId} no longer exists (likely cancelled)`);
-                const cancelledTask = {
-                    id: taskId,
-                    status: 'cancelled',
-                    error: 'Task was cancelled by user',
-                    progress: 0,
-                    stage: 'Cancelled'
-                } as AnalysisTask;
-                callback(cancelledTask);
-            }
-        }, (error) => {
-            const errorCode = (error as any)?.code || '';
-            if (errorCode === 'permission-denied' || errorCode.includes('permission')) {
-                console.log(`[TaskService] Task ${taskId} subscription ended (permission denied - likely deleted)`);
-                const cancelledTask = {
-                    id: taskId,
-                    status: 'cancelled',
-                    error: 'Task was cancelled by user',
-                    progress: 0,
-                    stage: 'Cancelled'
-                } as AnalysisTask;
-                callback(cancelledTask);
-            } else {
-                console.error(`[TaskService] Subscription error for task ${taskId}:`, error);
+    async subscribeToTask(taskId: string, callback: (task: AnalysisTask) => void, onError?: (error: any) => void) {
+        let unsub: (() => void) | undefined;
+        const init = async () => {
+            const { doc, onSnapshot } = await import('firebase/firestore');
+            const db = await getFirestoreDb();
+            const docRef = doc(db, this.collectionName, taskId);
+            unsub = onSnapshot(docRef, (docSnap: any) => {
+                if (docSnap.exists()) {
+                    const data = docSnap.data();
+                    callback({
+                        id: docSnap.id,
+                        ...data,
+                        createdAt: (data?.createdAt as any)?.toDate?.() || new Date(),
+                        updatedAt: (data?.updatedAt as any)?.toDate?.() || new Date(),
+                        payload: data?.payload ? JSON.parse(data.payload) : {}
+                    } as AnalysisTask);
+                } else {
+                    callback({ id: taskId, status: 'cancelled', error: 'Cancelled', progress: 0, stage: 'Cancelled' } as AnalysisTask);
+                }
+            }, (error: any) => {
+                const errorCode = error?.code || '';
+                if (errorCode === 'permission-denied' || errorCode.includes('permission')) {
+                    callback({ id: taskId, status: 'cancelled', error: 'Cancelled', progress: 0, stage: 'Cancelled' } as AnalysisTask);
+                } else if (onError) onError(error);
+            });
+        };
+        const promise = init();
+        return () => { promise.then(() => unsub?.()); };
+    }
+
+    async subscribeToActiveTasks(callback: (tasks: AnalysisTask[]) => void, onError?: (error: any) => void) {
+        let unsub: (() => void) | undefined;
+        const init = async () => {
+            const { query, where, orderBy, limit, onSnapshot } = await import('firebase/firestore');
+            const auth = await getFirebaseAuth();
+            const user = auth.currentUser;
+            if (!user) return;
+
+            const tasksColl = await this.getTasksCollection();
+            const q = query(tasksColl, where('userId', '==', user.uid), orderBy('updatedAt', 'desc'), limit(10));
+
+            unsub = onSnapshot(q, (snapshot: any) => {
+                const tasks = snapshot.docs.map(docSnap => {
+                    const data = docSnap.data();
+                    return {
+                        id: docSnap.id,
+                        ...data,
+                        createdAt: (data?.createdAt as any)?.toDate ? (data.createdAt as any).toDate() : new Date(),
+                        updatedAt: (data?.updatedAt as any)?.toDate ? (data.updatedAt as any).toDate() : new Date(),
+                        payload: data.payload ? JSON.parse(data.payload) : {}
+                    } as AnalysisTask;
+                });
+                callback(tasks);
+            }, (error: any) => {
                 if (onError) onError(error);
-            }
-        });
+            });
+        };
+        const promise = init();
+        return () => { promise.then(() => unsub?.()); };
     }
 
-    /**
-     * Subscribe to active tasks for the current user
-     */
-    subscribeToActiveTasks(callback: (tasks: AnalysisTask[]) => void, onError?: (error: any) => void) {
-        const user = auth.currentUser;
-        if (!user) return () => { };
-        const userId = user.uid;
+    async subscribeToQueuedTasks(callback: (tasks: AnalysisTask[]) => void, onError?: (error: any) => void) {
+        let unsub: (() => void) | undefined;
+        const init = async () => {
+            const { query, where, onSnapshot } = await import('firebase/firestore');
+            const auth = await getFirebaseAuth();
+            const user = auth.currentUser;
+            if (!user) return;
 
-        const q = query(
-            this.tasksCollection,
-            where('userId', '==', userId),
-            orderBy('updatedAt', 'desc'),
-            limit(10)
-        );
+            const tasksColl = await this.getTasksCollection();
+            const q = query(tasksColl, where('userId', '==', user.uid), where('status', '==', 'queued'));
 
-        return onSnapshot(q, (snapshot) => {
-            const tasks = snapshot.docs.map(docSnap => {
-                const data = docSnap.data();
-                return {
-                    id: docSnap.id,
-                    ...data,
-                    createdAt: (data?.createdAt as any)?.toDate ? (data.createdAt as any).toDate() : new Date(),
-                    updatedAt: (data?.updatedAt as any)?.toDate ? (data.updatedAt as any).toDate() : new Date(),
-                    payload: data.payload ? JSON.parse(data.payload) : {}
-                } as AnalysisTask;
+            unsub = onSnapshot(q, (snapshot: any) => {
+                const tasks = snapshot.docs.map(docSnap => {
+                    const data = docSnap.data();
+                    return {
+                        id: docSnap.id,
+                        ...data,
+                        createdAt: (data?.createdAt as any)?.toDate?.() || new Date(),
+                        updatedAt: (data?.updatedAt as any)?.toDate?.() || new Date(),
+                        payload: data.payload ? JSON.parse(data.payload) : {}
+                    } as AnalysisTask;
+                });
+                callback(tasks);
+            }, (error: any) => {
+                if (onError) onError(error);
             });
-            callback(tasks);
-        }, (error) => {
-            if (onError) onError(error);
-            else console.error(`[TaskService] Active Tasks subscription error:`, error);
-        });
-    }
-
-    /**
-     * Subscribe to queued tasks only (for Worker execution)
-     */
-    subscribeToQueuedTasks(callback: (tasks: AnalysisTask[]) => void, onError?: (error: any) => void) {
-        const user = auth.currentUser;
-        if (!user) return () => { };
-
-        const q = query(
-            this.tasksCollection,
-            where('userId', '==', user.uid),
-            where('status', '==', 'queued')
-        );
-
-        return onSnapshot(q, (snapshot) => {
-            const tasks = snapshot.docs.map(docSnap => {
-                const data = docSnap.data();
-                return {
-                    id: docSnap.id,
-                    ...data,
-                    createdAt: (data?.createdAt as any)?.toDate ? (data.createdAt as any).toDate() : new Date(),
-                    updatedAt: (data?.updatedAt as any)?.toDate ? (data.updatedAt as any).toDate() : new Date(),
-                    payload: data.payload ? JSON.parse(data.payload) : {}
-                } as AnalysisTask;
-            });
-            callback(tasks);
-        }, (error) => {
-            if (onError) onError(error);
-            else console.error(`[TaskService] Queued Tasks subscription error:`, error);
-        });
+        };
+        const promise = init();
+        return () => { promise.then(() => unsub?.()); };
     }
 }
 

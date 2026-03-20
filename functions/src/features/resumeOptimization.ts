@@ -36,7 +36,7 @@ export const optimizeResume = (openaiApiKey: any, perplexityApiKey: any) => onCa
             });
 
             const openai = new OpenAI({
-                apiKey: openaiApiKey.value(),
+                apiKey: openaiApiKey.value().trim(),
                 maxRetries: 2,
                 timeout: 90000,
             });
@@ -77,7 +77,7 @@ Return JSON:
 
             const aiResult = await callAiWithFallback(
                 openai,
-                perplexityApiKey.value(),
+                perplexityApiKey.value().trim(),
                 systemInstruction,
                 userContent,
                 { maxTokens: 10000 }
@@ -172,7 +172,7 @@ export const addSkillToResume = (openaiApiKey: any, perplexityApiKey: any) => on
             });
 
             const openai = new OpenAI({
-                apiKey: openaiApiKey.value(),
+                apiKey: openaiApiKey.value().trim(),
                 maxRetries: 2,
                 timeout: 60000,
             });
@@ -203,7 +203,7 @@ OUTPUT JSON:
 
             const aiResult = await callAiWithFallback(
                 openai,
-                perplexityApiKey.value(),
+                perplexityApiKey.value().trim(),
                 systemInstruction,
                 prompt
             );

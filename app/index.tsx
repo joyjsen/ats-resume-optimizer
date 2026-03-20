@@ -8,6 +8,32 @@ import { FontAwesome6 } from '@expo/vector-icons';
 import { useProfileStore } from '../src/store/profileStore';
 import { useResumeStore } from '../src/store/resumeStore';
 import { horizontalScale, verticalScale, moderateScale, scaleFont } from '../src/utils/responsive';
+import { ThemeToggle } from '../src/components/common/ThemeToggle';
+import { useAppTheme } from '../src/context/ThemeContext';
+import Svg, { Path } from 'react-native-svg';
+
+// BlueSky butterfly icon — filled in dark mode, outline in light mode
+const BlueSkyIcon = ({ color, isDark, size = 18 }: { color: string; isDark: boolean; size?: number }) => (
+    <Svg width={size} height={size} viewBox="0 0 568 501" fill="none">
+        {isDark ? (
+            // Filled silhouette (dark mode)
+            <Path
+                fill={color}
+                d="M123.121 33.664C188.241 82.553 258.281 181.68 284 234.873c25.719-53.192 95.759-152.32 160.879-201.209C491.866-1.611 568-28.906 568 57.947c0 17.346-9.945 145.713-15.781 166.555-20.275 72.453-94.155 90.933-159.875 79.748C507.907 325.135 527.667 370.333 488 398c-73.631 52.548-141.131-13.148-159.883-63.051-2.976-8.087-4.374-11.831-4.117-11.831.258 0-.918 3.978-4.117 11.831C301.131 384.852 233.631 450.548 160 398c-39.667-27.667-19.907-72.865 95.656-93.75-65.72 11.185-139.6-7.295-159.875-79.748C89.945 203.66 80 75.293 80 57.947c0-86.853 76.134-59.558 43.121-24.283z"
+            />
+        ) : (
+            // Outline stroke (light mode)
+            <Path
+                stroke={color}
+                strokeWidth="36"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                fill="none"
+                d="M123.121 33.664C188.241 82.553 258.281 181.68 284 234.873c25.719-53.192 95.759-152.32 160.879-201.209C491.866-1.611 568-28.906 568 57.947c0 17.346-9.945 145.713-15.781 166.555-20.275 72.453-94.155 90.933-159.875 79.748C507.907 325.135 527.667 370.333 488 398c-73.631 52.548-141.131-13.148-159.883-63.051-2.976-8.087-4.374-11.831-4.117-11.831.258 0-.918 3.978-4.117 11.831C301.131 384.852 233.631 450.548 160 398c-39.667-27.667-19.907-72.865 95.656-93.75-65.72 11.185-139.6-7.295-159.875-79.748C89.945 203.66 80 75.293 80 57.947c0-86.853 76.134-59.558 43.121-24.283z"
+            />
+        )}
+    </Svg>
+);
 
 const TruthSocialIcon = ({ color }: { color: string }) => {
     const grayColor = '#A0A0A0'; // Matching the gray from the image
@@ -58,6 +84,7 @@ const TruthSocialIcon = ({ color }: { color: string }) => {
 
 export default function LandingPage() {
     const theme = useTheme();
+    const { isDark } = useAppTheme();
     const router = useRouter();
     const { userProfile } = useProfileStore();
     const { pendingSharedUrl, setPendingSharedUrl } = useResumeStore();
@@ -117,7 +144,7 @@ export default function LandingPage() {
                             <Text variant="titleLarge" style={styles.logoText} adjustsFontSizeToFit numberOfLines={1}>RiResume</Text>
                         </View>
                         {!userProfile && (
-                            <View style={{ flexShrink: 0 }}>
+                            <View style={{ flexShrink: 0, flexDirection: 'row', alignItems: 'center' }}>
                                 <Button
                                     mode="text"
                                     onPress={handleLogin}
@@ -129,6 +156,7 @@ export default function LandingPage() {
                                 >
                                     Log In
                                 </Button>
+                                <ThemeToggle size={22} />
                             </View>
                         )}
                     </View>
@@ -212,6 +240,9 @@ export default function LandingPage() {
                             </TouchableOpacity>
                             <TouchableOpacity onPress={() => { }} style={styles.socialIcon}>
                                 <TruthSocialIcon color={theme.colors.onSurface} />
+                            </TouchableOpacity>
+                            <TouchableOpacity onPress={() => { }} style={styles.socialIcon}>
+                                <BlueSkyIcon color={theme.colors.onSurface} isDark={isDark} size={moderateScale(18)} />
                             </TouchableOpacity>
                         </View>
 

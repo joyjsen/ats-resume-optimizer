@@ -24,9 +24,25 @@ export const CoverLetterDialog: React.FC<CoverLetterDialogProps> = ({
     const [isEditing, setIsEditing] = useState(false);
     const [editedContent, setEditedContent] = useState('');
 
+    // Sanitize cover letter text: strip markdown formatting and placeholders
+    const sanitize = (text: string): string => {
+        if (!text) return '';
+        return text
+            .replace(/\*\*/g, '')           // Remove ** bold
+            .replace(/(?<!\w)\*(?!\*)/g, '') // Remove lone * italic (not **)
+            .replace(/^#+\s*/gm, '')         // Remove # headings
+            .replace(/\[Your Name\]/gi, '')
+            .replace(/\[Your Address\]/gi, '')
+            .replace(/\[City,?\s*State,?\s*ZIP\s*(?:Code)?\]/gi, '')
+            .replace(/\[Date\]/gi, '')
+            .replace(/\[Company Address\]/gi, '')
+            .replace(/\n{3,}/g, '\n\n')
+            .trim();
+    };
+
     useEffect(() => {
         if (application?.coverLetter?.content) {
-            setEditedContent(application.coverLetter.content);
+            setEditedContent(sanitize(application.coverLetter.content));
         }
     }, [application]);
 
@@ -82,7 +98,7 @@ export const CoverLetterDialog: React.FC<CoverLetterDialogProps> = ({
                             </View>
                         ) : (
                             <Text variant="bodyMedium" style={{ lineHeight: 22 }}>
-                                {application.coverLetter?.content}
+                                {sanitize(application.coverLetter?.content || '')}
                             </Text>
                         )}
                     </ScrollView>

@@ -3,7 +3,7 @@ import { View, StyleSheet, ScrollView, Alert } from 'react-native';
 import { Text, Button, useTheme, Card } from 'react-native-paper';
 import { useRouter } from 'expo-router';
 import { authService } from '../../src/services/firebase/authService';
-import { auth } from '../../src/services/firebase/config';
+import { getFirebaseAuth } from '../../src/services/firebase/config';
 import { useProfileStore } from '../../src/store/profileStore';
 
 export default function VerifyEmailScreen() {
@@ -47,8 +47,9 @@ export default function VerifyEmailScreen() {
 
         setLoading(true);
         try {
+            const auth = await getFirebaseAuth();
             if (auth.currentUser) {
-                await authService.sendVerificationEmail(auth.currentUser);
+                await authService.sendVerificationEmail();
                 Alert.alert("Sent", "Verification email sent! Please check your inbox (and spam folder).");
                 setResendCooldown(60);
             }
@@ -69,6 +70,16 @@ export default function VerifyEmailScreen() {
         }
     };
 
+    const [userEmail, setUserEmail] = useState<string | null>(null);
+
+    useEffect(() => {
+        getFirebaseAuth().then(auth => {
+            if (auth.currentUser) {
+                setUserEmail(auth.currentUser.email);
+            }
+        });
+    }, []);
+
     return (
         <ScrollView contentContainerStyle={[styles.container, { backgroundColor: theme.colors.background }]}>
             <View style={styles.content}>
@@ -77,7 +88,7 @@ export default function VerifyEmailScreen() {
                     We've sent a verification link to:
                 </Text>
                 <Text variant="titleMedium" style={styles.email}>
-                    {auth.currentUser?.email}
+                    {userEmail}
                 </Text>
                 <Text variant="bodyMedium" style={styles.instruction}>
                     Please click the link in that email to verify your account.

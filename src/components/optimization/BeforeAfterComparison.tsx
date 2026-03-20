@@ -14,7 +14,7 @@ interface Props {
 export const BeforeAfterComparison = ({ original, optimized, changes, isUnsaved }: Props) => {
     const theme = useTheme();
     // ... (existing code omitted for brevity) ...
-    const [isCollapsed, setIsCollapsed] = useState(false);
+    const [isCollapsed, setIsCollapsed] = useState(true);
 
     // Helper: Normalize text for comparison (ignore case, punctuation, whitespace)
     const normalize = (text: string) => {

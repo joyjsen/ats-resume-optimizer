@@ -1,8 +1,8 @@
 import { create } from 'zustand';
 import { UserProfile, UserActivity } from '../types/profile.types';
-import { activityService } from '../services/firebase/activityService';
-import { userService } from '../services/firebase/userService';
-import { auth } from '../services/firebase/config';
+import { getFirebaseAuth } from '../services/firebase/config';
+
+
 
 interface UserStats {
     resumesAnalyzed: number;
@@ -42,11 +42,14 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
     setInitialized: (initialized) => set({ isInitialized: initialized }),
 
     fetchActivities: async () => {
+        const auth = await getFirebaseAuth();
         const user = auth.currentUser;
         if (!user) return;
 
+
         set({ loading: true });
         try {
+            const { activityService } = await import('../services/firebase/activityService');
             const activities = await activityService.getRecentActivity(500);
             set({ activities, loading: false });
         } catch (error: any) {
@@ -54,11 +57,15 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
         }
     },
 
+
     fetchUserStats: async () => {
+        const auth = await getFirebaseAuth();
         const user = auth.currentUser;
         if (!user) return;
 
+
         try {
+            const { userService } = await import('../services/firebase/userService');
             const stats = await userService.getUserStats(user.uid);
             set({ userStats: stats });
         } catch (error) {
@@ -66,11 +73,17 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
         }
     },
 
+
     refreshProfile: async () => {
+        const auth = await getFirebaseAuth();
         const user = auth.currentUser;
         if (!user) return;
 
+
         try {
+            const { userService } = await import('../services/firebase/userService');
+            const { activityService } = await import('../services/firebase/activityService');
+
             const [profile, stats] = await Promise.all([
                 userService.getUserProfile(user.uid),
                 userService.getUserStats(user.uid)
@@ -82,6 +95,7 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
             console.error("Failed to refresh profile:", error);
         }
     },
+
 
     addActivity: (activity) => {
         set((state) => ({
@@ -96,10 +110,29 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
 
     subscribeToProfile: (uid: string) => {
         console.log("Setting up profile subscription for:", uid);
-        const unsubscribe = userService.subscribeToUserProfile(uid, (profile) => {
-            console.log("Profile update received. Balance:", profile?.tokenBalance);
-            set({ userProfile: profile });
+        let currentUnsubscribe: (() => void) | null = null;
+        let isCancelled = false;
+
+        // Asynchronous setup for the subscription
+        import('../services/firebase/userService').then(async ({ userService }) => {
+            const unsub = await userService.subscribeToUserProfile(uid, (profile) => {
+                console.log("Profile update received. Balance:", profile?.tokenBalance);
+                set({ userProfile: profile });
+            });
+            
+            if (isCancelled) {
+                unsub();
+            } else {
+                currentUnsubscribe = unsub;
+            }
         });
-        return unsubscribe;
+
+        return () => {
+            isCancelled = true;
+            if (currentUnsubscribe) {
+                currentUnsubscribe();
+            }
+        };
     }
+
 }));

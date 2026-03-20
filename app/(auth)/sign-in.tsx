@@ -3,11 +3,13 @@ import { View, StyleSheet, Alert, ScrollView, Image, Platform } from 'react-nati
 import { Text, TextInput, Button, useTheme, Card, Appbar, IconButton } from 'react-native-paper';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { authService, UserInactiveError } from '../../src/services/firebase/authService';
-import { auth } from '../../src/services/firebase/config';
+import { getFirebaseAuth, getFirebaseApp } from '../../src/services/firebase/config';
+
 import RecaptchaVerifierModal from '../../src/components/auth/RecaptchaVerifierModal';
 import { LinearGradient } from 'expo-linear-gradient';
 import { CountryCodeSelector } from '../../src/components/auth/CountryCodeSelector';
 import { COUNTRY_CALLING_CODES, CountryCallingCode } from '../../src/constants/countries';
+import { ThemeToggle } from '../../src/components/common/ThemeToggle';
 
 export default function SignIn() {
     const router = useRouter();
@@ -30,14 +32,18 @@ export default function SignIn() {
 
     // Anti-hang: Reset loading states whenever auth state changes to "signed out"
     useEffect(() => {
-        const unsubscribe = auth.onAuthStateChanged((user) => {
-            if (!user) {
-                setLoading(false);
-                setSocialLoading(null);
-            }
+        let unsubscribe: (() => void) | undefined;
+        getFirebaseAuth().then(authInstance => {
+            unsubscribe = authInstance.onAuthStateChanged((user) => {
+                if (!user) {
+                    setLoading(false);
+                    setSocialLoading(null);
+                }
+            });
         });
-        return unsubscribe;
+        return () => unsubscribe?.();
     }, []);
+
 
     // Handle deep link to phone login
     useEffect(() => {
@@ -52,9 +58,8 @@ export default function SignIn() {
             if (provider === 'google') await authService.signInWithGoogle();
             else if (provider === 'apple') await authService.signInWithApple();
             else if (provider === 'microsoft') await authService.signInWithMicrosoft();
+            // Layout guard automatically handles navigation here
 
-            // Explicitly redirect to avoid getting stuck
-            router.replace('/(tabs)/home' as any);
         } catch (error: any) {
             console.error(`${provider} Login Error:`, error);
             const isInactive = error instanceof UserInactiveError ||
@@ -91,8 +96,7 @@ export default function SignIn() {
         setLoading(true);
         try {
             await authService.loginWithEmail(email, password);
-            // Explicitly redirect to avoid getting stuck
-            router.replace('/(tabs)/home' as any);
+            // Layout guard handles navigation
         } catch (error: any) {
             console.error("Login Error:", error);
             const isInactive = error instanceof UserInactiveError ||
@@ -159,8 +163,7 @@ export default function SignIn() {
         setLoading(true);
         try {
             await authService.confirmPhoneCode(verificationCode);
-            // Explicitly redirect to avoid getting stuck
-            router.replace('/(tabs)/home' as any);
+            // Layout guard handles navigation
         } catch (error: any) {
             Alert.alert("Error", error.message || "Invalid code.");
         } finally {
@@ -175,14 +178,17 @@ export default function SignIn() {
         >
             <Appbar.Header style={{ backgroundColor: 'transparent', elevation: 0 }}>
                 <Appbar.BackAction onPress={() => router.replace('/')} />
+                <Appbar.Content title="" />
+                <ThemeToggle style={{ marginRight: 4 }} />
             </Appbar.Header>
             <ScrollView contentContainerStyle={styles.container}>
                 <RecaptchaVerifierModal
                     ref={recaptchaVerifier}
-                    firebaseConfig={auth.app.options}
+                    getApp={getFirebaseApp}
                     title="Verify you are human"
                     cancelLabel="Close"
                 />
+
                 <View style={styles.header}>
                     <Image
                         source={require('../../assets/logo.png')}

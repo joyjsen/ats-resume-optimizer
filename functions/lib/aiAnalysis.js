@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.generateTrainingSlideshow = exports.onBackgroundTaskCreated = exports.generateCoverLetter = exports.generatePrepGuide = exports.addSkillToResume = exports.optimizeResume = exports.generateRecommendation = exports.performGapAnalysis = exports.perplexityApiKey = exports.openaiApiKey = void 0;
+exports.aiProxy = exports.parseResume = exports.generateTrainingSlideshow = exports.onBackgroundTaskCreated = exports.generateCoverLetter = exports.generatePrepGuide = exports.addSkillToResume = exports.optimizeResume = exports.generateRecommendation = exports.performGapAnalysis = exports.perplexityApiKey = exports.openaiApiKey = void 0;
 const params_1 = require("firebase-functions/params");
 // Define secrets once here
 exports.openaiApiKey = (0, params_1.defineSecret)("OPENAI_API_KEY");
@@ -12,6 +12,8 @@ const resumeOptimization_1 = require("./features/resumeOptimization");
 const prepGuide_1 = require("./features/prepGuide");
 const backgroundTasks_1 = require("./features/backgroundTasks");
 const trainingSlideshow_1 = require("./features/trainingSlideshow");
+const resumeParser_1 = require("./features/resumeParser");
+const aiProxy_1 = require("./features/aiProxy");
 exports.performGapAnalysis = (0, gapAnalysis_1.performGapAnalysis)(exports.openaiApiKey, exports.perplexityApiKey);
 exports.generateRecommendation = (0, generateRecommendation_1.generateRecommendation)(exports.openaiApiKey, exports.perplexityApiKey);
 exports.optimizeResume = (0, resumeOptimization_1.optimizeResume)(exports.openaiApiKey, exports.perplexityApiKey);
@@ -20,4 +22,6 @@ exports.generatePrepGuide = (0, prepGuide_1.generatePrepGuide)(exports.openaiApi
 exports.generateCoverLetter = (0, prepGuide_1.generateCoverLetter)(exports.openaiApiKey, exports.perplexityApiKey);
 exports.onBackgroundTaskCreated = (0, backgroundTasks_1.onBackgroundTaskCreated)(exports.openaiApiKey, exports.perplexityApiKey);
 exports.generateTrainingSlideshow = (0, trainingSlideshow_1.generateTrainingSlideshow)(exports.openaiApiKey);
+exports.parseResume = (0, resumeParser_1.parseResume)(exports.openaiApiKey);
+exports.aiProxy = (0, aiProxy_1.aiProxy)(exports.openaiApiKey, exports.perplexityApiKey);
 //# sourceMappingURL=aiAnalysis.js.map

@@ -3,9 +3,8 @@ import { View, StyleSheet, FlatList, Alert, TouchableOpacity } from 'react-nativ
 import { Text, Searchbar, List, Avatar, Chip, useTheme, IconButton, Menu, Divider, Button, Switch } from 'react-native-paper';
 import { useRouter } from 'expo-router';
 import { userService } from '../../src/services/firebase/userService';
-import { auth } from '../../src/services/firebase/config';
+import { getFirebaseAuth, getFirebaseFunctions } from '../../src/services/firebase/config';
 import { UserProfile } from '../../src/types/profile.types';
-import { getFunctions, httpsCallable } from 'firebase/functions';
 
 export default function UserManagementScreen() {
     const theme = useTheme();
@@ -69,6 +68,7 @@ export default function UserManagementScreen() {
     };
 
     const handleToggleStatus = async (user: UserProfile) => {
+        const auth = await getFirebaseAuth();
         if (user.uid === auth.currentUser?.uid) {
             Alert.alert("Action Prevented", "You cannot deactivate your own account. This is a safety measure to ensure you don't lock yourself out of the admin system.");
             return;
@@ -87,7 +87,8 @@ export default function UserManagementScreen() {
 
             // Send email notification
             try {
-                const functions = getFunctions();
+                const { httpsCallable } = await import('firebase/functions');
+                const functions = await getFirebaseFunctions();
                 const sendAccountStatusEmail = httpsCallable(functions, 'sendAccountStatusEmail');
                 await sendAccountStatusEmail({
                     email: user.email,
@@ -105,6 +106,7 @@ export default function UserManagementScreen() {
     };
 
     const handleToggleRole = async (user: UserProfile) => {
+        const auth = await getFirebaseAuth();
         if (user.uid === auth.currentUser?.uid) {
             Alert.alert("Action Prevented", "You cannot demote yourself. This is a safety measure to ensure you don't lose access to the Admin Dashboard.");
             return;

@@ -31,7 +31,7 @@ const optimizeResume = (openaiApiKey, perplexityApiKey) => (0, https_1.onCall)({
             updatedAt: admin.firestore.FieldValue.serverTimestamp(),
         });
         const openai = new openai_1.default({
-            apiKey: openaiApiKey.value(),
+            apiKey: openaiApiKey.value().trim(),
             maxRetries: 2,
             timeout: 90000,
         });
@@ -67,7 +67,7 @@ Return JSON:
     { "type": "REWRITE_BULLET", "section": "Experience", "reason": "Quantified achievement to increase ATS impact" }
   ]
 }`.trim();
-        const aiResult = await (0, aiUtils_1.callAiWithFallback)(openai, perplexityApiKey.value(), systemInstruction, userContent, { maxTokens: 10000 });
+        const aiResult = await (0, aiUtils_1.callAiWithFallback)(openai, perplexityApiKey.value().trim(), systemInstruction, userContent, { maxTokens: 10000 });
         const result = JSON.parse(aiResult);
         // Helper to find the resume object
         const aiGeneratedResume = result.optimizedResume || result.optimized_resume || (result.experience ? result : {});
@@ -145,7 +145,7 @@ const addSkillToResume = (openaiApiKey, perplexityApiKey) => (0, https_1.onCall)
             updatedAt: admin.firestore.FieldValue.serverTimestamp(),
         });
         const openai = new openai_1.default({
-            apiKey: openaiApiKey.value(),
+            apiKey: openaiApiKey.value().trim(),
             maxRetries: 2,
             timeout: 60000,
         });
@@ -171,7 +171,7 @@ OUTPUT JSON:
     { "type": "skill_addition", "skill": "${skill}", "reason": "..." }
   ]
 }`.trim();
-        const aiResult = await (0, aiUtils_1.callAiWithFallback)(openai, perplexityApiKey.value(), systemInstruction, prompt);
+        const aiResult = await (0, aiUtils_1.callAiWithFallback)(openai, perplexityApiKey.value().trim(), systemInstruction, prompt);
         const result = JSON.parse(aiResult);
         await taskRef.update({
             progress: 90,

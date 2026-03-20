@@ -46,7 +46,7 @@ exports.validateAppleReceipt = functionsV1
     }
     try {
         // 2. Validate receipt with Apple
-        const validationResult = await validateWithApple(receiptData, appleSharedSecret.value());
+        const validationResult = await validateWithApple(receiptData, appleSharedSecret.value().trim());
         if (!validationResult.valid) {
             console.error(`[Apple IAP] Invalid receipt for UID ${uid}:`, validationResult.status);
             return { success: false, error: `Receipt validation failed (status: ${validationResult.status})` };
@@ -115,7 +115,8 @@ exports.validateAppleReceipt = functionsV1
         batch.set(activityRef, {
             uid,
             type: "token_purchase",
-            description: `Purchased ${tokenInfo.tokens} tokens (Apple IAP)`,
+            description: `Purchased ${tokenInfo.packageId} tokens (Apple)`,
+            tokensUsed: tokenInfo.tokens,
             contextData: {
                 packageId: tokenInfo.packageId,
                 tokens: tokenInfo.tokens,

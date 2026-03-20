@@ -8,16 +8,19 @@ import { UserProfile } from '../../src/types/profile.types';
 
 import { authService } from '../../src/services/firebase/authService';
 import { ConfirmationResult } from 'firebase/auth';
-import { auth } from '../../src/services/firebase/config';
+import { getFirebaseApp } from '../../src/services/firebase/config';
 import RecaptchaVerifierModal from '../../src/components/auth/RecaptchaVerifierModal';
 import { CountryCodeSelector } from '../../src/components/auth/CountryCodeSelector';
 import { COUNTRY_CALLING_CODES, CountryCallingCode } from '../../src/constants/countries';
 import { COMMON_ROLES, COMMON_INDUSTRIES } from '../../src/constants/onboarding';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Keyboard, TouchableOpacity } from 'react-native';
+import { ThemeToggle } from '../../src/components/common/ThemeToggle';
+import { useAppTheme } from '../../src/context/ThemeContext';
 
 export default function OnboardingScreen() {
-    const theme = useTheme();
+    // Use ThemeContext directly so component re-renders when toggle fires
+    const { theme } = useAppTheme();
     const router = useRouter();
     const { userProfile, setUserProfile } = useProfileStore();
 
@@ -289,12 +292,15 @@ export default function OnboardingScreen() {
     return (
         <KeyboardAvoidingView
             behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-            style={{ flex: 1 }}
+            style={{ flex: 1, backgroundColor: theme.colors.background }}
         >
-            <ScrollView contentContainerStyle={styles.container}>
+            <ScrollView
+                contentContainerStyle={[styles.container, { backgroundColor: theme.colors.background }]}
+                style={{ backgroundColor: theme.colors.background }}
+            >
                 <RecaptchaVerifierModal
                     ref={recaptchaVerifier}
-                    firebaseConfig={auth.app.options}
+                    getApp={getFirebaseApp}
                     title="Verify you are human"
                     cancelLabel="Close"
                 />

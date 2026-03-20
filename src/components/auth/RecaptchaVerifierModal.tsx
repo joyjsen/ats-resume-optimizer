@@ -1,11 +1,11 @@
-import React, { forwardRef, useImperativeHandle, useState, useRef } from 'react';
+import React, { forwardRef, useImperativeHandle, useState, useRef, useEffect } from 'react';
 import { Modal, StyleSheet, View, TouchableOpacity, Text, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { WebView } from 'react-native-webview';
-import { ApplicationVerifier } from 'firebase/auth';
+import type { ApplicationVerifier } from 'firebase/auth';
 
 interface Props {
-  firebaseConfig: any;
+  getApp: () => Promise<any>;
   title?: string;
   cancelLabel?: string;
 }
@@ -14,18 +14,27 @@ export interface RecaptchaVerifierRef extends ApplicationVerifier {
   verify: () => Promise<string>;
 }
 
-const RecaptchaVerifierModal = forwardRef<RecaptchaVerifierRef, Props>(({ firebaseConfig, title = "Verification", cancelLabel = "Cancel" }, ref) => {
+const RecaptchaVerifierModal = forwardRef<RecaptchaVerifierRef, Props>(({ getApp, title = "Verification", cancelLabel = "Cancel" }, ref) => {
   const [visible, setVisible] = useState(false);
   const [resolver, setResolver] = useState<((token: string) => void) | null>(null);
   const [rejecter, setRejecter] = useState<((error: Error) => void) | null>(null);
+  const [config, setConfig] = useState<any>(null);
 
-  // Ref to the verifier ID
-  const verifierId = useRef(Math.random().toString(36).substring(7)).current;
+  useEffect(() => {
+    if (visible && !config) {
+      getApp().then(app => {
+        setConfig(app.options);
+      }).catch(err => {
+        console.error("Failed to get Firebase App for ReCAPTCHA:", err);
+        if (rejecter) rejecter(err);
+        setVisible(false);
+      });
+    }
+  }, [visible, config, getApp]);
 
   useImperativeHandle(ref, () => ({
     type: 'recaptcha',
     verify: () => {
-      // Return a promise that resolves when the WebView posts back a success token
       return new Promise((resolve, reject) => {
         setVisible(true);
         setResolver(() => resolve);
@@ -41,13 +50,11 @@ const RecaptchaVerifierModal = forwardRef<RecaptchaVerifierRef, Props>(({ fireba
 
   const handleMessage = (event: any) => {
     const data = event.nativeEvent.data;
-    // Check for specific prefixes if needed, but for now assuming token or error
     if (data.startsWith('error:')) {
       if (rejecter) rejecter(new Error(data.substring(6)));
       cleanup();
     } else {
-      // Success code
-      if (resolver) resolver(data); // "data" is the verification ID or token
+      if (resolver) resolver(data);
       cleanup();
     }
   };
@@ -63,8 +70,12 @@ const RecaptchaVerifierModal = forwardRef<RecaptchaVerifierRef, Props>(({ fireba
     cleanup();
   };
 
-  // Improved HTML: Uses Firebase SDK directly to handle keys automatically
-  const html = `
+  if (Platform.OS === 'web') {
+    return null;
+  }
+
+  // Only render WebView when config is available
+  const html = config ? `
     <!DOCTYPE html>
     <html>
       <head>
@@ -81,11 +92,9 @@ const RecaptchaVerifierModal = forwardRef<RecaptchaVerifierRef, Props>(({ fireba
         <div class="loading" id="status">Loading Security Check...</div>
         <div id="recaptcha-container"></div>
         <script>
-          const config = ${JSON.stringify(firebaseConfig)};
-          
+          const config = ${JSON.stringify(config)};
           try {
               firebase.initializeApp(config);
-              
               const verifier = new firebase.auth.RecaptchaVerifier('recaptcha-container', {
                 'size': 'normal',
                 'callback': function(response) {
@@ -95,26 +104,19 @@ const RecaptchaVerifierModal = forwardRef<RecaptchaVerifierRef, Props>(({ fireba
                   window.ReactNativeWebView.postMessage('error:expired');
                 }
               });
-
-              // Auto-render
               verifier.render().then(function(widgetId) {
                 document.getElementById('status').style.display = 'none';
               });
-              
           } catch (e) {
               window.ReactNativeWebView.postMessage('error:' + e.message);
           }
         </script>
       </body>
     </html>
-  `;
-
-  if (Platform.OS === 'web') {
-    return null; // On web, we use the invisible recaptcha handled by authService
-  }
+  ` : '';
 
   return (
-    <Modal visible={visible} animationType="slide" transparent={false}>
+    <Modal visible={visible && !!config} animationType="slide" transparent={false}>
       <SafeAreaView style={styles.container}>
         <View style={styles.header}>
           <Text style={styles.title}>{title}</Text>
@@ -122,13 +124,15 @@ const RecaptchaVerifierModal = forwardRef<RecaptchaVerifierRef, Props>(({ fireba
             <Text style={styles.cancel}>{cancelLabel}</Text>
           </TouchableOpacity>
         </View>
-        <WebView
-          source={{ html, baseUrl: `https://${firebaseConfig.authDomain}` }}
-          onMessage={handleMessage}
-          style={{ flex: 1 }}
-          javaScriptEnabled
-          automaticallyAdjustContentInsets
-        />
+        {config && (
+          <WebView
+            source={{ html, baseUrl: `https://${config.authDomain}` }}
+            onMessage={handleMessage}
+            style={{ flex: 1 }}
+            javaScriptEnabled
+            automaticallyAdjustContentInsets
+          />
+        )}
       </SafeAreaView>
     </Modal>
   );

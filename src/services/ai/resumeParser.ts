@@ -1,20 +1,46 @@
 import * as FileSystem from 'expo-file-system/legacy';
 import { ParsedResume } from '../../types/resume.types';
-import { openai, safeOpenAICall } from '../../config/ai';
-import { Buffer } from 'buffer';
 
 // Use the browser build of mammoth to avoid Node.js dependency issues in React Native
-const mammoth = require('mammoth/mammoth.browser');
+let mammothCache: any = null;
+const getMammoth = async () => {
+  if (!mammothCache) {
+    mammothCache = require('mammoth/mammoth.browser');
+  }
+  return mammothCache;
+};
 
 // pdf-parse is removed as it breaks the React Native bundler.
 // const pdf = require('pdf-parse');
 
+
 export class ResumeParserService {
+  // In-memory cache: hash of content -> parsed result
+  private _cache = new Map<string, ParsedResume>();
+
+  /**
+   * Simple hash function for content-based cache keys.
+   * Uses a fast string hash (djb2) — sufficient for dedup purposes.
+   */
+  private _hashContent(content: string): string {
+    let hash = 5381;
+    for (let i = 0; i < content.length; i++) {
+      hash = ((hash << 5) + hash) + content.charCodeAt(i); // hash * 33 + c
+      hash = hash & hash; // Convert to 32-bit integer
+    }
+    return `resume_${hash >>> 0}`; // unsigned
+  }
+
   /**
    * Parse resume files (Multiple Images, Text, PDF, DOCX)
    */
   async parseResume(fileUris: string[]): Promise<ParsedResume> {
     try {
+      const { httpsCallable } = await import('firebase/functions');
+      const { getFirebaseFunctions } = await import('../firebase/config');
+      const functions = await getFirebaseFunctions();
+      const parseResumeFn = httpsCallable(functions, 'parseResume');
+
       // OPTIMIZATION: Check if we can use Vision-First multimodal parsing (faster for images)
       const imageUris = fileUris.filter(uri => uri.match(/\.(jpg|jpeg|png)$/i) || uri.startsWith('data:image'));
       const otherUris = fileUris.filter(uri => !uri.match(/\.(jpg|jpeg|png)$/i) && !uri.startsWith('data:image'));
@@ -24,12 +50,36 @@ export class ResumeParserService {
         const base64Images = await Promise.all(
           imageUris.map(uri => FileSystem.readAsStringAsync(uri, { encoding: 'base64' }))
         );
-        return await this.parseWithMultimodalAI(base64Images);
+
+        // Cache check: hash the concatenated base64 images
+        const cacheKey = this._hashContent(base64Images.join('|'));
+        if (this._cache.has(cacheKey)) {
+          console.log(`[ResumeParser] ✅ Cache HIT for images (key: ${cacheKey}). Returning cached result.`);
+          return this._cache.get(cacheKey)!;
+        }
+
+        const response = await parseResumeFn({ text: '', images: base64Images });
+        const result = response.data as ParsedResume;
+        this._cache.set(cacheKey, result);
+        console.log(`[ResumeParser] Cached parsed result (key: ${cacheKey}).`);
+        return result;
       }
 
-      // Fallback/Mixed content: Extract text first
+      // Fallback/Mixed content: Extract text first using client-side extractors
       const mixedContent = await this.extractContentFromFiles(fileUris);
-      return await this.parseWithAI(mixedContent);
+
+      // Cache check: hash the extracted text content
+      const cacheKey = this._hashContent(mixedContent);
+      if (this._cache.has(cacheKey)) {
+        console.log(`[ResumeParser] ✅ Cache HIT for text content (key: ${cacheKey}). Returning cached result.`);
+        return this._cache.get(cacheKey)!;
+      }
+
+      const response = await parseResumeFn({ text: mixedContent, images: [] });
+      const result = response.data as ParsedResume;
+      this._cache.set(cacheKey, result);
+      console.log(`[ResumeParser] Cached parsed result (key: ${cacheKey}).`);
+      return result;
     } catch (error: any) {
       console.error('Error parsing resume:', error);
       throw new Error('Failed to parse resume. ' + (error.message || ''));
@@ -41,7 +91,23 @@ export class ResumeParserService {
    */
   async parseResumeFromContent(content: string): Promise<ParsedResume> {
     try {
-      return await this.parseWithAI(content);
+      // Cache check
+      const cacheKey = this._hashContent(content);
+      if (this._cache.has(cacheKey)) {
+        console.log(`[ResumeParser] ✅ Cache HIT for content (key: ${cacheKey}). Returning cached result.`);
+        return this._cache.get(cacheKey)!;
+      }
+
+      const { httpsCallable } = await import('firebase/functions');
+      const { getFirebaseFunctions } = await import('../firebase/config');
+      const functions = await getFirebaseFunctions();
+
+      const parseResumeFn = httpsCallable(functions, 'parseResume');
+      const response = await parseResumeFn({ text: content, images: [] });
+      const result = response.data as ParsedResume;
+      this._cache.set(cacheKey, result);
+      console.log(`[ResumeParser] Cached parsed result (key: ${cacheKey}).`);
+      return result;
     } catch (error: any) {
       console.error('Error parsing resume content:', error);
       throw new Error('Failed to parse resume content. ' + (error.message || ''));
@@ -79,8 +145,10 @@ export class ResumeParserService {
           try {
             const base64 = await FileSystem.readAsStringAsync(uri, { encoding: 'base64' });
             const buffer = Buffer.from(base64, 'base64');
+            const mammoth = await getMammoth();
             const result = await mammoth.extractRawText({ arrayBuffer: buffer });
             return result.value || "";
+
           } catch (docxError: any) {
             console.error("DOCX Parse Error", docxError);
             return `[WARNING: DOCX Parsing failed (${docxError.message}).]`;
@@ -95,19 +163,10 @@ export class ResumeParserService {
         return `[WARNING: Unsupported file type ${uri.split('/').pop()}]`;
       }));
 
-      // Process images - batch into single OCR call if multiple
+      // Process images - skip in mixed mode (handled by vision-first if images only)
       let imageContent = "";
       if (imageUris.length > 0) {
-        try {
-          const base64Images = await Promise.all(
-            imageUris.map(uri => FileSystem.readAsStringAsync(uri, { encoding: 'base64' }))
-          );
-          // Use batched OCR for multiple images (single API call)
-          imageContent = await this.performBatchedOCR(base64Images);
-        } catch (e) {
-          console.error("OCR Error", e);
-          imageContent = "[Error extracting text from images]";
-        }
+        console.warn("[ResumeParser] Mixed image and text content detected. Images are ignored in mixed mode. For best results with images, upload them without documents.");
       }
 
       // Combine all content
@@ -126,200 +185,11 @@ export class ResumeParserService {
   }
 
   /**
-   * Use OpenAI to parse resume into structured data
+   * Clear the parsing cache (e.g., if user wants to force re-parse)
    */
-  /**
-   * Use OpenAI to parse structured data from the resume text.
-   * IMPROVED: proper system/user role separation to avoid token limits and hallucination.
-   */
-  private async parseWithAI(content: string): Promise<ParsedResume> {
-    const systemPrompt = `Expert Resume Parser. Extract data from the text into EXACT JSON.
-Structure:
-{
-  "contactInfo": {"name":"", "email":"", "phone":"", "location":"", "linkedin":"", "portfolio":"", "github":""},
-  "summary": "",
-  "experience": [{"company":"", "title":"", "location":"", "startDate":"MM/YYYY", "endDate":"MM/YYYY", "current":false, "bullets":[]}],
-  "education": [{"institution":"", "degree":"", "field":"", "startDate":"YYYY", "endDate":"YYYY", "gpa":"", "relevantCoursework":[], "honors":[]}],
-  "skills": [{"name":"", "category":"technical|soft|domain|methodology", "proficiency":"beginner|intermediate|advanced|expert"}],
-  "certifications": [{"name":"", "issuer":"", "date":"MM/YYYY", "expiryDate":"MM/YYYY", "credentialId":""}],
-  "projects": [{"name":"", "description":"", "technologies":[], "url":""}]
-}
-Rules:
-- EXHAUSTIVE extraction. Do not truncate bullets or lists.
-- MM/YYYY dates.
-- Clean bullets (no symbols).
-- Categorize skills accurately.
-- **Education Standardization**: Try to standardize degree names during extraction (e.g., extract "Bachelor of Arts" or "BA" as "Bachelor's Degree" in the JSON if the meaning is clear).
-- Education & Certifications: Extract ALL mentioned technologies, tools, and professional standards mentioned in these sections.
-- Return EXACT JSON, no other text.`.trim();
-
-    // Clean visualization markers if present
-    const cleanContent = content.replace(/\[IMAGE_CONTENT:.*?\]/g, '(Image Data Included)');
-
-    const messages = [
-      { role: 'system', content: systemPrompt },
-      { role: 'user', content: `Resume Content:\n${cleanContent}` }
-    ];
-
-    // Validation
-    const lines = content.split('\n');
-    const warnings = lines.filter(l => l.startsWith('[WARNING:'));
-    const actualContent = lines.filter(l => !l.startsWith('[WARNING:') && l.trim().length > 0);
-
-    const isOnlyWarnings = content.trim().length === 0 || (warnings.length > 0 && actualContent.length === 0);
-
-    if (isOnlyWarnings) {
-      let errorMessage = "No valid content found. Please upload a Screenshot (Image), Text file (.txt), or DOCX.";
-      if (warnings.length > 0) {
-        errorMessage = `Could not extract text from files: ${warnings.map(w => w.replace('[WARNING:', '').replace(']', '').trim()).join('; ')}`;
-      }
-      throw new Error(errorMessage);
-    }
-
-    const options = {
-      model: 'gpt-4o-mini',
-      messages: messages,
-      response_format: { type: 'json_object' },
-      max_tokens: 4000,
-      temperature: 0, // Deterministic and faster
-    };
-
-    const response = await safeOpenAICall(
-      () => openai.chat.completions.create(options as any),
-      'Resume Parse',
-      options
-    );
-
-    const contentResponse = response.choices[0].message.content;
-    if (!contentResponse) throw new Error("No response from AI");
-
-    const parsed = JSON.parse(contentResponse);
-
-    // Add IDs to nested arrays
-    return {
-      ...parsed,
-      experience: (parsed.experience || []).map((exp: any) => ({ ...exp, id: this.generateId() })),
-      education: (parsed.education || []).map((edu: any) => ({ ...edu, id: this.generateId() })),
-      certifications: (parsed.certifications || []).map((cert: any) => ({ ...cert, id: this.generateId() })),
-      projects: (parsed.projects || []).map((proj: any) => ({ ...proj, id: this.generateId() })),
-      skills: parsed.skills || [],
-      text: content
-    };
-  }
-
-  /**
-   * Multimodal Vision Parsing - Combined OCR and Structure extraction
-   * This is the FASTEST way to parse images.
-   */
-  private async parseWithMultimodalAI(base64Images: string[]): Promise<ParsedResume> {
-    const systemPrompt = `Expert Resume Parser. Extract all details from these images into EXACT JSON.
-Structure:
-{
-  "contactInfo": {"name":"", "email":"", "phone":"", "location":"", "linkedin":"", "portfolio":"", "github":""},
-  "summary": "",
-  "experience": [{"company":"", "title":"", "location":"", "startDate":"MM/YYYY", "endDate":"MM/YYYY", "current":false, "bullets":[]}],
-  "education": [{"institution":"", "degree":"", "field":"", "startDate":"YYYY", "endDate":"YYYY", "gpa":"", "relevantCoursework":[], "honors":[]}],
-  "skills": [{"name":"", "category":"technical|soft|domain|methodology", "proficiency":"beginner|intermediate|advanced|expert"}],
-  "certifications": [{"name":"", "issuer":"", "date":"MM/YYYY", "expiryDate":"MM/YYYY", "credentialId":""}],
-  "projects": [{"name":"", "description":"", "technologies":[], "url":""}]
-}
-Rules:
-- EXHAUSTIVE text extraction. Do not skip content.
-- **Education Standardization**: Try to standardize degree names during extraction (e.g., extract "Bachelor of Arts" or "BA" as "Bachelor's Degree" in the JSON if the meaning is clear).
-- Education & Certifications: Capture every degree, certification, and specific technical keywords mentioned.
-- Combined all images into one profile.
-- Return EXACT JSON, no explanations.`.trim();
-
-    const imageContent = base64Images.map(base64 => ({
-      type: 'image_url',
-      image_url: { url: `data:image/jpeg;base64,${base64}` }
-    }));
-
-    const messages: any[] = [
-      { role: 'system', content: systemPrompt },
-      {
-        role: 'user',
-        content: [
-          { type: 'text', text: "Extract and structure this resume from the attached images." },
-          ...imageContent as any
-        ]
-      }
-    ];
-
-    const response = await safeOpenAICall(() => openai.chat.completions.create({
-      model: 'gpt-4o-mini',
-      messages: messages,
-      response_format: { type: 'json_object' },
-      max_tokens: 4000,
-      temperature: 0,
-    }), 'Resume Vision-First Parse');
-
-    const contentResponse = response.choices[0].message.content;
-    if (!contentResponse) throw new Error("No response from AI");
-
-    const parsed = JSON.parse(contentResponse);
-
-    return {
-      ...parsed,
-      experience: (parsed.experience || []).map((exp: any) => ({ ...exp, id: this.generateId() })),
-      education: (parsed.education || []).map((edu: any) => ({ ...edu, id: this.generateId() })),
-      certifications: (parsed.certifications || []).map((cert: any) => ({ ...cert, id: this.generateId() })),
-      projects: (parsed.projects || []).map((proj: any) => ({ ...proj, id: this.generateId() })),
-      skills: parsed.skills || [],
-      text: "[Parsed from images]"
-    };
-  }
-
-  /**
-   * Batched OCR - processes multiple images in a single API call
-   * This is kept as a fallback for pure text extraction needs.
-   */
-  private async performBatchedOCR(base64Images: string[]): Promise<string> {
-    try {
-      const imageContent = base64Images.map(base64 => ({
-        type: 'image_url',
-        image_url: { url: `data:image/jpeg;base64,${base64}` }
-      }));
-
-      const prompt = base64Images.length > 1
-        ? `Extract ALL text from these ${base64Images.length} resume images verbatim. Combine in logical order. Do not summarize.`
-        : "Extract the text from this resume image verbatim. Do not summarize.";
-
-      const messages: any[] = [
-        {
-          role: 'user',
-          content: [
-            { type: 'text', text: prompt },
-            ...imageContent as any
-          ]
-        }
-      ];
-
-      const response = await safeOpenAICall(() => openai.chat.completions.create({
-        model: 'gpt-4o-mini',
-        messages: messages,
-        max_tokens: 4000,
-        temperature: 0,
-      }), 'Resume OCR (Batched)');
-
-      let text = response.choices[0].message.content || "";
-      text = text.replace(/\s+/g, ' ').trim();
-      return text;
-    } catch (e) {
-      console.error("Batched OCR Failed", e);
-      throw new Error("Failed to extract text from images");
-    }
-  }
-
-  /**
-   * Helper to extract text from single image (kept for backwards compatibility)
-   */
-  private async performOCR(base64Image: string): Promise<string> {
-    return this.performBatchedOCR([base64Image]);
-  }
-
-  private generateId(): string {
-    return `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  clearCache() {
+    this._cache.clear();
+    console.log('[ResumeParser] Cache cleared.');
   }
 }
 
