@@ -124,6 +124,7 @@ const styles = StyleSheet.create({
         width: 100,
         height: 100,
         marginBottom: 16,
+        borderRadius: 50,
     },
     appName: {
         fontWeight: 'bold',

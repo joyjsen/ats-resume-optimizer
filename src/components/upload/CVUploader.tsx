@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { View, StyleSheet, Alert, Platform } from 'react-native';
+import React, { useState, useEffect, useRef } from 'react';
+import { View, StyleSheet, Alert, Platform, Animated as RNAnimated, findNodeHandle } from 'react-native';
 import { Button, Text, Card, IconButton, useTheme } from 'react-native-paper';
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
@@ -8,19 +8,46 @@ export interface UploadedFile {
     uri: string;
     name: string;
     size?: number;
+    mimeType?: string;
 }
 
 interface Props {
     onFileSelected: (files: UploadedFile[]) => void;
     isTextModeActive?: boolean;
     disabled?: boolean;
+    isGlowing?: boolean;
+    onCreateNew?: () => void;
+    onLoadSaved?: () => void;
+    isLoadingSaved?: boolean;
+    onLayoutUpdate?: (key: string, layout: any) => void;
 }
 
 const isAndroid = Platform.OS === 'android';
 
-export const CVUploader = ({ onFileSelected, isTextModeActive, disabled }: Props) => {
+export const CVUploader = ({ onFileSelected, isTextModeActive, disabled, isGlowing, onCreateNew, onLoadSaved, isLoadingSaved, onLayoutUpdate }: Props) => {
     const theme = useTheme();
     const [files, setFiles] = useState<UploadedFile[]>([]);
+    
+    const glowAnim = useRef(new RNAnimated.Value(0)).current;
+
+    useEffect(() => {
+        if (isGlowing) {
+            RNAnimated.loop(
+                RNAnimated.sequence([
+                    RNAnimated.timing(glowAnim, { toValue: 1, duration: 1000, useNativeDriver: false }),
+                    RNAnimated.timing(glowAnim, { toValue: 0, duration: 1000, useNativeDriver: false })
+                ])
+            ).start();
+        } else {
+            glowAnim.stopAnimation();
+            glowAnim.setValue(0);
+        }
+    }, [isGlowing]);
+
+    const glowColor = glowAnim.interpolate({
+        inputRange: [0, 1],
+        outputRange: ['transparent', theme.colors.primary]
+    });
 
     const getFileType = (name: string): 'document' | 'image' | 'unknown' => {
         const lower = name.toLowerCase();
@@ -58,7 +85,8 @@ export const CVUploader = ({ onFileSelected, isTextModeActive, disabled }: Props
             const newFiles = result.assets.map(a => ({
                 uri: a.uri,
                 name: a.name,
-                size: a.size
+                size: a.size,
+                mimeType: a.mimeType
             }));
 
             // Check for duplicates (same name and size)
@@ -108,7 +136,8 @@ export const CVUploader = ({ onFileSelected, isTextModeActive, disabled }: Props
                 const newFiles = result.assets.map(a => ({
                     uri: a.uri,
                     name: a.fileName || `Screenshot_${Date.now()}.jpg`,
-                    size: a.fileSize
+                    size: a.fileSize,
+                    mimeType: a.mimeType || 'image/jpeg'
                 }));
 
                 // Check for duplicates (same name and size)
@@ -139,13 +168,46 @@ export const CVUploader = ({ onFileSelected, isTextModeActive, disabled }: Props
         onFileSelected(newFileList); // Pass full objects, not just URIs
     };
 
+    const rootRef = useRef<View>(null);
+    const galleryRef = useRef<View>(null);
+    const filesRef = useRef<View>(null);
+    const createNewRef = useRef<View>(null);
+    const useSavedRef = useRef<View>(null);
+
     const removeFile = (uri: string) => {
         const updated = files.filter(f => f.uri !== uri);
         updateFiles(updated);
     };
 
+    const triggerMeasurement = () => {
+        if (!onLayoutUpdate || !rootRef.current) return;
+        setTimeout(() => {
+            rootRef.current?.measure((rx, ry, rw, rh, rootPageX, rootPageY) => {
+                if (rootPageY === undefined) return;
+
+                galleryRef.current?.measure((x, y, w, h, pageX, pageY) => {
+                    if (pageY !== undefined) onLayoutUpdate('gallery', { x: pageX - rootPageX, y: pageY - rootPageY, width: w, height: h });
+                });
+                filesRef.current?.measure((x, y, w, h, pageX, pageY) => {
+                    if (pageY !== undefined) onLayoutUpdate('files', { x: pageX - rootPageX, y: pageY - rootPageY, width: w, height: h });
+                });
+                createNewRef.current?.measure((x, y, w, h, pageX, pageY) => {
+                    if (pageY !== undefined) onLayoutUpdate('createNew', { x: pageX - rootPageX, y: pageY - rootPageY, width: w, height: h });
+                });
+                useSavedRef.current?.measure((x, y, w, h, pageX, pageY) => {
+                    if (pageY !== undefined) onLayoutUpdate('useSaved', { x: pageX - rootPageX, y: pageY - rootPageY, width: w, height: h });
+                });
+            });
+        }, 300);
+    };
+
+    React.useEffect(() => {
+        triggerMeasurement();
+    }, [disabled, isGlowing]);
+
     return (
-        <View style={styles.container}>
+        <View style={styles.container} ref={rootRef} onLayout={triggerMeasurement}>
+            <RNAnimated.View style={{ borderRadius: 12, borderWidth: 2, borderColor: glowColor, shadowColor: isGlowing ? theme.colors.primary : 'transparent', shadowOpacity: glowAnim, shadowRadius: 8 }}>
             <Card style={styles.uploadCard} mode="outlined">
                 <Card.Content style={styles.content}>
                     <IconButton icon="cloud-upload" size={isAndroid ? 32 : 40} iconColor={theme.colors.primary} />
@@ -155,27 +217,69 @@ export const CVUploader = ({ onFileSelected, isTextModeActive, disabled }: Props
                     </Text>
 
                     <View style={styles.buttonRow}>
-                        <Button
-                            mode="contained"
-                            icon="image"
-                            onPress={pickImages}
-                            style={styles.button}
-                            compact={isAndroid}
-                            disabled={disabled}
-                        >
-                            Gallery
-                        </Button>
-                        <Button
-                            mode="outlined"
-                            icon="file-document"
-                            onPress={pickDocument}
-                            style={styles.button}
-                            compact={isAndroid}
-                            disabled={disabled}
-                        >
-                            Files
-                        </Button>
+                        <View style={{ flex: 1 }} ref={galleryRef}>
+                            <Button
+                                mode="outlined"
+                                icon="image"
+                                onPress={pickImages}
+                                style={styles.button}
+                                compact={true}
+                                labelStyle={{ fontSize: isAndroid ? 14 : 16 }}
+                                disabled={disabled}
+                            >
+                                Gallery
+                            </Button>
+                        </View>
+                        <View style={{ flex: 1 }} ref={filesRef}>
+                            <Button
+                                mode="outlined"
+                                icon="file-document"
+                                onPress={pickDocument}
+                                style={styles.button}
+                                compact={true}
+                                labelStyle={{ fontSize: isAndroid ? 14 : 16 }}
+                                disabled={disabled}
+                            >
+                                Files
+                            </Button>
+                        </View>
                     </View>
+
+                    {(onCreateNew || onLoadSaved) && (
+                        <View style={styles.buttonRowSecondary}>
+                            {onCreateNew && (
+                                <View style={{ flex: 1 }} ref={createNewRef}>
+                                    <Button
+                                        mode="contained"
+                                        icon="file-document-edit"
+                                        onPress={onCreateNew}
+                                        style={styles.button}
+                                        compact={true}
+                                        labelStyle={{ fontSize: isAndroid ? 14 : 16 }}
+                                        disabled={disabled}
+                                    >
+                                        Create New
+                                    </Button>
+                                </View>
+                            )}
+                            {onLoadSaved && (
+                                <View style={{ flex: 1 }} ref={useSavedRef}>
+                                    <Button
+                                        mode="contained"
+                                        icon="cloud-download"
+                                        onPress={onLoadSaved}
+                                        style={styles.button}
+                                        compact={true}
+                                        labelStyle={{ fontSize: isAndroid ? 14 : 16 }}
+                                        disabled={disabled || isLoadingSaved}
+                                        loading={isLoadingSaved}
+                                    >
+                                        Use saved
+                                    </Button>
+                                </View>
+                            )}
+                        </View>
+                    )}
 
                     {files.length > 0 && (
                         <Text variant="bodySmall" style={{ marginTop: 8 }}>
@@ -184,6 +288,7 @@ export const CVUploader = ({ onFileSelected, isTextModeActive, disabled }: Props
                     )}
                 </Card.Content>
             </Card>
+            </RNAnimated.View>
 
             {files.map((f, index) => (
                 <Card key={index} mode="outlined" style={{ marginTop: 8 }}>
@@ -227,12 +332,18 @@ const styles = StyleSheet.create({
     },
     button: {
         marginTop: 0,
-        flex: 1,
+        width: '100%',
     },
     buttonRow: {
         flexDirection: 'row',
         gap: isAndroid ? 8 : 12,
         marginTop: isAndroid ? 12 : 16,
+        width: '100%',
+    },
+    buttonRowSecondary: {
+        flexDirection: 'row',
+        gap: isAndroid ? 8 : 12,
+        marginTop: 8,
         width: '100%',
     }
 });

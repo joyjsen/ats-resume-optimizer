@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { View, StyleSheet, FlatList, RefreshControl, Alert, ScrollView, Keyboard, Platform, AppState } from 'react-native';
-import { Text, Button, Searchbar, SegmentedButtons, FAB, useTheme, ActivityIndicator, Portal, Dialog, TextInput, ProgressBar, Card, Chip, Divider, IconButton } from 'react-native-paper';
-import { useRouter, useNavigation } from 'expo-router';
+import { Text, Button, Searchbar, SegmentedButtons, FAB, useTheme, ActivityIndicator, Portal, Dialog, Modal, TextInput, ProgressBar, Card, Chip, Divider, IconButton } from 'react-native-paper';
+import { useRouter, useNavigation, useLocalSearchParams } from 'expo-router';
 import { applicationService } from '../../src/services/firebase/applicationService';
 import { Application, ApplicationStage } from '../../src/types/application.types';
 import { ApplicationCard } from '../../src/components/applications/ApplicationCard';
@@ -23,6 +23,8 @@ import { useTokenCheck } from '../../src/hooks/useTokenCheck';
 import { migrationService } from '../../src/services/firebase/migrationService';
 import { CoverLetterDialog } from '../../src/components/applications/CoverLetterDialog';
 import { PrepGuideDialogs } from '../../src/components/applications/PrepGuideDialogs';
+import { useTutorialStore } from '../../src/store/tutorialStore';
+import { SequenceOverlay } from '../../src/components/common/SequenceOverlay';
 
 const isAndroid = Platform.OS === 'android';
 
@@ -32,6 +34,16 @@ export default function ApplicationsScreen() {
     const theme = useTheme();
     const { setCurrentAnalysis } = useResumeStore();
     const { checkTokens } = useTokenCheck();
+    const { expandAppId } = useLocalSearchParams<{ expandAppId?: string }>();
+
+    // Track expand target with a version to force re-evaluation on every navigation
+    const [expandTarget, setExpandTarget] = React.useState<{ id: string; version: number } | null>(null);
+    React.useEffect(() => {
+        if (expandAppId) {
+            setExpandTarget(prev => ({ id: expandAppId, version: (prev?.version || 0) + 1 }));
+        }
+    }, [expandAppId]);
+
     const [applications, setApplications] = useState<Application[]>([]);
     const [pendingAnalyses, setPendingAnalyses] = useState<SavedAnalysis[]>([]);
     const [loading, setLoading] = useState(true);
@@ -40,6 +52,7 @@ export default function ApplicationsScreen() {
     const [isEditingCoverLetter, setIsEditingCoverLetter] = useState(false);
     const [editedCoverLetterContent, setEditedCoverLetterContent] = useState('');
     const [viewMode, setViewMode] = useState('active'); // active | archived
+    const [generatingModalVisible, setGeneratingModalVisible] = useState(false);
 
     // Filter & Sort State
     const [sortOption, setSortOption] = useState<ApplicationSortOption>('recent');
@@ -49,6 +62,40 @@ export default function ApplicationsScreen() {
         scoreRanges: [],
         dateRange: 'all'
     });
+
+    // Tutorial State
+    const { isSkipped, hasSeenApplicationsSequence, markSeen, skipAllTutorials } = useTutorialStore();
+    const [appStep, setAppStep] = useState((!isSkipped && !hasSeenApplicationsSequence && expandAppId) ? 1 : 0);
+    const [layoutMap, setLayoutMap] = useState<Record<string, {x: number, y: number, width: number, height: number}>>({});
+    
+    // Layout Offset Tracking for absolute SequenceOverlay
+    const [headerHeight, setHeaderHeight] = useState(0);
+    const [scrollY, setScrollY] = useState(0);
+
+    const handleButtonLayout = (key: 'cover_letter' | 'prep_guide', layout: {x: number, y: number, width: number, height: number}, cardLayout?: {x: number, y: number}) => {
+        if (!cardLayout) return;
+        setLayoutMap(prev => ({
+            ...prev,
+            [key]: {
+                // Absolute positioning fallback approximation using Card layout relative offset
+                x: layout.x + cardLayout.x,
+                y: layout.y + cardLayout.y,
+                width: layout.width,
+                height: layout.height
+            }
+        }));
+    };
+
+    React.useEffect(() => {
+        if (!isSkipped && !hasSeenApplicationsSequence && appStep === 0 && layoutMap['cover_letter']) {
+            setAppStep(1);
+        }
+    }, [isSkipped, hasSeenApplicationsSequence, appStep, layoutMap]);
+
+    const appsSequence = [
+        { key: 'cover_letter', title: 'Cover Letter', desc: 'Click to generate an AI generated customized cover letter based on your optimized resume and latest job description.' },
+        { key: 'prep_guide', title: 'Prep Guide', desc: 'Click here to generate a comprehensive interview prep guide which consists of Company Overview, Recruiter and Hiring manager round questions, Technical Questions based on your optimized resume vs job description' }
+    ];
 
     // Prep Guide State
     const [prepConfirmationVisible, setPrepConfirmationVisible] = useState(false);
@@ -373,6 +420,9 @@ export default function ApplicationsScreen() {
         if (!content) return;
         try {
             await DocxGenerator.generateCoverLetter(content);
+            // Close dialog and navigate to home tab after successful download
+            setViewingCoverLetterApp(null);
+            router.replace('/(tabs)/home' as any);
         } catch (error) {
             Alert.alert("Error", "Failed to download cover letter.");
         }
@@ -484,10 +534,7 @@ export default function ApplicationsScreen() {
             );
 
             // Show immediate feedback - the task is now processing in the background
-            Alert.alert(
-                "Generating...",
-                "Your cover letter is being generated. You'll be notified when it's ready. You can close the app."
-            );
+            setGeneratingModalVisible(true);
 
         } catch (error) {
             console.error("Cover Letter generation failed:", error);
@@ -897,7 +944,7 @@ export default function ApplicationsScreen() {
     return (
         <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
             {/* Header Content */}
-            <View style={styles.header}>
+            <View style={styles.header} onLayout={(e) => setHeaderHeight(e.nativeEvent.layout.height)}>
                 <Text style={{ fontSize: 14, fontWeight: 'normal', marginBottom: 16, color: theme.colors.onSurface }}>
                     For each applications, preview updated resume, generate customized cover letter and prep guides.
                 </Text>
@@ -936,30 +983,48 @@ export default function ApplicationsScreen() {
                 </View>
             ) : (
                 <FlatList
+                    onScroll={(e) => setScrollY(e.nativeEvent.contentOffset.y)}
+                    scrollEventThrottle={16}
                     refreshControl={
                         <RefreshControl refreshing={loading} onRefresh={handleRefresh} />
                     }
                     data={filteredApplications}
                     keyExtractor={item => item.id}
                     renderItem={({ item }) => (
-                        <ApplicationCard
-                            application={item}
-                            onStatusUpdate={handleStatusUpdate}
-                            onGenerateCoverLetter={handleGenerateCoverLetter}
-                            onGeneratePrep={handleGeneratePrep}
-                            onDownloadResume={handlePreviewResume}
-                            onRegeneratePrep={handleRegeneratePrep}
-                            onCancelPrep={handleCancelPrep}
-                            onCompleteOptimization={handleCompleteOptimization}
-                            isResumeUpdated={
-                                !item.isReadOnly && item.lastResumeUpdateAt
-                                    ? (item.prepGuide?.generatedAt
-                                        ? new Date(item.lastResumeUpdateAt).getTime() > new Date(item.prepGuide.generatedAt).getTime()
-                                        : true)
-                                    : false
+                        <View onLayout={(e) => {
+                            // Only capture card layout if it is the target expanded app
+                            const layout = e.nativeEvent.layout;
+                            const isTarget = expandTarget ? (expandTarget.id === item.id || expandTarget.id === item.analysisId) : false;
+                            if (isTarget) {
+                                setLayoutMap(prev => ({ ...prev, _card: layout }));
                             }
-                            onRestore={handleRestore}
-                        />
+                        }}>
+                            <ApplicationCard
+                                application={item}
+                                onStatusUpdate={handleStatusUpdate}
+                                onGenerateCoverLetter={handleGenerateCoverLetter}
+                                onGeneratePrep={handleGeneratePrep}
+                                onDownloadResume={handlePreviewResume}
+                                onRegeneratePrep={handleRegeneratePrep}
+                                onCancelPrep={handleCancelPrep}
+                                onCompleteOptimization={handleCompleteOptimization}
+                                isResumeUpdated={
+                                    !item.isReadOnly && item.lastResumeUpdateAt
+                                        ? (item.prepGuide?.generatedAt
+                                            ? new Date(item.lastResumeUpdateAt).getTime() > new Date(item.prepGuide.generatedAt).getTime()
+                                            : true)
+                                        : false
+                                }
+                                onRestore={handleRestore}
+                                initialExpanded={
+                                    expandTarget
+                                        ? (expandTarget.id === item.id || expandTarget.id === item.analysisId)
+                                        : false
+                                }
+                                onButtonLayout={(key, layout) => handleButtonLayout(key, layout, layoutMap._card as any)}
+                                key={`${item.id}-${expandTarget?.version || 0}`}
+                            />
+                        </View>
                     )}
                     contentContainerStyle={{ paddingBottom: 80 }}
                     ListEmptyComponent={
@@ -983,6 +1048,41 @@ export default function ApplicationsScreen() {
                 />
             )}
 
+            <Portal>
+                <Modal 
+                    visible={generatingModalVisible} 
+                    onDismiss={() => setGeneratingModalVisible(false)} 
+                    contentContainerStyle={{ 
+                        backgroundColor: theme.dark ? '#1E1830' : '#fff',
+                        borderRadius: 16,
+                        borderWidth: 1, 
+                        borderColor: theme.dark ? "rgba(124,58,237,0.5)" : "rgba(124,58,237,0.2)",
+                        shadowColor: "#7C3AED", 
+                        shadowOpacity: 0.25, 
+                        shadowRadius: 12, 
+                        elevation: 8,
+                        marginHorizontal: 20,
+                        padding: 24,
+                        alignItems: 'center'
+                    }}
+                >
+                    <Text variant="titleLarge" style={{ color: theme.dark ? '#F5F3FF' : '#111', fontWeight: 'bold', marginBottom: 12, textAlign: 'center' }}>
+                        Generating...
+                    </Text>
+                    <Text variant="bodyMedium" style={{ color: theme.dark ? "#9CA3AF" : "#555", textAlign: 'center', marginBottom: 24, lineHeight: 22 }}>
+                        Your cover letter is being generated. You'll be notified when it's ready. You can close the app.
+                    </Text>
+                    <Button 
+                        mode="contained" 
+                        onPress={() => setGeneratingModalVisible(false)}
+                        style={{ backgroundColor: theme.dark ? '#A78BFA' : theme.colors.primary, borderRadius: 50, paddingHorizontal: 24 }}
+                        labelStyle={{ fontSize: 15, fontWeight: '600', color: theme.dark ? "#1E1830" : undefined }}
+                    >
+                        OK
+                    </Button>
+                </Modal>
+            </Portal>
+
             <CoverLetterDialog
                 visible={!!viewingCoverLetterApp}
                 application={viewingCoverLetterApp}
@@ -1005,6 +1105,32 @@ export default function ApplicationsScreen() {
                 onConfirmGenerate={confirmGeneratePrep}
                 onDownload={handleDownloadPrep}
             />
+
+            {!isSkipped && appStep > 0 && appsSequence[appStep - 1] && layoutMap[appsSequence[appStep - 1].key] && (
+                <SequenceOverlay
+                    targetLayout={layoutMap[appsSequence[appStep - 1].key]}
+                    title={appsSequence[appStep - 1].title}
+                    description={appsSequence[appStep - 1].desc}
+                    stepIndex={appStep - 1}
+                    totalSteps={appsSequence.length}
+                    yOffset={headerHeight - scrollY}
+                    onNext={() => {
+                        if (appStep === appsSequence.length) {
+                            setAppStep(0);
+                            markSeen('hasSeenApplicationsSequence');
+                        } else {
+                            setAppStep(prev => prev + 1);
+                        }
+                    }}
+                    onBack={() => setAppStep(prev => prev - 1)}
+                    onSkip={() => {
+                        skipAllTutorials();
+                        setAppStep(0);
+                    }}
+                    arrowDirection="up" // Arrow points up to the buttons above it
+                    isCentered={true}
+                />
+            )}
 
             {/* Guidance Message for empty or new users */}
             {applications.length > 0 && viewMode === 'active' && (

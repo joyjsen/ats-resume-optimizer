@@ -12,7 +12,7 @@ interface Props {
 
 export const ATSScoreCard = ({ score, originalScore, threshold = 75 }: Props) => {
     const theme = useTheme();
-    const [isCollapsed, setIsCollapsed] = React.useState(true);
+    const [isCollapsed, setIsCollapsed] = React.useState(false);
 
     const rec = getATSScoreRecommendation(score);
     const diff = originalScore !== undefined ? score - originalScore : 0;

@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, Pressable, Linking } from 'react-native';
+import { View, Text, Pressable, Linking, Platform } from 'react-native';
 import { useRouter, usePathname } from 'expo-router';
 // import { FontAwesome6 } from '@expo/vector-icons';
 import { TwitterIcon, LinkedInIcon, GitHubIcon } from '../../common/StaticIcons';
@@ -61,6 +61,21 @@ export const UniversalWebFooter: React.FC = () => {
                             ))}
                         </View>
                     ))}
+                {Platform.OS === 'web' && (
+                    <View style={ls.footerCol}>
+                        <Text style={ls.footerColTitle}>Website</Text>
+                        {[
+                            { label: 'Home', url: 'https://www.riresume.com' },
+                            { label: 'Pricing', url: 'https://www.riresume.com/#pricing-section' },
+                            { label: 'Blog', url: 'https://www.riresume.com/blog' },
+                            { label: 'Features', url: 'https://www.riresume.com/#analysis' },
+                        ].map((link, j) => (
+                            <Pressable key={j} style={ls.footerLink} onPress={() => window.open(link.url, '_blank')}>
+                                <Text style={ls.footerLinkText}>{link.label}</Text>
+                            </Pressable>
+                        ))}
+                    </View>
+                )}
                 </View>
                 <View style={ls.footerBottom}>
                     <Text style={ls.footerCopyright}>© 2026 RiResume. All rights reserved.</Text>

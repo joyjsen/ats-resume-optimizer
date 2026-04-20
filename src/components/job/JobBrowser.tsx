@@ -213,6 +213,10 @@ export default function JobBrowser({ visible, initialUrl, onClose, onImport }: J
         webViewRef.current?.injectJavaScript(script);
     };
 
+    if (Platform.OS === 'web') {
+        return null;
+    }
+
     return (
         <Modal visible={visible} animationType="slide" presentationStyle="pageSheet">
             <SafeAreaView style={styles.container}>

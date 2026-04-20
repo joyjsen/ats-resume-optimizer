@@ -1,5 +1,5 @@
 import React, { useState, useCallback } from 'react';
-import { View, Pressable, Image, Text, Linking } from 'react-native';
+import { View, Pressable, Image, Text, Linking, Platform } from 'react-native';
 import { useRouter, usePathname } from 'expo-router';
 // import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { MenuIcon, CloseIcon, FileSearchIcon, FileEditIcon, PlusCircleIcon, FilePlusIcon, MailIcon, BookOpenIcon, GraduationCapIcon, PhoneIcon } from '../../common/StaticIcons';
@@ -106,7 +106,13 @@ export const UniversalWebHeader: React.FC<{
             </Head>
             <View style={[ls.header, { position: 'fixed' as any, top: 0, left: 0, right: 0, zIndex: 10000 }]}>
                 {/* Logo */}
-                <Pressable onPress={() => router.push('/')} style={ls.headerLogo}>
+                <Pressable onPress={() => {
+                    if (Platform.OS === 'web') {
+                        window.location.href = 'https://www.riresume.com';
+                    } else {
+                        router.push('/');
+                    }
+                }} style={ls.headerLogo}>
                     <Image source={require('../../../../assets/logo-72.png')} style={ls.headerLogoImg} resizeMode="contain" accessibilityLabel="RiResume Logo" />
                     <Text style={ls.headerLogoText}>RiResume</Text>
                 </Pressable>

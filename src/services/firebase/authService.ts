@@ -75,7 +75,7 @@ export class AuthService {
         return profile;
     }
 
-    async registerWithEmail(email: string, pass: string, fullName?: string, phoneNumber?: string, phoneVerified?: boolean, phoneCredential?: any): Promise<UserProfile> {
+    async registerWithEmail(email: string, pass: string, firstName?: string, lastName?: string, phoneNumber?: string, phoneVerified?: boolean, phoneCredential?: any): Promise<UserProfile> {
         try {
             const { httpsCallable } = await import('firebase/functions');
             const functions = await getFirebaseFunctions();
@@ -92,17 +92,15 @@ export class AuthService {
 
         if (phoneCredential) await linkWithCredential(user, phoneCredential);
 
-        let firstName = '', lastName = '';
-        if (fullName) {
-            const parts = fullName.split(' ');
-            firstName = parts[0];
-            lastName = parts.slice(1).join(' ');
-        }
+        const displayName = [firstName, lastName].filter(Boolean).join(' ') || 'User';
 
-        const additionalData: Partial<UserProfile> = { displayName: fullName || 'User', firstName, lastName };
+        const additionalData: Partial<UserProfile> = {
+            displayName,
+            firstName: firstName || '',
+            lastName: lastName || ''
+        };
+        
         if (phoneNumber) {
-            const phoneCheck = await userService.checkPhoneExists(phoneNumber);
-            if (phoneCheck?.exists) throw new Error("Phone number already in use.");
             additionalData.phoneNumber = phoneNumber;
             if (phoneVerified) additionalData.phoneVerified = true;
         }
@@ -121,6 +119,11 @@ export class AuthService {
         } else {
             await GoogleSignin.hasPlayServices();
             const { data } = await GoogleSignin.signIn();
+            if (!data) {
+                const cancelErr = new Error('Login cancelled: the user cancelled the authorization attempt.');
+                (cancelErr as any).code = 'auth/cancelled';
+                throw cancelErr;
+            }
             const idToken = data?.idToken || (data as any).idToken;
             if (!idToken) throw new Error('No ID token');
             const { user } = await signInWithCredential(auth, GoogleAuthProvider.credential(idToken));
@@ -151,7 +154,23 @@ export class AuthService {
                 if (idToken) {
                     const credential = new OAuthProvider('apple.com').credential({ idToken, rawNonce });
                     const { user } = await signInWithCredential(auth, credential);
-                    const profile = await userService.syncUserProfile(user, 'apple');
+                    
+                    const appleData: Partial<UserProfile> = {};
+                    const appleUserString = url.searchParams.get('user');
+                    if (appleUserString) {
+                        try {
+                            const parsed = JSON.parse(appleUserString);
+                            if (parsed.name?.firstName) appleData.firstName = parsed.name.firstName;
+                            if (parsed.name?.lastName) appleData.lastName = parsed.name.lastName;
+                            if (parsed.name?.firstName || parsed.name?.lastName) {
+                                appleData.displayName = [parsed.name?.firstName, parsed.name?.lastName].filter(Boolean).join(' ');
+                            }
+                        } catch (e) {
+                            console.warn('[AuthService] Failed to parse Android Apple user payload:', e);
+                        }
+                    }
+
+                    const profile = await userService.syncUserProfile(user, 'apple', appleData);
                     await this.checkAccountStatus(profile);
                     return profile;
                 }
@@ -167,7 +186,25 @@ export class AuthService {
             if (!appleCred.identityToken) throw new Error('No identity token');
             const credential = new OAuthProvider('apple.com').credential({ idToken: appleCred.identityToken, rawNonce: csrf });
             const { user } = await signInWithCredential(auth, credential);
-            const profile = await userService.syncUserProfile(user, 'apple');
+
+            // Capture name & email Apple provides (only sent on first sign-in)
+            console.log('[AuthService] Apple credential received:', {
+                givenName: appleCred.fullName?.givenName,
+                familyName: appleCred.fullName?.familyName,
+                email: appleCred.email,
+                hasIdentityToken: !!appleCred.identityToken,
+            });
+            const appleData: Partial<UserProfile> = {};
+            const givenName = appleCred.fullName?.givenName;
+            const familyName = appleCred.fullName?.familyName;
+            if (givenName) appleData.firstName = givenName;
+            if (familyName) appleData.lastName = familyName;
+            if (givenName || familyName) {
+                appleData.displayName = [givenName, familyName].filter(Boolean).join(' ');
+            }
+            if (appleCred.email) appleData.email = appleCred.email;
+
+            const profile = await userService.syncUserProfile(user, 'apple', appleData);
             await this.checkAccountStatus(profile);
             return profile;
         }
@@ -194,8 +231,27 @@ export class AuthService {
     }
 
     async requestPhoneVerification(phoneNumber: string, recaptchaVerifier?: any): Promise<any> {
-        const { signInWithPhoneNumber } = await import('firebase/auth');
+        const { signInWithPhoneNumber, linkWithPhoneNumber } = await import('firebase/auth');
         const auth = await getFirebaseAuth();
+        
+        // If user is already signed in (e.g. via Apple/Google in onboarding),
+        // we must LINK the phone credential to avoid creating a new bare user session.
+        if (auth.currentUser) {
+            const hasPhoneProvider = auth.currentUser.providerData.some((p: any) => p.providerId === 'phone');
+            if (!hasPhoneProvider) {
+                try {
+                    return await linkWithPhoneNumber(auth.currentUser, phoneNumber, recaptchaVerifier);
+                } catch (error: any) {
+                    // Try to fall back to signInWithPhoneNumber if linking fails due to internal states
+                    if (error.code !== 'auth/provider-already-linked') {
+                        console.warn('[AuthService] linkWithPhoneNumber failed or threw:', error);
+                        throw error;
+                    }
+                }
+            }
+        }
+        
+        // Fallback for pure phone sign-in flow OR when updating an already-linked phone number
         return await signInWithPhoneNumber(auth, phoneNumber, recaptchaVerifier);
     }
 
@@ -210,6 +266,10 @@ export class AuthService {
         const auth = await getFirebaseAuth();
         await signOut(auth);
         try { await GoogleSignin.signOut(); } catch (e) { }
+        try {
+            const AsyncStorage = (await import('@react-native-async-storage/async-storage')).default;
+            await AsyncStorage.removeItem('hasSeenAnalyzeTutorial');
+        } catch (e) { }
     }
 
     async deleteUser() {

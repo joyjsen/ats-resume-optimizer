@@ -130,6 +130,7 @@ function RootLayoutContent() {
             <Stack.Screen name="purchase-history" options={{ title: 'Purchase History', presentation: 'modal' }} />
             <Stack.Screen name="analytics" options={{ title: 'Usage Analytics', headerBackTitle: 'Back' }} />
             <Stack.Screen name="history-details" options={{ headerBackTitle: 'Back', title: '' }} />
+            <Stack.Screen name="resume-builder" options={{ headerShown: false, presentation: 'modal' }} />
             <Stack.Screen
                 name="user-activity"
                 options={({ navigation }) => ({
@@ -169,9 +170,34 @@ function RootLayoutContent() {
             </React.Suspense>
 
             {Platform.OS === 'web' && !userProfile && !isPublicRoute && !isAuthRoute ? (
-                <React.Suspense fallback={null}>
-                    <WebLandingPage />
-                </React.Suspense>
+                // On the web, show the WebLandingPage if they are at the root
+                (() => {
+                    const isMarketingDomain = typeof window !== 'undefined' && 
+                        (window.location.hostname === 'www.riresume.com' || window.location.hostname === 'riresume.com' || window.location.hostname.includes('localhost'));
+                    
+                    if (typeof window !== 'undefined' && isInitialized && !isMarketingDomain) {
+                        // If they are on app.riresume.com, redirect to marketing site
+                        window.location.href = 'https://www.riresume.com';
+                    }
+
+                    return (
+                        <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
+                            {isInitialized ? (
+                                <React.Suspense fallback={
+                                    <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+                                        <ActivityIndicator size="large" color={theme.colors.primary} />
+                                    </View>
+                                }>
+                                    <WebLandingPage />
+                                </React.Suspense>
+                            ) : (
+                                <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+                                    <ActivityIndicator size="large" color={theme.colors.primary} />
+                                </View>
+                            )}
+                        </View>
+                    );
+                })()
             ) : Platform.OS === 'web' && userProfile ? (
                 <React.Suspense fallback={null}>
                     <AppProvidersWrapper>

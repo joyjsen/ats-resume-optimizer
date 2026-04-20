@@ -128,3 +128,4 @@ export * from "./aiAnalysis";
 export * from "./stripeWebhook";
 export * from "./appleAuthRelay";
 export * from "./appleIapValidation";
+export * from "./marketing";

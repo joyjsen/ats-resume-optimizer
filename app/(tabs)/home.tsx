@@ -14,6 +14,58 @@ import { SavedAnalysis } from "../../src/types/history.types";
 import { Application } from "../../src/types/application.types";
 import { getFirebaseAuth } from "../../src/services/firebase/config";
 import { DAILY_TIPS } from "../../src/data/dailyTips";
+import Svg, { Path, Circle } from 'react-native-svg';
+import { useShareIntentHandler } from "../../src/hooks/useShareIntentHandler";
+import { useTutorialStore } from "../../src/store/tutorialStore";
+import { StyledAlert } from "../../src/components/common/StyledAlert";
+
+const AnimatedPath = RNAnimated.createAnimatedComponent(Path);
+const AnimatedCircle = RNAnimated.createAnimatedComponent(Circle);
+
+const SVGArrow = () => {
+    const drawAnim = React.useRef(new RNAnimated.Value(200)).current; 
+    const drawArrowHead = React.useRef(new RNAnimated.Value(40)).current;
+    const fadeCircle = React.useRef(new RNAnimated.Value(0)).current;
+
+    useEffect(() => {
+        RNAnimated.sequence([
+            RNAnimated.delay(300),
+            RNAnimated.timing(fadeCircle, { toValue: 1, duration: 200, useNativeDriver: true }),
+            RNAnimated.timing(drawAnim, { toValue: 0, duration: 800, useNativeDriver: true }),
+            RNAnimated.timing(drawArrowHead, { toValue: 0, duration: 300, useNativeDriver: true })
+        ]).start();
+    }, []);
+
+    return (
+        <Svg width="140" height="110" viewBox="0 0 140 110" fill="none" style={{
+            shadowColor: "#7C3AED",
+            shadowOffset: { width: 0, height: 0 },
+            shadowOpacity: 0.5,
+            shadowRadius: 6,
+            elevation: 3
+        }}>
+            <AnimatedPath
+                d="M 120 10 C 100 8, 60 5, 30 30 C 10 48, 8 72, 20 88"
+                stroke="#A78BFA"
+                strokeWidth="3.5"
+                strokeLinecap="round"
+                fill="none"
+                strokeDasharray="200"
+                strokeDashoffset={drawAnim}
+            />
+            <AnimatedPath
+                d="M 20 88 L 8 76 M 20 88 L 34 80"
+                stroke="#A78BFA"
+                strokeWidth="3.5"
+                strokeLinecap="round"
+                fill="none"
+                strokeDasharray="40"
+                strokeDashoffset={drawArrowHead}
+            />
+            <AnimatedCircle cx="122" cy="10" r="3" fill="#A78BFA" opacity={fadeCircle} />
+        </Svg>
+    );
+};
 
 const isAndroid = Platform.OS === 'android';
 
@@ -31,6 +83,63 @@ const RiResumeHome = () => {
     const [time, setTime] = useState(new Date());
     const [authInstance, setAuthInstance] = useState<any>(null);
     const [animatedProgress] = useState(new RNAnimated.Value(0));
+
+    // Onboarding State
+    const [showOnboarding, setShowOnboarding] = useState(false);
+    const [isGlowing, setIsGlowing] = useState(false);
+    const [analyzeCardLayout, setAnalyzeCardLayout] = useState({ x: 0, y: 0, width: 0, height: 0 });
+    const pulseAnim = React.useRef(new RNAnimated.Value(0)).current;
+    
+    // Optimize Tutorial State
+    const [showOptimizeTutorial, setShowOptimizeTutorial] = useState(false);
+    const [isOptimizeGlowing, setIsOptimizeGlowing] = useState(false);
+    const [optimizeCardLayout, setOptimizeCardLayout] = useState({ x: 0, y: 0, width: 0, height: 0 });
+    const optimizePulseAnim = React.useRef(new RNAnimated.Value(0)).current;
+
+    const overlayOpacity = React.useRef(new RNAnimated.Value(0)).current;
+    
+    // Custom Alert State
+    const [showResetAlert, setShowResetAlert] = useState(false);
+    
+    // Check intent
+    const { sharedUrl } = useShareIntentHandler();
+    const { pendingSharedUrl } = useResumeStore();
+
+    const { isSkipped, hasSeenAnalyzeStart, hasSeenOptimizePending, markSeen, loadState, resetTutorials } = useTutorialStore();
+
+    useFocusEffect(
+        React.useCallback(() => {
+            loadState();
+        }, [loadState])
+    );
+
+    // FTUE Evaluation is handled in useFocusEffect below
+
+    useEffect(() => {
+        if (isGlowing) {
+            RNAnimated.loop(
+                RNAnimated.sequence([
+                    RNAnimated.timing(pulseAnim, { toValue: 1, duration: 900, useNativeDriver: false }),
+                    RNAnimated.timing(pulseAnim, { toValue: 0, duration: 900, useNativeDriver: false })
+                ])
+            ).start();
+        } else {
+            pulseAnim.setValue(0);
+        }
+    }, [isGlowing]);
+
+    useEffect(() => {
+        if (isOptimizeGlowing) {
+            RNAnimated.loop(
+                RNAnimated.sequence([
+                    RNAnimated.timing(optimizePulseAnim, { toValue: 1, duration: 900, useNativeDriver: false }),
+                    RNAnimated.timing(optimizePulseAnim, { toValue: 0, duration: 900, useNativeDriver: false })
+                ])
+            ).start();
+        } else {
+            optimizePulseAnim.setValue(0);
+        }
+    }, [isOptimizeGlowing]);
 
     // Data stores
     const { userProfile, refreshProfile, activities } = useProfileStore();
@@ -53,6 +162,77 @@ const RiResumeHome = () => {
         const timer = setInterval(() => setTime(new Date()), 60000);
         return () => clearInterval(timer);
     }, []);
+
+    // Check for pending optimizations natively
+    const hasPendingOptimization = React.useMemo(() => history.some(h => h.analysisStatus === 'pending_resume_update'), [history]);
+
+    useFocusEffect(
+        React.useCallback(() => {
+            let isActive = true;
+
+            const evaluateInterventions = async () => {
+                const tutorialState = useTutorialStore.getState();
+                
+                if (tutorialState.isSkipped) {
+                    setShowOnboarding(false);
+                    setShowOptimizeTutorial(false);
+                    // Still apply subtle highlights based on context
+                    if (hasPendingOptimization) {
+                        setIsOptimizeGlowing(true);
+                        setIsGlowing(false);
+                    } else {
+                        setIsOptimizeGlowing(false);
+                        setIsGlowing(true);
+                    }
+                    return;
+                }
+                
+                // Pause interventions if a file is actively being shared in
+                if (sharedUrl || pendingSharedUrl) return;
+
+                if (hasPendingOptimization) {
+                    // 1. Optimize takes total priority
+                    setIsGlowing(false);
+                    setShowOnboarding(false);
+                    
+                    setIsOptimizeGlowing(true);
+                    if (!tutorialState.hasSeenOptimizePending) {
+                        setTimeout(() => {
+                            if (isActive) {
+                                setShowOptimizeTutorial(true);
+                                RNAnimated.timing(overlayOpacity, { toValue: 1, duration: 400, useNativeDriver: true }).start();
+                            }
+                        }, 400);
+                    } else {
+                        setShowOptimizeTutorial(false);
+                    }
+                } else {
+                    // 2. Default to Analyze (idle state)
+                    setIsOptimizeGlowing(false);
+                    setShowOptimizeTutorial(false);
+                    
+                    setIsGlowing(true);
+                    if (!tutorialState.hasSeenAnalyzeStart) {
+                        if (isActive) {
+                            setShowOnboarding(true);
+                            RNAnimated.timing(overlayOpacity, { toValue: 1, duration: 400, useNativeDriver: true }).start();
+                        }
+                    } else {
+                        setShowOnboarding(false);
+                    }
+                }
+            };
+
+            const timer = setTimeout(evaluateInterventions, 300);
+
+            return () => {
+                isActive = false;
+                clearTimeout(timer);
+                setShowOnboarding(false);
+                setShowOptimizeTutorial(false);
+            };
+        }, [sharedUrl, pendingSharedUrl, hasPendingOptimization])
+    );
 
     // Mark data as loaded when all subscriptions have fired
     useEffect(() => {
@@ -256,9 +436,23 @@ const RiResumeHome = () => {
                         <Text variant={isAndroid ? "labelSmall" : "labelLarge"} style={{ color: theme.colors.onSurfaceVariant, textTransform: 'uppercase', letterSpacing: 1 }}>{greeting()}</Text>
                         <Text variant={isAndroid ? "headlineSmall" : "headlineMedium"} style={{ fontWeight: "700" }}>{userName} 👋</Text>
                     </View>
-                    <Button mode="contained" onPress={() => router.push('/purchase' as any)} compact={isAndroid} style={{ alignSelf: 'center' }}>
-                        Buy Tokens
-                    </Button>
+                    <View style={{ alignItems: 'flex-end', gap: 8 }}>
+                        <Button mode="contained" onPress={() => router.push('/purchase' as any)} compact={isAndroid}>
+                            Buy Tokens
+                        </Button>
+                        <Button 
+                            icon="lightbulb-on" 
+                            mode="text" 
+                            compact={isAndroid} 
+                            textColor={theme.colors.primary} 
+                            onPress={() => {
+                                resetTutorials();
+                                setShowResetAlert(true);
+                            }}
+                        >
+                            Learn how to use the app
+                        </Button>
+                    </View>
                 </View>
 
                 {/* Token Balance Card */}
@@ -311,15 +505,58 @@ const RiResumeHome = () => {
                 <View style={styles.section}>
                     <Text variant="titleMedium" style={styles.sectionTitle}>Quick Actions</Text>
                     <View style={styles.grid}>
-                        {quickActions.map((action) => (
-                            <View key={action.id} style={{ width: cardWidth, marginBottom: 8, height: isAndroid ? 90 : 110 }}>
-                                <Card
-                                    style={[styles.actionCard, { width: '100%', marginBottom: 0 }]}
-                                    onPress={() => {
-                                        router.push(action.route as any);
-                                    }}
-                                    mode="outlined"
-                                >
+                        {quickActions.map((action) => {
+                            const isThisCardAnalyze = action.id === 'analyze';
+                            const isThisCardOptimize = action.id === 'optimize';
+                            
+                            const animStyle = isThisCardAnalyze ? {
+                                borderColor: pulseAnim.interpolate({ inputRange: [0, 1], outputRange: ['transparent', '#7C3AED'] }),
+                                borderWidth: isGlowing ? 2 : 0,
+                                borderRadius: 14,
+                                shadowColor: '#7C3AED',
+                                shadowOffset: { width: 0, height: 0 },
+                                shadowOpacity: pulseAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 0.8] }),
+                                shadowRadius: pulseAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 10] }),
+                            } : isThisCardOptimize ? {
+                                borderColor: optimizePulseAnim.interpolate({ inputRange: [0, 1], outputRange: ['transparent', '#7C3AED'] }),
+                                borderWidth: isOptimizeGlowing ? 2 : 0,
+                                borderRadius: 14,
+                                shadowColor: '#7C3AED',
+                                shadowOffset: { width: 0, height: 0 },
+                                shadowOpacity: optimizePulseAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 0.8] }),
+                                shadowRadius: optimizePulseAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 10] }),
+                            } : {};
+
+                            return (
+                            <RNAnimated.View key={action.id} style={{ width: cardWidth, marginBottom: 8, height: isAndroid ? 90 : 110, ...animStyle }}>
+                                <View ref={(ref) => {
+                                    if (ref && (isThisCardAnalyze || isThisCardOptimize)) {
+                                        // Wait a moment for layout to settle then measure
+                                        setTimeout(() => {
+                                            ref.measureInWindow((x, y, w, h) => {
+                                                if (y > 0) {
+                                                    if (isThisCardAnalyze) setAnalyzeCardLayout({ x, y, width: w, height: h });
+                                                    if (isThisCardOptimize) setOptimizeCardLayout({ x, y, width: w, height: h });
+                                                }
+                                            });
+                                        }, 600);
+                                    }
+                                }} style={{ width: '100%', height: '100%' }}>
+                                    <Card
+                                        style={[styles.actionCard, { width: '100%', height: '100%', marginBottom: 0, ...((isGlowing && isThisCardAnalyze) || (isOptimizeGlowing && isThisCardOptimize) ? { backgroundColor: theme.dark ? '#1E1830' : '#F3E8FF', borderColor: 'transparent' } : { backgroundColor: theme.colors.surface }) }]}
+                                        onPress={async () => {
+                                            if (isThisCardAnalyze && (isGlowing || showOnboarding)) {
+                                                await AsyncStorage.setItem('hasSeenAnalyzeTutorial', 'true');
+                                                setIsGlowing(false);
+                                                setShowOnboarding(false);
+                                            }
+                                            if (isThisCardOptimize && showOptimizeTutorial) {
+                                                setShowOptimizeTutorial(false);
+                                            }
+                                            router.push(action.route as any);
+                                        }}
+                                        mode="outlined"
+                                    >
                                     <View style={{ position: 'relative' }}>
                                         {/* Info Button */}
                                         {action.infoMessage && (
@@ -342,8 +579,10 @@ const RiResumeHome = () => {
                                         </Card.Content>
                                     </View>
                                 </Card>
-                            </View>
-                        ))}
+                                </View>
+                            </RNAnimated.View>
+                            );
+                        })}
                     </View>
                 </View>
 
@@ -391,7 +630,7 @@ const RiResumeHome = () => {
                             const isOptimized = !!app.optimizedResumeData;
 
                             return (
-                                <Card key={app.id || i} onPress={() => { }} mode="outlined" style={{ backgroundColor: theme.colors.surface }}>
+                                <Card key={app.id || i} onPress={() => router.push({ pathname: '/(tabs)/applications', params: { expandAppId: app.id } } as any)} mode="outlined" style={{ backgroundColor: theme.colors.surface }}>
                                     <Card.Content style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 8 }}>
                                         <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
                                             <Avatar.Icon
@@ -440,6 +679,67 @@ const RiResumeHome = () => {
                     </Card>
                 </View>
             </ScrollView>
+
+            {/* Onboarding Overlay */}
+            {showOnboarding && analyzeCardLayout.y > 0 && (
+                <RNAnimated.View style={[StyleSheet.absoluteFill, { backgroundColor: theme.dark ? "rgba(8,6,18,0.85)" : "rgba(255,255,255,0.85)", zIndex: 100, opacity: overlayOpacity }]} pointerEvents="auto">
+                    {/* SVG Arrow */}
+                    <View style={{ position: 'absolute', top: analyzeCardLayout.y - 110, left: analyzeCardLayout.x + (analyzeCardLayout.width / 2) - 10 }}>
+                        <SVGArrow />
+                    </View>
+
+                    {/* Popover */}
+                    <View style={{ position: 'absolute', top: analyzeCardLayout.y - 270, left: 20, right: 20, backgroundColor: theme.dark ? '#1E1830' : '#fff', padding: 20, borderRadius: 16, borderWidth: 1, borderColor: "rgba(124,58,237,0.5)", shadowColor: "#7C3AED", shadowOpacity: 0.25, shadowRadius: 12, elevation: 8 }}>
+                        <View style={{ alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', backgroundColor: "rgba(124,58,237,0.2)", borderRadius: 50, paddingHorizontal: 12, paddingVertical: 4, marginBottom: 12 }}>
+                            <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: "#A78BFA", marginRight: 8 }} />
+                            <Text style={{ color: "#A78BFA", fontSize: 11, fontWeight: '700', letterSpacing: 1 }}>START HERE</Text>
+                        </View>
+                        <Text style={{ color: theme.dark ? "#F5F3FF" : "#111", fontSize: 18, fontWeight: '700', marginBottom: 8 }}>Analyze your resume first</Text>
+                        <Text style={{ color: theme.dark ? "#9CA3AF" : "#555", fontSize: 14, lineHeight: 20, marginBottom: 20 }}>Upload your Resume and paste/share a Job link to get your match score, see which keywords you're missing, and unlock personalized optimizations.</Text>
+                        
+                        <View style={{ flexDirection: 'row', gap: 12 }}>
+                            <TouchableOpacity style={{ backgroundColor: "#7C3AED", paddingVertical: 12, paddingHorizontal: 24, borderRadius: 50 }} onPress={() => { setShowOnboarding(false); setIsGlowing(true); useTutorialStore.getState().markSeen('hasSeenAnalyzeStart'); }}>
+                                <Text style={{ color: "white", fontSize: 14, fontWeight: '600' }}>Got it, let's start →</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity style={{ paddingVertical: 12, paddingHorizontal: 16 }} onPress={() => { useTutorialStore.getState().skipAllTutorials(); setShowOnboarding(false); }}>
+                                <Text style={{ color: theme.dark ? "#9CA3AF" : "#555", fontSize: 14, fontWeight: '600' }}>Skip Training</Text>
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+                </RNAnimated.View>
+            )}
+
+            {/* Optimize Onboarding Overlay */}
+            {showOptimizeTutorial && optimizeCardLayout.y > 0 && !showOnboarding && (
+                <RNAnimated.View style={[StyleSheet.absoluteFill, { backgroundColor: theme.dark ? "rgba(8,6,18,0.85)" : "rgba(255,255,255,0.85)", zIndex: 100, opacity: overlayOpacity }]} pointerEvents="auto">
+                    {/* SVG Arrow */}
+                    <View style={{ position: 'absolute', top: optimizeCardLayout.y - 110, left: optimizeCardLayout.x + (optimizeCardLayout.width / 2) - 10 }}>
+                        <SVGArrow />
+                    </View>
+
+                    {/* Popover */}
+                    <View style={{ position: 'absolute', top: optimizeCardLayout.y - 230, left: 20, right: 20, backgroundColor: theme.dark ? '#1E1830' : '#fff', padding: 20, borderRadius: 16, borderWidth: 1, borderColor: "rgba(124,58,237,0.5)", shadowColor: "#7C3AED", shadowOpacity: 0.25, shadowRadius: 12, elevation: 8 }}>
+                        <View style={{ alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', backgroundColor: "rgba(124,58,237,0.2)", borderRadius: 50, paddingHorizontal: 12, paddingVertical: 4, marginBottom: 12 }}>
+                            <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: "#A78BFA", marginRight: 8 }} />
+                            <Text style={{ color: "#A78BFA", fontSize: 11, fontWeight: '700', letterSpacing: 1 }}>ACTION REQUIRED</Text>
+                        </View>
+                        <Text style={{ color: theme.dark ? "#F5F3FF" : "#111", fontSize: 18, fontWeight: '700', marginBottom: 8 }}>Complete Optimization</Text>
+                        <Text style={{ color: theme.dark ? "#9CA3AF" : "#555", fontSize: 14, lineHeight: 20, marginBottom: 20 }}>You have an incomplete resume optimization waiting for you. Tap "Optimize" to view it and push your new skills onto your resume!</Text>
+                        
+                        <TouchableOpacity style={{ backgroundColor: "#7C3AED", paddingVertical: 12, paddingHorizontal: 24, borderRadius: 50, alignSelf: 'flex-start' }} onPress={() => { setShowOptimizeTutorial(false); useTutorialStore.getState().markSeen('hasSeenOptimizePending'); }}>
+                            <Text style={{ color: "white", fontSize: 14, fontWeight: '600' }}>Got it →</Text>
+                        </TouchableOpacity>
+                    </View>
+                </RNAnimated.View>
+            )}
+
+            <StyledAlert 
+                visible={showResetAlert}
+                title="Tutorials Reset"
+                description="You will see the learning modals if you logout from the profile tab and relogin to the app"
+                buttonText="OK"
+                onClose={() => setShowResetAlert(false)}
+            />
         </View>
     );
 };

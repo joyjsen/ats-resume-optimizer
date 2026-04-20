@@ -13,6 +13,7 @@ import { onBackgroundTaskCreated as background } from "./features/backgroundTask
 import { generateTrainingSlideshow as training } from "./features/trainingSlideshow";
 import { parseResume as parser } from "./features/resumeParser";
 import { aiProxy as proxy } from "./features/aiProxy";
+import { generateCareerGuidanceV1 as guidance, generateFreeOnboardingRoadmapV1 as freeGuidance } from "./features/careerGuidance";
 
 export const performGapAnalysis = gap(openaiApiKey, perplexityApiKey);
 export const generateRecommendation = recommend(openaiApiKey, perplexityApiKey);
@@ -24,3 +25,5 @@ export const onBackgroundTaskCreated = background(openaiApiKey, perplexityApiKey
 export const generateTrainingSlideshow = training(openaiApiKey);
 export const parseResume = parser(openaiApiKey);
 export const aiProxy = proxy(openaiApiKey, perplexityApiKey);
+export const generateCareerGuidanceV1 = guidance(openaiApiKey);
+export const generateFreeOnboardingRoadmapV1 = freeGuidance(openaiApiKey);

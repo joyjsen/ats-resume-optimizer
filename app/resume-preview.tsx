@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, ScrollView, StyleSheet, Alert, Platform } from 'react-native';
 import { Text, Surface, Title, Divider, useTheme, Button } from 'react-native-paper';
+import { useRouter } from 'expo-router';
 import { useResumeStore } from '../src/store/resumeStore';
 import { DocxGenerator } from '../src/services/docx/docxGenerator';
 
@@ -8,6 +9,7 @@ export default function ResumePreview() {
     const { currentAnalysis } = useResumeStore();
     const { activeTasks } = require('../src/context/TaskQueueContext').useTaskQueue();
     const theme = useTheme();
+    const router = useRouter();
 
     if (!currentAnalysis) {
         return (
@@ -63,6 +65,8 @@ export default function ResumePreview() {
         if (!canDownload) return;
         try {
             await DocxGenerator.generateAndShare(optimizedResume);
+            // Navigate to home tab after successful download
+            router.replace('/(tabs)/home' as any);
         } catch (error) {
             console.error(error);
             Alert.alert('Export Failed', 'Could not generate DOCX file.');

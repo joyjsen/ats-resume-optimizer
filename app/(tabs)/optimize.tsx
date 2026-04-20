@@ -1,6 +1,6 @@
 
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
-import { View, StyleSheet, FlatList, RefreshControl, Alert, Platform } from 'react-native';
+import { View, StyleSheet, FlatList, RefreshControl, Alert, Platform, Animated as RNAnimated, TouchableOpacity } from 'react-native';
 import { Text, Button, Card, Chip, FAB, useTheme, IconButton, ProgressBar, ActivityIndicator } from 'react-native-paper';
 import { useRouter, useFocusEffect, useNavigation } from 'expo-router';
 import { historyService } from '../../src/services/firebase/historyService';
@@ -13,6 +13,52 @@ import { DashboardFilters, SortOption, FilterState } from '../../src/components/
 import { getATSScoreRecommendation } from '../../src/utils/scoreColors';
 import { UserHeader } from '../../src/components/layout/UserHeader';
 import { scaleFont } from '../../src/utils/responsive';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import Svg, { Path } from 'react-native-svg';
+
+const AnimatedPath = RNAnimated.createAnimatedComponent(Path);
+
+const SVGArrow = () => {
+    const drawAnim = React.useRef(new RNAnimated.Value(200)).current; 
+    const drawArrowHead = React.useRef(new RNAnimated.Value(40)).current;
+
+    useEffect(() => {
+        RNAnimated.sequence([
+            RNAnimated.delay(300),
+            RNAnimated.timing(drawAnim, { toValue: 0, duration: 800, useNativeDriver: true }),
+            RNAnimated.timing(drawArrowHead, { toValue: 0, duration: 300, useNativeDriver: true })
+        ]).start();
+    }, []);
+
+    return (
+        <Svg width="140" height="110" viewBox="0 0 140 110" fill="none" style={{
+            shadowColor: "#7C3AED",
+            shadowOffset: { width: 0, height: 0 },
+            shadowOpacity: 0.5,
+            shadowRadius: 6,
+            elevation: 3
+        }}>
+            <AnimatedPath
+                d="M 120 10 C 100 8, 60 5, 30 30 C 10 48, 8 72, 20 88"
+                stroke="#A78BFA"
+                strokeWidth="3.5"
+                strokeLinecap="round"
+                fill="none"
+                strokeDasharray="200"
+                strokeDashoffset={drawAnim}
+            />
+            <AnimatedPath
+                d="M 20 88 L 8 76 M 20 88 L 34 80"
+                stroke="#A78BFA"
+                strokeWidth="3.5"
+                strokeLinecap="round"
+                fill="none"
+                strokeDasharray="40"
+                strokeDashoffset={drawArrowHead}
+            />
+        </Svg>
+    );
+};
 
 export default function Dashboard() {
     const router = useRouter();
@@ -53,6 +99,17 @@ export default function Dashboard() {
     const [isDeleting, setIsDeleting] = useState(false);
     const [refreshing, setRefreshing] = useState(false);
     const [isAnalysesExpanded, setIsAnalysesExpanded] = useState(true);
+
+    const pulseAnim = React.useRef(new RNAnimated.Value(0)).current;
+
+    useEffect(() => {
+        RNAnimated.loop(
+            RNAnimated.sequence([
+                RNAnimated.timing(pulseAnim, { toValue: 1, duration: 1000, useNativeDriver: false }),
+                RNAnimated.timing(pulseAnim, { toValue: 0, duration: 1000, useNativeDriver: false })
+            ])
+        ).start();
+    }, []);
 
     // Filter & Sort State
     const [sortOption, setSortOption] = useState<SortOption>('recent');
@@ -164,6 +221,70 @@ export default function Dashboard() {
         return result;
     }, [history, filters, sortOption]);
 
+    const [showTutorial, setShowTutorial] = useState<'pending' | 'draft' | 'optimized' | 'none'>('none');
+    const [targetLayout, setTargetLayout] = useState<{x: number, y: number, width: number, height: number}>({ x: 0, y: 0, width: 0, height: 0 });
+    const overlayOpacity = React.useRef(new RNAnimated.Value(0)).current;
+
+    // Evaluate Tutorial priorities
+    useFocusEffect(
+        React.useCallback(() => {
+            let isActive = true;
+
+            const evaluateTutorials = async () => {
+                if (filteredHistory.length === 0) return;
+
+                const hasSeenPending = await AsyncStorage.getItem('hasSeenOptimizePending') === 'true';
+                const hasSeenDraft = await AsyncStorage.getItem('hasSeenOptimizeDraft') === 'true';
+                const hasSeenOptimized = await AsyncStorage.getItem('hasSeenOptimizeOptimized') === 'true';
+
+                let targetState: 'pending' | 'draft' | 'optimized' | 'none' = 'none';
+
+                // Look for targets in precedence array
+                const hasPending = filteredHistory.some(h => 
+                    !h.optimizedResumeData && !h.draftOptimizedResumeData && !(h.applicationStatus && h.applicationStatus !== 'not_applied')
+                    && !activeTasks.find(t => t.payload.currentAnalysis?.id === h.id && t.status !== 'completed' && t.status !== 'cancelled' && t.status !== 'failed')
+                );
+                const hasDraft = filteredHistory.some(h => !!h.draftOptimizedResumeData);
+                const hasOptimized = filteredHistory.some(h => !!h.optimizedResumeData);
+
+                if (hasPending && !hasSeenPending) {
+                    targetState = 'pending';
+                } else if (hasDraft && !hasSeenDraft) {
+                    targetState = 'draft';
+                } else if (hasOptimized && !hasSeenOptimized) {
+                    targetState = 'optimized';
+                }
+
+                if (isActive && targetState !== 'none') {
+                    // Small delay to let FlatList render and capture onLayout
+                    setTimeout(() => {
+                        if (isActive) {
+                            setShowTutorial(targetState);
+                            RNAnimated.timing(overlayOpacity, { toValue: 1, duration: 400, useNativeDriver: true }).start();
+                        }
+                    }, 500);
+                } else if (isActive) {
+                    setShowTutorial('none');
+                }
+            };
+
+            const timer = setTimeout(evaluateTutorials, 300);
+
+            return () => {
+                isActive = false;
+                clearTimeout(timer);
+                setShowTutorial('none');
+            };
+        }, [filteredHistory, activeTasks])
+    );
+
+    const handleDismissTutorial = async () => {
+        if (showTutorial === 'pending') await AsyncStorage.setItem('hasSeenOptimizePending', 'true');
+        if (showTutorial === 'draft') await AsyncStorage.setItem('hasSeenOptimizeDraft', 'true');
+        if (showTutorial === 'optimized') await AsyncStorage.setItem('hasSeenOptimizeOptimized', 'true');
+        
+        setShowTutorial('none');
+    };
 
     const handleOpenAnalysis = (item: SavedAnalysis) => {
         // ... (existing implementation)
@@ -375,15 +496,41 @@ export default function Dashboard() {
 
                         const rec = getATSScoreRecommendation(score);
 
+                        const isNeedsUpdate = !isPending && !isDraft && !(item.applicationStatus && item.applicationStatus !== 'not_applied') && !item.optimizedResumeData;
+
                         return (
-                            <Card
-                                style={styles.card}
-                                onPress={() => handleOpenAnalysis(item)}
-                                mode="outlined"
-                            >
-                                <Card.Content style={Platform.OS === 'android' && { paddingVertical: 8, paddingHorizontal: 12 }}>
-                                    <View style={styles.cardHeader}>
-                                        <View style={{ flex: 1, marginRight: 8 }}>
+                            <RNAnimated.View 
+                                onLayout={(e) => {
+                                    if (
+                                        (showTutorial === 'pending' && isNeedsUpdate) ||
+                                        (showTutorial === 'draft' && isDraft) ||
+                                        (showTutorial === 'optimized' && !isNeedsUpdate && !isDraft)
+                                    ) {
+                                        // Update layout track only if it hits the target state
+                                        const l = e.nativeEvent.layout;
+                                        setTargetLayout({ x: l.x, y: l.y, width: l.width, height: l.height });
+                                    }
+                                }}
+                                style={{
+                                marginBottom: 12,
+                                ...(isNeedsUpdate ? {
+                                    borderRadius: 12,
+                                    borderWidth: 2,
+                                    borderColor: pulseAnim.interpolate({ inputRange: [0, 1], outputRange: ['transparent', '#7C3AED'] }),
+                                    shadowColor: '#7C3AED',
+                                    shadowOffset: { width: 0, height: 0 },
+                                    shadowOpacity: pulseAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 0.8] }),
+                                    shadowRadius: pulseAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 10] }),
+                                } : {})
+                            }}>
+                                <Card
+                                    style={[styles.card, { marginBottom: 0, ...(isNeedsUpdate ? { backgroundColor: theme.dark ? '#1E1830' : '#F3E8FF', borderColor: 'transparent' } : {}) }]}
+                                    onPress={() => handleOpenAnalysis(item)}
+                                    mode="outlined"
+                                >
+                                    <Card.Content style={Platform.OS === 'android' && { paddingVertical: 8, paddingHorizontal: 12 }}>
+                                        <View style={styles.cardHeader}>
+                                            <View style={{ flex: 1, marginRight: 8 }}>
                                             <Text
                                                 variant={Platform.OS === 'android' ? "titleSmall" : "titleMedium"}
                                                 numberOfLines={1}
@@ -505,6 +652,7 @@ export default function Dashboard() {
                                     </View>
                                 </Card.Content>
                             </Card>
+                        </RNAnimated.View>
                         );
                     }}
                 />
@@ -523,6 +671,37 @@ export default function Dashboard() {
                     <Text style={{ marginTop: 16, color: '#fff', fontWeight: 'bold', fontSize: 16 }}>Delete in progress...</Text>
                 </View>
             )}
+
+            {/* Dynamic Tutorials Overlay */}
+            {showTutorial !== 'none' && targetLayout.y >= 0 && (
+                <RNAnimated.View style={[StyleSheet.absoluteFill, { backgroundColor: theme.dark ? "rgba(8,6,18,0.85)" : "rgba(255,255,255,0.85)", zIndex: 100, opacity: overlayOpacity }]} pointerEvents="auto">
+                    {/* SVG Arrow */}
+                    <View style={{ position: 'absolute', top: targetLayout.y + 160, left: targetLayout.x + (targetLayout.width / 2) - 10 }}>
+                        <SVGArrow />
+                    </View>
+
+                    {/* Popover */}
+                    <View style={{ position: 'absolute', top: targetLayout.y ? Math.max(40, targetLayout.y - 10) : 100, left: 20, right: 20, backgroundColor: theme.dark ? '#1E1830' : '#fff', padding: 20, borderRadius: 16, borderWidth: 1, borderColor: "rgba(124,58,237,0.5)", shadowColor: "#7C3AED", shadowOpacity: 0.25, shadowRadius: 12, elevation: 8 }}>
+                        <View style={{ alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', backgroundColor: "rgba(124,58,237,0.2)", borderRadius: 50, paddingHorizontal: 12, paddingVertical: 4, marginBottom: 12 }}>
+                            <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: "#A78BFA", marginRight: 8 }} />
+                            <Text style={{ color: "#A78BFA", fontSize: 11, fontWeight: '700', letterSpacing: 1 }}>ACTION REQUIRED</Text>
+                        </View>
+                        <Text style={{ color: theme.dark ? "#F5F3FF" : "#111", fontSize: 18, fontWeight: '700', marginBottom: 8 }}>
+                            {showTutorial === 'pending' ? 'Pending Update' : showTutorial === 'draft' ? 'Draft Ready' : 'Optimized Resume'}
+                        </Text>
+                        <Text style={{ color: theme.dark ? "#9CA3AF" : "#555", fontSize: 14, lineHeight: 20, marginBottom: 20 }}>
+                            {showTutorial === 'pending' ? "Click on the pending optimization to rewrite and optimize your resume as warranted by the job description." 
+                            : showTutorial === 'draft' ? "Click on the draft ready card to finalize the updated resume."
+                            : "Click on the optimized resume to add partial or missing skills to further improve your resume and align better with the job description."}
+                        </Text>
+                        
+                        <TouchableOpacity style={{ backgroundColor: "#7C3AED", paddingVertical: 12, paddingHorizontal: 24, borderRadius: 50, alignSelf: 'flex-start' }} onPress={handleDismissTutorial}>
+                            <Text style={{ color: "white", fontSize: 14, fontWeight: '600' }}>Got it →</Text>
+                        </TouchableOpacity>
+                    </View>
+                </RNAnimated.View>
+            )}
+
         </View>
     );
 }

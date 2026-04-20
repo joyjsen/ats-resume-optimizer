@@ -19,6 +19,7 @@ export const appleAuthRelay = functionsV1
         const idToken = req.body?.id_token;
         const code = req.body?.code;
         const error = req.body?.error;
+        const userPayload = req.body?.user;
 
         console.log("[Apple Auth Relay] Method:", req.method);
         console.log("[Apple Auth Relay] Has id_token:", !!idToken);
@@ -41,6 +42,11 @@ export const appleAuthRelay = functionsV1
             appUrl = `riresume://apple-auth?id_token=${encodeURIComponent(idToken)}`;
         } else if (code) {
             appUrl = `riresume://apple-auth?code=${encodeURIComponent(code)}`;
+        }
+
+        if (appUrl && userPayload) {
+            const finalUserPayload = typeof userPayload === 'object' ? JSON.stringify(userPayload) : userPayload;
+            appUrl += `&user=${encodeURIComponent(finalUserPayload)}`;
         }
 
         if (appUrl) {

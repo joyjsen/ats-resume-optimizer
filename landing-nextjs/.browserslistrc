@@ -1,0 +1,5 @@
+[production]
+chrome >= 90
+firefox >= 90
+safari >= 14
+edge >= 90

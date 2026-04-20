@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { View, StyleSheet, ScrollView, Image, KeyboardAvoidingView, Platform, TouchableWithoutFeedback, Keyboard } from 'react-native';
-import { Text, Button, TextInput, useTheme, Appbar } from 'react-native-paper';
+import { Text, Button, TextInput, useTheme, Appbar, ActivityIndicator } from 'react-native-paper';
 import { useRouter } from 'expo-router';
 import { Linking, TouchableOpacity } from 'react-native';
 import { IconButton } from 'react-native-paper';
@@ -133,6 +133,27 @@ export default function LandingPage() {
             style={{ flex: 1 }}
         >
             <View style={[styles.mainContainer, { backgroundColor: theme.colors.background }]}>
+                {/* Auth transition overlay — blocks all interaction while routing to onboarding/home */}
+                {userProfile && (
+                    <View style={{
+                        position: 'absolute',
+                        top: 0, left: 0, right: 0, bottom: 0,
+                        backgroundColor: theme.colors.background,
+                        justifyContent: 'center',
+                        alignItems: 'center',
+                        zIndex: 999,
+                    }}>
+                        <Image
+                            source={require('../assets/logo.png')}
+                            style={{ width: 80, height: 80, marginBottom: 24, borderRadius: 40 }}
+                            resizeMode="contain"
+                        />
+                        <ActivityIndicator size="large" color={theme.colors.primary} style={{ marginBottom: 16 }} />
+                        <Text variant="titleMedium" style={{ color: theme.colors.onSurface, textAlign: 'center' }}>
+                            Setting up your experience...
+                        </Text>
+                    </View>
+                )}
                 <Appbar.Header style={{ backgroundColor: 'transparent', elevation: 0, height: verticalScale(64) }}>
                     <View style={[styles.headerContent, { height: verticalScale(64) }]}>
                         <View style={styles.logoContainer}>
@@ -220,28 +241,28 @@ export default function LandingPage() {
                         </View>
 
                         <View style={styles.socialContainer}>
-                            <TouchableOpacity onPress={() => { }} style={styles.socialIcon}>
+                            <TouchableOpacity onPress={() => Linking.openURL('https://www.facebook.com/share/1HrAgt1KUB/?mibextid=wwXIfr')} style={styles.socialIcon}>
                                 <FontAwesome6 name="facebook" size={moderateScale(18)} color={theme.colors.onSurface} />
                             </TouchableOpacity>
-                            <TouchableOpacity onPress={() => { }} style={styles.socialIcon}>
+                            <TouchableOpacity onPress={() => Linking.openURL('https://www.instagram.com/riresume?igsh=YjU4MTJ5N205Y2V1')} style={styles.socialIcon}>
                                 <FontAwesome6 name="instagram" size={moderateScale(18)} color={theme.colors.onSurface} />
                             </TouchableOpacity>
-                            <TouchableOpacity onPress={() => { }} style={styles.socialIcon}>
+                            <TouchableOpacity onPress={() => Linking.openURL('https://x.com/riresume?s=21&t=YyZ_r5xFMEYCKAWlqJVxFA')} style={styles.socialIcon}>
                                 <FontAwesome6 name="x-twitter" size={moderateScale(18)} color={theme.colors.onSurface} />
                             </TouchableOpacity>
-                            <TouchableOpacity onPress={() => { }} style={styles.socialIcon}>
+                            <TouchableOpacity onPress={() => Linking.openURL('https://www.threads.com/@riresume?igshid=NTc4MTIwNjQ2YQ==')} style={styles.socialIcon}>
                                 <FontAwesome6 name="threads" size={moderateScale(18)} color={theme.colors.onSurface} />
                             </TouchableOpacity>
-                            <TouchableOpacity onPress={() => { }} style={styles.socialIcon}>
+                            <TouchableOpacity onPress={() => Linking.openURL('https://www.tiktok.com/@riresume?_r=1&_t=ZT-94r59srZ1mo')} style={styles.socialIcon}>
                                 <FontAwesome6 name="tiktok" size={moderateScale(18)} color={theme.colors.onSurface} />
                             </TouchableOpacity>
-                            <TouchableOpacity onPress={() => { }} style={styles.socialIcon}>
+                            <TouchableOpacity onPress={() => { /* LinkedIn URL Pending */ }} style={styles.socialIcon}>
                                 <FontAwesome6 name="linkedin" size={moderateScale(18)} color={theme.colors.onSurface} />
                             </TouchableOpacity>
-                            <TouchableOpacity onPress={() => { }} style={styles.socialIcon}>
+                            <TouchableOpacity onPress={() => Linking.openURL('https://truthsocial.com')} style={styles.socialIcon}>
                                 <TruthSocialIcon color={theme.colors.onSurface} />
                             </TouchableOpacity>
-                            <TouchableOpacity onPress={() => { }} style={styles.socialIcon}>
+                            <TouchableOpacity onPress={() => Linking.openURL('https://bsky.app/profile/riresume.bsky.social')} style={styles.socialIcon}>
                                 <BlueSkyIcon color={theme.colors.onSurface} isDark={isDark} size={moderateScale(18)} />
                             </TouchableOpacity>
                         </View>
@@ -277,6 +298,7 @@ const styles = StyleSheet.create({
         width: moderateScale(32),
         height: moderateScale(32),
         marginRight: horizontalScale(8),
+        borderRadius: moderateScale(16),
     },
     logoText: {
         fontWeight: 'bold',

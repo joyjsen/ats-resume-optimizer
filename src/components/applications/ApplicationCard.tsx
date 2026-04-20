@@ -1,5 +1,5 @@
-﻿import React, { useState } from 'react';
-import { View, StyleSheet, TouchableOpacity, Alert, Platform } from 'react-native';
+import React, { useState, useEffect, useRef } from 'react';
+import { View, StyleSheet, TouchableOpacity, Alert, Platform, Animated as RNAnimated } from 'react-native';
 import { Card, Text, Chip, Button, IconButton, Menu, Divider, useTheme, ProgressBar, Portal, Dialog, TextInput } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Application, ApplicationStage, TimelineEvent } from '../../types/application.types';
@@ -17,6 +17,8 @@ interface Props {
     isResumeUpdated?: boolean; // Prop to trigger re-generate activation
     onCompleteOptimization?: (analysisId: string) => void; // For read-only mode - navigate to complete optimization
     onRestore?: (id: string) => void;
+    initialExpanded?: boolean; // Auto-expand when navigating from home tab
+    onButtonLayout?: (key: 'cover_letter' | 'prep_guide', layout: {x: number, y: number, width: number, height: number}) => void;
 }
 
 const isAndroid = Platform.OS === 'android';
@@ -31,10 +33,20 @@ export const ApplicationCardComponent = ({
     onCancelPrep,
     isResumeUpdated = false,
     onCompleteOptimization,
-    onRestore
+    onRestore,
+    initialExpanded = false,
+    onButtonLayout
 }: Props) => {
     const theme = useTheme();
-    const [expanded, setExpanded] = useState(false);
+    const [expanded, setExpanded] = useState(initialExpanded);
+    const [actionsY, setActionsY] = useState(0);
+
+    // React to initialExpanded prop changes (e.g. navigating from home tab)
+    // When a specific card is targeted, expand it and collapse all others
+    React.useEffect(() => {
+        setExpanded(initialExpanded);
+    }, [initialExpanded]);
+
     const [statusMenuVisible, setStatusMenuVisible] = useState(false);
     const [statusDialogVisible, setStatusDialogVisible] = useState(false);
     const [selectedPendingStage, setSelectedPendingStage] = useState<ApplicationStage | null>(null);
@@ -43,6 +55,27 @@ export const ApplicationCardComponent = ({
 
     // Read-only mode for pending/draft analyses
     const isReadOnly = application.isReadOnly === true;
+
+    const hasCoverLetter = application.coverLetter?.status === 'completed' || !!application.coverLetter?.content;
+    const hasPrepGuide = application.prepGuide?.status === 'completed' && application.prepGuide.sections;
+
+    const shouldGlowCoverLetter = !isReadOnly && !hasCoverLetter && application.coverLetter?.status !== 'generating';
+    const shouldGlowPrepGuide = !isReadOnly && !hasPrepGuide && application.prepGuide?.status !== 'generating';
+
+    const pulseAnim = useRef(new RNAnimated.Value(0)).current;
+
+    useEffect(() => {
+        if ((shouldGlowCoverLetter || shouldGlowPrepGuide) && expanded) {
+            RNAnimated.loop(
+                RNAnimated.sequence([
+                    RNAnimated.timing(pulseAnim, { toValue: 1, duration: 1000, useNativeDriver: false }),
+                    RNAnimated.timing(pulseAnim, { toValue: 0, duration: 1000, useNativeDriver: false })
+                ])
+            ).start();
+        } else {
+            pulseAnim.setValue(0);
+        }
+    }, [shouldGlowCoverLetter, shouldGlowPrepGuide, expanded]);
 
     const getStatusColor = (stage: ApplicationStage) => {
         switch (stage) {
@@ -222,7 +255,7 @@ export const ApplicationCardComponent = ({
                         </View>
                     )}
 
-                    <Card.Actions style={styles.actions}>
+                    <Card.Actions style={styles.actions} onLayout={(e) => setActionsY(e.nativeEvent.layout.y)}>
                         <View style={styles.actionGrid}>
                             <Button
                                 mode="outlined"
@@ -235,22 +268,42 @@ export const ApplicationCardComponent = ({
                             >
                                 Resume
                             </Button>
-                            <View style={[styles.actionBtn, isReadOnly && styles.disabledBtn, { position: 'relative' }]}>
+                            <RNAnimated.View
+                                onLayout={(e) => {
+                                    if (onButtonLayout) {
+                                        const layout = e.nativeEvent.layout;
+                                        onButtonLayout('cover_letter', { ...layout, y: layout.y + actionsY });
+                                    }
+                                }}
+                                style={[
+                                styles.actionBtn, 
+                                isReadOnly && styles.disabledBtn, 
+                                { position: 'relative' },
+                                shouldGlowCoverLetter ? {
+                                    borderRadius: 50,
+                                    borderWidth: 2,
+                                    borderColor: pulseAnim.interpolate({ inputRange: [0, 1], outputRange: ['transparent', '#7C3AED'] }),
+                                    shadowColor: '#7C3AED',
+                                    shadowOffset: { width: 0, height: 0 },
+                                    shadowOpacity: pulseAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 0.8] }),
+                                    shadowRadius: pulseAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 10] }),
+                                } : {}
+                            ]}>
                                 <Button
-                                    mode={!isReadOnly && (application.coverLetter?.status === 'completed' || !!application.coverLetter?.content) ? "contained-tonal" : "outlined"}
-                                    icon={(application.coverLetter?.status === 'completed' || !!application.coverLetter?.content) ? "text-box-check-outline" : "text-box-outline"}
+                                    mode={!isReadOnly && hasCoverLetter ? "contained-tonal" : "outlined"}
+                                    icon={hasCoverLetter ? "text-box-check-outline" : "text-box-outline"}
                                     onPress={() => !isReadOnly && application.coverLetter?.status !== 'generating' && onGenerateCoverLetter(application.id)}
                                     style={{ width: '100%', marginVertical: 0 }}
                                     labelStyle={{ fontSize: isAndroid ? 11 : 12 }}
-                                    textColor={!isReadOnly && (application.coverLetter?.status === 'completed' || !!application.coverLetter?.content) ? theme.colors.primary : undefined}
+                                    textColor={!isReadOnly && hasCoverLetter ? theme.colors.primary : undefined}
                                     loading={!isReadOnly && application.coverLetter?.status === 'generating'}
                                     disabled={isReadOnly || application.coverLetter?.status === 'generating'}
                                     compact={isAndroid}
                                 >
                                     {application.coverLetter?.status === 'generating' ? 'Generating...' :
-                                        (application.coverLetter?.status === 'completed' || application.coverLetter?.content) ? 'View Cover Letter' : 'Cover Letter'}
+                                        hasCoverLetter ? 'View Cover Letter' : 'Cover Letter'}
                                 </Button>
-                                {(!isReadOnly && !(application.coverLetter?.status === 'completed' || !!application.coverLetter?.content) && application.coverLetter?.status !== 'generating') && (
+                                {(!isReadOnly && !hasCoverLetter && application.coverLetter?.status !== 'generating') && (
                                     <TouchableOpacity
                                         style={styles.infoIcon}
                                         onPress={() => Alert.alert("Token Cost", "Each cover letter generation costs 30 tokens")}
@@ -259,12 +312,32 @@ export const ApplicationCardComponent = ({
                                         <MaterialCommunityIcons name="information" size={14} color={theme.colors.primary} />
                                     </TouchableOpacity>
                                 )}
-                            </View>
+                            </RNAnimated.View>
 
-                            <View style={[styles.actionBtn, isReadOnly && styles.disabledBtn, { position: 'relative' }]}>
+                            <RNAnimated.View
+                                onLayout={(e) => {
+                                    if (onButtonLayout) {
+                                        const layout = e.nativeEvent.layout;
+                                        onButtonLayout('prep_guide', { ...layout, y: layout.y + actionsY });
+                                    }
+                                }}
+                                style={[
+                                styles.actionBtn, 
+                                isReadOnly && styles.disabledBtn, 
+                                { position: 'relative' },
+                                shouldGlowPrepGuide ? {
+                                    borderRadius: 50,
+                                    borderWidth: 2,
+                                    borderColor: pulseAnim.interpolate({ inputRange: [0, 1], outputRange: ['transparent', '#7C3AED'] }),
+                                    shadowColor: '#7C3AED',
+                                    shadowOffset: { width: 0, height: 0 },
+                                    shadowOpacity: pulseAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 0.8] }),
+                                    shadowRadius: pulseAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 10] }),
+                                } : {}
+                            ]}>
                                 <Button
-                                    mode={!isReadOnly && (application.prepGuide?.status === 'completed' && application.prepGuide.sections) ? "contained-tonal" : "outlined"}
-                                    icon={(application.prepGuide?.status === 'completed' && application.prepGuide.sections) ? "book-open-variant" : "school-outline"}
+                                    mode={!isReadOnly && hasPrepGuide ? "contained-tonal" : "outlined"}
+                                    icon={hasPrepGuide ? "book-open-variant" : "school-outline"}
                                     onPress={() => !isReadOnly && onGeneratePrep(application.id)}
                                     style={{ width: '100%', marginVertical: 0 }}
                                     labelStyle={{ fontSize: isAndroid ? 11 : 12 }}
@@ -272,9 +345,9 @@ export const ApplicationCardComponent = ({
                                     disabled={isReadOnly || application.prepGuide?.status === 'generating'}
                                     compact={isAndroid}
                                 >
-                                    {application.prepGuide?.status === 'completed' && application.prepGuide.sections ? 'View Prep Guide' : 'Prep Guide'}
+                                    {hasPrepGuide ? 'View Prep Guide' : 'Prep Guide'}
                                 </Button>
-                                {(!isReadOnly && !(application.prepGuide?.status === 'completed' && application.prepGuide.sections) && application.prepGuide?.status !== 'generating') && (
+                                {(!isReadOnly && !hasPrepGuide && application.prepGuide?.status !== 'generating') && (
                                     <TouchableOpacity
                                         style={styles.infoIcon}
                                         onPress={() => Alert.alert("Token Cost", "Each Prep Guide generation costs 40 tokens")}
@@ -283,7 +356,7 @@ export const ApplicationCardComponent = ({
                                         <MaterialCommunityIcons name="information" size={14} color={theme.colors.primary} />
                                     </TouchableOpacity>
                                 )}
-                            </View>
+                            </RNAnimated.View>
 
                             <View style={[styles.actionBtn, isReadOnly && styles.disabledBtn, { position: 'relative' }]}>
                                 <Button
@@ -506,7 +579,8 @@ export const ApplicationCard = React.memo(ApplicationCardComponent, (prev, next)
         prev.application.isReadOnly === next.application.isReadOnly &&
         prev.application.prepGuide?.status === next.application.prepGuide?.status &&
         prev.application.prepGuideHistory?.length === next.application.prepGuideHistory?.length &&
-        prev.application.coverLetter?.status === next.application.coverLetter?.status
+        prev.application.coverLetter?.status === next.application.coverLetter?.status &&
+        prev.initialExpanded === next.initialExpanded
     );
 });
 

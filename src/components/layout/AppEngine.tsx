@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Platform, Alert } from 'react-native';
 import { useRouter, useSegments } from 'expo-router';
 import { authService, UserInactiveError } from '../../services/firebase/authService';
@@ -7,6 +7,7 @@ import { useProfileStore } from '../../store/profileStore';
 import { useResumeStore } from '../../store/resumeStore';
 import { useShareIntentHandler } from '../../hooks/useShareIntentHandler';
 import { iapService } from '../../services/iap/iapService';
+import { StyledAlert } from '../common/StyledAlert';
 
 /**
  * AppEngine isolates heavy root logic (Auth, Notifications, IAP, Share Intents)
@@ -19,6 +20,7 @@ export const AppEngine = () => {
     const { setPendingSharedUrl, setPendingSharedText, pendingSharedUrl } = useResumeStore();
     const { sharedUrl, sharedContent, clearSharedUrl } = useShareIntentHandler();
     const isMounted = useRef(false);
+    const [showJobUrlAlert, setShowJobUrlAlert] = useState(false);
 
     // Auth subscription engine
     useEffect(() => {
@@ -117,13 +119,7 @@ export const AppEngine = () => {
         const isAlreadyOnAnalyze = segments.some(s => s === 'analyze');
         if (isAlreadyOnAnalyze) return;
 
-        Alert.alert(
-            "Job URL Detected",
-            "A shared job URL has been received. Tap below to start your analysis.",
-            [
-                { text: "Go to Analyze", isPreferred: true, onPress: () => router.replace('/(tabs)/analyze' as any) }
-            ]
-        );
+        setShowJobUrlAlert(true);
     };
 
     useEffect(() => {
@@ -163,7 +159,18 @@ export const AppEngine = () => {
         showAnalyzeAlert();
     }, [pendingSharedUrl, userProfile, isInitialized]);
 
-    return null; // Side-effect only component
+    return (
+        <StyledAlert 
+            visible={showJobUrlAlert}
+            title="Job URL Detected"
+            description="A shared job URL has been received. Tap below to start your analysis."
+            buttonText="Go to Analyze"
+            onClose={() => {
+                setShowJobUrlAlert(false);
+                router.replace('/(tabs)/analyze' as any);
+            }}
+        />
+    );
 };
 
 export default AppEngine;

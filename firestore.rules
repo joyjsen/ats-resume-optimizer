@@ -76,6 +76,10 @@ service cloud.firestore {
     // User profiles - users can only access their own profile (admin can access all for management)
     match /users/{userId} {
       allow read, write: if isOwner(userId) || isAdmin();
+      
+      match /generated_resumes/{resumeId} {
+        allow read, write: if isOwner(userId) || isAdmin();
+      }
     }
 
     // Background tasks - users can create and read their own tasks

@@ -179,14 +179,14 @@ export default function UserManagementScreen() {
     );
 
     return (
-        <View style={styles.container}>
-            <View style={styles.header}>
+        <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
+            <View style={[styles.header, { backgroundColor: theme.colors.elevation.level1 }]}>
                 <View style={styles.searchRow}>
                     <Searchbar
                         placeholder="Search users..."
                         onChangeText={onChangeSearch}
                         value={searchQuery}
-                        style={styles.search}
+                        style={[styles.search, { backgroundColor: theme.colors.elevation.level2, borderColor: theme.colors.outlineVariant }]}
                     />
                 </View>
 
@@ -229,11 +229,9 @@ export default function UserManagementScreen() {
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: '#fff',
     },
     header: {
         padding: 16,
-        backgroundColor: '#f5f5f5',
     },
     searchRow: {
         marginBottom: 12,
@@ -254,9 +252,7 @@ const styles = StyleSheet.create({
     },
     search: {
         elevation: 0,
-        backgroundColor: '#fff',
         borderWidth: 1,
-        borderColor: '#ddd',
     },
     item: {
         paddingVertical: 12,

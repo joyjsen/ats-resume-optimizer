@@ -292,8 +292,8 @@ export default function DeletedUsersScreen() {
                 right={props => (
                     <View style={styles.rightContent}>
                         <Chip
-                            style={styles.tokenChip}
-                            textStyle={{ fontSize: 12, color: '#333', fontWeight: '600' }}
+                            style={[styles.tokenChip, { backgroundColor: theme.colors.elevation.level2 }]}
+                            textStyle={{ fontSize: 12, color: theme.colors.onSurface, fontWeight: '600' }}
                         >
                             {item.tokenBalanceAtDeletion} 🪙
                         </Chip>
@@ -305,7 +305,7 @@ export default function DeletedUsersScreen() {
                         </Chip>
                     </View>
                 )}
-                style={styles.listItem}
+                style={[styles.listItem, { backgroundColor: theme.colors.elevation.level1 }]}
             />
         </TouchableOpacity>
     );
@@ -320,9 +320,9 @@ export default function DeletedUsersScreen() {
     }
 
     return (
-        <View style={styles.container}>
+        <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
             {/* Header */}
-            <View style={styles.header}>
+            <View style={[styles.header, { backgroundColor: theme.colors.elevation.level1, borderBottomColor: theme.colors.outlineVariant }]}>
                 <Text variant="headlineSmall" style={styles.title}>Deleted Accounts</Text>
                 <Text variant="bodyMedium" style={styles.subtitle}>
                     {deletedAccounts.length} archived account{deletedAccounts.length !== 1 ? 's' : ''}
@@ -334,7 +334,7 @@ export default function DeletedUsersScreen() {
                 placeholder="Search by name, email, or reason..."
                 onChangeText={onChangeSearch}
                 value={searchQuery}
-                style={styles.searchbar}
+                style={[styles.searchbar, { backgroundColor: theme.colors.elevation.level2 }]}
             />
 
             {/* List */}
@@ -367,7 +367,7 @@ export default function DeletedUsersScreen() {
                         activeOpacity={1}
                         onPress={() => setSelectedAccount(null)}
                     />
-                    <View style={styles.modalContent}>
+                    <View style={[styles.modalContent, { backgroundColor: theme.colors.elevation.level3 }]}>
                         {selectedAccount && (
                             <ScrollView
                                 showsVerticalScrollIndicator={true}
@@ -432,19 +432,19 @@ export default function DeletedUsersScreen() {
                                 <View style={styles.section}>
                                     <Text variant="titleMedium" style={styles.sectionTitle}>Account Summary</Text>
                                     <View style={styles.statsRow}>
-                                        <View style={styles.statCard}>
+                                        <View style={[styles.statCard, { backgroundColor: theme.colors.elevation.level2 }]}>
                                             <Text variant="headlineSmall" style={{ color: theme.colors.primary, fontWeight: 'bold' }}>
                                                 ${selectedAccount.totalSpent.toFixed(2)}
                                             </Text>
                                             <Text variant="labelSmall" style={{ color: '#888' }}>Total Spent</Text>
                                         </View>
-                                        <View style={styles.statCard}>
+                                        <View style={[styles.statCard, { backgroundColor: theme.colors.elevation.level2 }]}>
                                             <Text variant="headlineSmall" style={{ color: '#FF9800', fontWeight: 'bold' }}>
                                                 {selectedAccount.tokenBalanceAtDeletion}
                                             </Text>
                                             <Text variant="labelSmall" style={{ color: '#888' }}>Tokens Left</Text>
                                         </View>
-                                        <View style={styles.statCard}>
+                                        <View style={[styles.statCard, { backgroundColor: theme.colors.elevation.level2 }]}>
                                             <Text variant="headlineSmall" style={{ color: '#2196F3', fontWeight: 'bold' }}>
                                                 {selectedAccount.historyCount}
                                             </Text>
@@ -518,7 +518,6 @@ export default function DeletedUsersScreen() {
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: '#f5f5f5',
     },
     centered: {
         flex: 1,
@@ -527,9 +526,7 @@ const styles = StyleSheet.create({
     },
     header: {
         padding: 16,
-        backgroundColor: '#fff',
         borderBottomWidth: 1,
-        borderBottomColor: '#eee',
     },
     title: {
         fontWeight: 'bold',
@@ -541,10 +538,8 @@ const styles = StyleSheet.create({
     searchbar: {
         margin: 16,
         elevation: 1,
-        backgroundColor: '#fff',
     },
     listItem: {
-        backgroundColor: '#fff',
         marginHorizontal: 16,
         marginBottom: 8,
         borderRadius: 8,
@@ -559,7 +554,6 @@ const styles = StyleSheet.create({
     },
     tokenChip: {
         height: 28,
-        backgroundColor: '#f5f5f5',
     },
     deletedChip: {
         backgroundColor: '#ffebee',
@@ -579,7 +573,6 @@ const styles = StyleSheet.create({
         flex: 1,
     },
     modalContent: {
-        backgroundColor: '#fff',
         borderTopLeftRadius: 20,
         borderTopRightRadius: 20,
         padding: 20,
@@ -620,7 +613,6 @@ const styles = StyleSheet.create({
     statCard: {
         alignItems: 'center',
         padding: 12,
-        backgroundColor: '#f9f9f9',
         borderRadius: 8,
         minWidth: 80,
     },

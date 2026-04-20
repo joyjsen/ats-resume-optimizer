@@ -16,6 +16,8 @@ export default function AuthLayout() {
                     headerStyle: { backgroundColor: theme.colors.background },
                     headerTintColor: theme.colors.onSurface,
                     headerTitleStyle: { color: theme.colors.onSurface },
+                    headerBackVisible: false,
+                    headerLeft: () => null,
                     headerRight: () => <ThemeToggle size={22} style={{ marginRight: 4 }} />,
                 }}
             />

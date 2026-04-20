@@ -64,12 +64,23 @@ Rules:
                     model: 'gpt-5.4-mini',
                     messages: messages,
                     response_format: { type: 'json_object' },
-                    max_completion_tokens: 4000,
+                    max_completion_tokens: 16384,
                     temperature: 0,
                 });
 
-                const contentResponse = response.choices[0].message?.content;
-                if (!contentResponse) throw new Error("No response from AI");
+                const message = response.choices[0].message;
+                const contentResponse = message?.content;
+                if (!contentResponse || response.choices[0].finish_reason === 'length') {
+                    const reason = response.choices[0].finish_reason;
+                    const refusal = (message as any)?.refusal || 'None';
+                    console.error(`System returned empty/truncated content. Finish Reason: ${reason}. Refusal: ${refusal}`);
+                    
+                    let userReason: string = reason;
+                    if (reason === 'content_filter') userReason = "Content policy violation (safety)";
+                    if (reason === 'length') userReason = "The document is too long to parse. Please shorten your resume.";
+                    
+                    throw new Error(`System rejected the document because: ${userReason}`);
+                }
 
                 const parsed = JSON.parse(contentResponse);
                 return _addIdsToParsedData(parsed, "[Parsed from images]");
@@ -120,12 +131,23 @@ Rules:
                     model: 'gpt-5.4-mini',
                     messages: messages,
                     response_format: { type: 'json_object' },
-                    max_completion_tokens: 4000,
+                    max_completion_tokens: 16384,
                     temperature: 0,
                 });
 
-                const contentResponse = response.choices[0].message?.content;
-                if (!contentResponse) throw new Error("No response from AI");
+                const message = response.choices[0].message;
+                const contentResponse = message?.content;
+                if (!contentResponse || response.choices[0].finish_reason === 'length') {
+                    const reason = response.choices[0].finish_reason;
+                    const refusal = (message as any)?.refusal || 'None';
+                    console.error(`System returned empty/truncated content. Finish Reason: ${reason}. Refusal: ${refusal}`);
+                    
+                    let userReason: string = reason;
+                    if (reason === 'content_filter') userReason = "Content policy violation (safety)";
+                    if (reason === 'length') userReason = "The document is too long to parse. Please shorten your resume.";
+                    
+                    throw new Error(`System rejected the document because: ${userReason}`);
+                }
 
                 const parsed = JSON.parse(contentResponse);
                 return _addIdsToParsedData(parsed, text);

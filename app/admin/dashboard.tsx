@@ -44,7 +44,7 @@ export default function AdminDashboard() {
     }
 
     return (
-        <ScrollView style={styles.container}>
+        <ScrollView style={[styles.container, { backgroundColor: theme.colors.background }]}>
             <View style={styles.header}>
                 <Text variant="headlineMedium" style={styles.title}>Admin Dashboard</Text>
                 <Button mode="outlined" onPress={loadStats} icon="refresh">Refresh</Button>
@@ -120,20 +120,22 @@ export default function AdminDashboard() {
     );
 }
 
-const MetricCard = ({ label, value, icon, color }: any) => (
-    <Card style={styles.card}>
-        <Card.Content style={styles.cardContent}>
-            <MaterialCommunityIcons name={icon} size={32} color={color} style={{ marginBottom: 8 }} />
-            <Text variant="headlineSmall" style={{ fontWeight: 'bold' }}>{value}</Text>
-            <Text variant="bodySmall" style={{ color: '#666' }}>{label}</Text>
-        </Card.Content>
-    </Card>
-);
+const MetricCard = ({ label, value, icon, color }: any) => {
+    const theme = useTheme();
+    return (
+        <Card style={[styles.card, { backgroundColor: theme.colors.elevation.level1 }]}>
+            <Card.Content style={styles.cardContent}>
+                <MaterialCommunityIcons name={icon} size={32} color={color} style={{ marginBottom: 8 }} />
+                <Text variant="headlineSmall" style={{ fontWeight: 'bold' }}>{value}</Text>
+                <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>{label}</Text>
+            </Card.Content>
+        </Card>
+    );
+};
 
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: '#f5f5f5',
     },
     header: {
         flexDirection: 'row',
@@ -168,7 +170,6 @@ const styles = StyleSheet.create({
     },
     actionCard: {
         marginBottom: 12,
-        backgroundColor: '#fff',
     },
     centered: {
         flex: 1,

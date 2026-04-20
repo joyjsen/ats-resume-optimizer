@@ -264,7 +264,7 @@ const HeroSection: React.FC<{ jobUrl: string; setJobUrl: (v: string) => void; on
                             placeholder="Paste a job link from LinkedIn, Indeed..."
                             value={jobUrl}
                             onChange={(e: any) => setJobUrl(e.target.value)}
-                            style={{ width: '100%', height: 50, paddingLeft: 18, paddingRight: 18, fontSize: 15, border: 'none', outline: 'none', backgroundColor: 'transparent', color: 'white' } as any}
+                            style={{ width: '100%', height: 50, paddingLeft: 18, paddingRight: 18, fontSize: 15, border: 'none', outlineStyle: 'none', backgroundColor: 'transparent', color: 'white' } as any}
                         />
                     </View>
                     <Pressable style={ls.heroInputBtn} onPress={onStart}>

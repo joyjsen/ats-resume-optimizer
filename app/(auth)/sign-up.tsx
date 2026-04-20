@@ -20,12 +20,15 @@ export default function SignUp() {
     const theme = useTheme();
     const { isDark } = useAppTheme();
     const { setUserProfile } = useProfileStore();
-    const [fullName, setFullName] = useState('');
+    const [firstName, setFirstName] = useState('');
+    const [lastName, setLastName] = useState('');
     const [phoneNumber, setPhoneNumber] = useState('');
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
     const [loading, setLoading] = useState(false);
+    const [showPassword, setShowPassword] = useState(false);
+    const [showConfirmPassword, setShowConfirmPassword] = useState(false);
     const [socialLoading, setSocialLoading] = useState<string | null>(null);
     const [phoneCredential, setPhoneCredential] = useState<AuthCredential | null>(null);
 
@@ -58,20 +61,36 @@ export default function SignUp() {
     const handleSocialLogin = async (provider: 'google' | 'apple' | 'microsoft') => {
         setSocialLoading(provider);
         try {
-            if (provider === 'google') await authService.signInWithGoogle();
-            else if (provider === 'apple') await authService.signInWithApple();
-            else if (provider === 'microsoft') await authService.signInWithMicrosoft();
+            let profile;
+            if (provider === 'google') profile = await authService.signInWithGoogle();
+            else if (provider === 'apple') profile = await authService.signInWithApple();
+            else if (provider === 'microsoft') profile = await authService.signInWithMicrosoft();
             
-            // Layout guard automatically handles navigation here
+            if (profile) {
+                setUserProfile(profile);
+                router.replace('/(auth)/onboarding' as any);
+            }
         } catch (error: any) {
-            console.error(`${provider} Login Error:`, error);
             const isInactive = error instanceof UserInactiveError ||
                 error.name === 'UserInactiveError' ||
                 error.message?.includes('User Inactive');
 
+            // Detect user-initiated cancellations (don't show errors for these)
+            const isCancelled = 
+                error.code === -1 ||
+                error.code === 'auth/cancelled' ||
+                error.code === 'ERR_CANCELED' ||
+                error.message?.includes('cancelled') ||
+                error.message?.includes('canceled') ||
+                error.message?.includes('Apple login failed');
+
             if (isInactive) {
                 Alert.alert("Account Inactive", "User Inactive: Please contact admin.");
-            } else if (error.code !== -1 && error.code !== 'auth/cancelled') {
+            } else if (isCancelled) {
+                // Silently ignore — user just dismissed the login dialog
+                console.log(`[Auth] ${provider} login cancelled by user`);
+            } else {
+                console.error(`${provider} Login Error:`, error);
                 Alert.alert("Sign Up Failed", error.message || `Could not sign up with ${provider}.`);
             }
         } finally {
@@ -136,7 +155,7 @@ export default function SignUp() {
     };
 
     const handleSignUpStep = async () => {
-        if (!fullName || !email || !password || !confirmPassword || !phoneNumber) {
+        if (!firstName || !lastName || !email || !password || !confirmPassword || !phoneNumber) {
             Alert.alert("Error", "Please fill in all fields.");
             return;
         }
@@ -153,8 +172,17 @@ export default function SignUp() {
             return;
         }
 
-        if (password.length < 6) {
-            Alert.alert("Error", "Password should be at least 6 characters.");
+        const passwordValidation = {
+            length: password.length >= 8,
+            uppercase: /[A-Z]/.test(password),
+            lowercase: /[a-z]/.test(password),
+            number: /[0-9]/.test(password),
+            special: /[^A-Za-z0-9]/.test(password),
+        };
+        const isPasswordValid = Object.values(passwordValidation).every(Boolean);
+
+        if (!isPasswordValid) {
+            Alert.alert("Error", "Please ensure your password meets all security requirements.");
             return;
         }
 
@@ -170,9 +198,10 @@ export default function SignUp() {
 
             // Create account with phone linkage
             const profile = await authService.registerWithEmail(
-                email,
+                email.trim(),
                 password,
-                fullName,
+                firstName.trim(),
+                lastName.trim(),
                 fullNumber,
                 isPhoneVerified,
                 phoneCredential || undefined
@@ -250,14 +279,24 @@ export default function SignUp() {
                 <Card.Content>
                     {step === 'details' && (
                         <>
-                            <TextInput
-                                label="Full Name"
-                                value={fullName}
-                                onChangeText={setFullName}
-                                mode="outlined"
-                                autoCapitalize="words"
-                                style={styles.input}
-                            />
+                            <View style={{ flexDirection: 'row', gap: 8, marginBottom: 16 }}>
+                                <TextInput
+                                    label="First Name"
+                                    value={firstName}
+                                    onChangeText={setFirstName}
+                                    mode="outlined"
+                                    autoCapitalize="words"
+                                    style={{ flex: 1 }}
+                                />
+                                <TextInput
+                                    label="Last Name"
+                                    value={lastName}
+                                    onChangeText={setLastName}
+                                    mode="outlined"
+                                    autoCapitalize="words"
+                                    style={{ flex: 1 }}
+                                />
+                            </View>
                             <View style={{ flexDirection: 'row', gap: 8, marginBottom: 16 }}>
                                 <CountryCodeSelector
                                     selectedCountry={selectedCountry}
@@ -287,15 +326,41 @@ export default function SignUp() {
                                 value={password}
                                 onChangeText={setPassword}
                                 mode="outlined"
-                                secureTextEntry
+                                secureTextEntry={!showPassword}
+                                right={<TextInput.Icon icon={showPassword ? "eye-off" : "eye"} onPress={() => setShowPassword(!showPassword)} />}
                                 style={styles.input}
                             />
+                            {password.length > 0 && (
+                                <View style={styles.passwordRulesContainer}>
+                                    <View style={styles.passwordRuleRow}>
+                                        <MaterialCommunityIcons name={password.length >= 8 ? "check-circle" : "close-circle"} size={16} color={password.length >= 8 ? theme.colors.primary : theme.colors.error} />
+                                        <Text style={[styles.passwordRuleText, { color: password.length >= 8 ? theme.colors.primary : theme.colors.error }]}>8+ characters</Text>
+                                    </View>
+                                    <View style={styles.passwordRuleRow}>
+                                        <MaterialCommunityIcons name={/[A-Z]/.test(password) ? "check-circle" : "close-circle"} size={16} color={/[A-Z]/.test(password) ? theme.colors.primary : theme.colors.error} />
+                                        <Text style={[styles.passwordRuleText, { color: /[A-Z]/.test(password) ? theme.colors.primary : theme.colors.error }]}>Uppercase letter</Text>
+                                    </View>
+                                    <View style={styles.passwordRuleRow}>
+                                        <MaterialCommunityIcons name={/[a-z]/.test(password) ? "check-circle" : "close-circle"} size={16} color={/[a-z]/.test(password) ? theme.colors.primary : theme.colors.error} />
+                                        <Text style={[styles.passwordRuleText, { color: /[a-z]/.test(password) ? theme.colors.primary : theme.colors.error }]}>Lowercase letter</Text>
+                                    </View>
+                                    <View style={styles.passwordRuleRow}>
+                                        <MaterialCommunityIcons name={/[0-9]/.test(password) ? "check-circle" : "close-circle"} size={16} color={/[0-9]/.test(password) ? theme.colors.primary : theme.colors.error} />
+                                        <Text style={[styles.passwordRuleText, { color: /[0-9]/.test(password) ? theme.colors.primary : theme.colors.error }]}>Number</Text>
+                                    </View>
+                                    <View style={styles.passwordRuleRow}>
+                                        <MaterialCommunityIcons name={/[^A-Za-z0-9]/.test(password) ? "check-circle" : "close-circle"} size={16} color={/[^A-Za-z0-9]/.test(password) ? theme.colors.primary : theme.colors.error} />
+                                        <Text style={[styles.passwordRuleText, { color: /[^A-Za-z0-9]/.test(password) ? theme.colors.primary : theme.colors.error }]}>Special character</Text>
+                                    </View>
+                                </View>
+                            )}
                             <TextInput
                                 label="Confirm Password"
                                 value={confirmPassword}
                                 onChangeText={setConfirmPassword}
                                 mode="outlined"
-                                secureTextEntry
+                                secureTextEntry={!showConfirmPassword}
+                                right={<TextInput.Icon icon={showConfirmPassword ? "eye-off" : "eye"} onPress={() => setShowConfirmPassword(!showConfirmPassword)} />}
                                 style={styles.input}
                             />
                             <Button
@@ -436,6 +501,22 @@ const styles = StyleSheet.create({
     },
     input: {
         marginBottom: 16,
+    },
+    passwordRulesContainer: {
+        backgroundColor: 'rgba(0,0,0,0.02)',
+        padding: 12,
+        borderRadius: 8,
+        gap: 8,
+        marginTop: -8,
+        marginBottom: 16,
+    },
+    passwordRuleRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+    },
+    passwordRuleText: {
+        fontSize: 13,
     },
     button: {
         marginTop: 8,

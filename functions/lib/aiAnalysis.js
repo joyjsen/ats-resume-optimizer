@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.aiProxy = exports.parseResume = exports.generateTrainingSlideshow = exports.onBackgroundTaskCreated = exports.generateCoverLetter = exports.generatePrepGuide = exports.addSkillToResume = exports.optimizeResume = exports.generateRecommendation = exports.performGapAnalysis = exports.perplexityApiKey = exports.openaiApiKey = void 0;
+exports.generateFreeOnboardingRoadmapV1 = exports.generateCareerGuidanceV1 = exports.aiProxy = exports.parseResume = exports.generateTrainingSlideshow = exports.onBackgroundTaskCreated = exports.generateCoverLetter = exports.generatePrepGuide = exports.addSkillToResume = exports.optimizeResume = exports.generateRecommendation = exports.performGapAnalysis = exports.perplexityApiKey = exports.openaiApiKey = void 0;
 const params_1 = require("firebase-functions/params");
 // Define secrets once here
 exports.openaiApiKey = (0, params_1.defineSecret)("OPENAI_API_KEY");
@@ -14,6 +14,7 @@ const backgroundTasks_1 = require("./features/backgroundTasks");
 const trainingSlideshow_1 = require("./features/trainingSlideshow");
 const resumeParser_1 = require("./features/resumeParser");
 const aiProxy_1 = require("./features/aiProxy");
+const careerGuidance_1 = require("./features/careerGuidance");
 exports.performGapAnalysis = (0, gapAnalysis_1.performGapAnalysis)(exports.openaiApiKey, exports.perplexityApiKey);
 exports.generateRecommendation = (0, generateRecommendation_1.generateRecommendation)(exports.openaiApiKey, exports.perplexityApiKey);
 exports.optimizeResume = (0, resumeOptimization_1.optimizeResume)(exports.openaiApiKey, exports.perplexityApiKey);
@@ -24,4 +25,6 @@ exports.onBackgroundTaskCreated = (0, backgroundTasks_1.onBackgroundTaskCreated)
 exports.generateTrainingSlideshow = (0, trainingSlideshow_1.generateTrainingSlideshow)(exports.openaiApiKey);
 exports.parseResume = (0, resumeParser_1.parseResume)(exports.openaiApiKey);
 exports.aiProxy = (0, aiProxy_1.aiProxy)(exports.openaiApiKey, exports.perplexityApiKey);
+exports.generateCareerGuidanceV1 = (0, careerGuidance_1.generateCareerGuidanceV1)(exports.openaiApiKey);
+exports.generateFreeOnboardingRoadmapV1 = (0, careerGuidance_1.generateFreeOnboardingRoadmapV1)(exports.openaiApiKey);
 //# sourceMappingURL=aiAnalysis.js.map

@@ -81,13 +81,24 @@ export class JobParserService {
                         ],
                     },
                 ],
-                max_tokens: 1500,
+                max_tokens: 4000,
             };
 
             const response = await createSafeAPICall(options as any, 'Job from Image');
 
-            const contentResponse = response.choices[0].message.content;
-            if (!contentResponse) throw new Error('No response from AI');
+            const message = response.choices[0].message;
+            const contentResponse = message.content;
+            if (!contentResponse || response.choices[0].finish_reason === 'length') {
+                const reason = response.choices[0].finish_reason;
+                const refusal = (message as any).refusal || 'None';
+                console.error(`System returned empty/truncated content. Finish Reason: ${reason}. Refusal: ${refusal}`);
+                
+                let userReason: string = reason;
+                if (reason === 'content_filter') userReason = "Content policy violation (safety)";
+                if (reason === 'length') userReason = "The job description is too large. Please paste a shorter version.";
+                
+                throw new Error(`System rejected the document because: ${userReason}`);
+            }
 
             const cleanContent = contentResponse.replace(/```json/g, '').replace(/```/g, '').trim();
             const parsed = JSON.parse(cleanContent);
@@ -190,27 +201,54 @@ export class JobParserService {
     }
 
     private async scrapeJobPage(url: string): Promise<string> {
-        let headers: any = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-        };
-
+        // LinkedIn: use their guest API for reliable structured HTML
         if (url.includes('linkedin.com')) {
             const jobId = this.extractLinkedInJobId(url);
-            if (jobId) {
-                url = `https://www.linkedin.com/jobs-guest/jobs/api/jobPosting/${jobId}`;
-            }
+            const fetchUrl = jobId
+                ? `https://www.linkedin.com/jobs-guest/jobs/api/jobPosting/${jobId}`
+                : url;
+            const response = await axios.get(fetchUrl, {
+                headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
+                timeout: 10000,
+            });
+            return response.data;
         }
 
+        // Indeed: use mobile UA for cleaner HTML
         if (url.includes('indeed.com')) {
-            headers = {
-                'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 14_8 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.1.2 Mobile/15E148 Safari/604.1',
-                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-                'Accept-Language': 'en-US,en;q=0.9',
-            };
+            const response = await axios.get(url, {
+                headers: {
+                    'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 14_8 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.1.2 Mobile/15E148 Safari/604.1',
+                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                    'Accept-Language': 'en-US,en;q=0.9',
+                },
+                timeout: 10000,
+            });
+            return response.data;
         }
 
-        const response = await axios.get(url, { headers, timeout: 10000 });
-        return response.data;
+        // All other sites (Greenhouse, Lever, Workday, etc.):
+        // Use Jina Reader to render JS-heavy pages and return clean markdown text
+        try {
+            console.log(`[JobParser] Using Jina Reader for JS-rendered page: ${url}`);
+            const jinaUrl = `https://r.jina.ai/${url}`;
+            const response = await axios.get(jinaUrl, {
+                headers: {
+                    'Accept': 'text/plain',
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                },
+                timeout: 15000,
+            });
+            return response.data;
+        } catch (jinaError) {
+            // Fallback: if Jina fails, try direct fetch as last resort
+            console.warn('[JobParser] Jina Reader failed, falling back to direct fetch:', jinaError);
+            const response = await axios.get(url, {
+                headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
+                timeout: 10000,
+            });
+            return response.data;
+        }
     }
 
     private extractLinkedInJobId(url: string): string | null {
@@ -332,8 +370,19 @@ ${company ? `Known company: ${company}` : ''}
 
         const response = await createSafeAPICall(options as any, 'Job from Text');
 
-        const contentResponse = response.choices[0].message.content;
-        if (!contentResponse) throw new Error('No response from AI');
+        const message = response.choices[0].message;
+        const contentResponse = message.content;
+        if (!contentResponse || response.choices[0].finish_reason === 'length') {
+            const reason = response.choices[0].finish_reason;
+            const refusal = (message as any).refusal || 'None';
+            console.error(`System returned empty/truncated content. Finish Reason: ${reason}. Refusal: ${refusal}`);
+            
+            let userReason: string = reason;
+            if (reason === 'content_filter') userReason = "Content policy violation (safety)";
+            if (reason === 'length') userReason = "The job description is too large. Please paste a shorter version.";
+            
+            throw new Error(`System rejected the document because: ${userReason}`);
+        }
 
         const parsed = JSON.parse(contentResponse);
 

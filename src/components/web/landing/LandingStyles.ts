@@ -124,7 +124,7 @@ export const ls = StyleSheet.create({
     benefitItem: { flexDirection: 'row', alignItems: 'center', gap: 12 },
     benefitText: { fontSize: 16, color: C.textPrimary, fontWeight: '500' },
     featureInputContainer: { gap: 16 },
-    featureTextarea: { width: '100%', height: 120, padding: 16, borderRadius: 12, backgroundColor: C.white, border: `1px solid ${C.border}`, fontSize: 15, color: C.textPrimary, outline: 'none', resize: 'none' } as any,
+    featureTextarea: { width: '100%', height: 120, padding: 16, borderRadius: 12, backgroundColor: C.white, border: `1px solid ${C.border}`, fontSize: 15, color: C.textPrimary, outlineStyle: 'none', resize: 'none' } as any,
     featureActionBtn: { width: '100%', paddingVertical: 16, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
     featureActionBtnText: { color: C.white, fontSize: 16, fontWeight: '700' },
 

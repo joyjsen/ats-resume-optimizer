@@ -43,7 +43,7 @@ export default function AdminHomeScreen() {
     }
 
     return (
-        <ScrollView style={styles.container}>
+        <ScrollView style={[styles.container, { backgroundColor: theme.colors.background }]}>
             <View style={styles.header}>
                 <Text variant="headlineMedium" style={styles.title}>Admin Dashboard</Text>
                 <Text variant="bodySmall">Overview of platform performance and users.</Text>
@@ -91,20 +91,22 @@ export default function AdminHomeScreen() {
     );
 }
 
-const StatCard = ({ label, value, icon, color }: any) => (
-    <Card style={styles.statCard}>
-        <Card.Content style={{ alignItems: 'center' }}>
-            <MaterialCommunityIcons name={icon} size={28} color={color} />
-            <Text variant="headlineSmall" style={{ fontWeight: 'bold', marginVertical: 4 }}>{value}</Text>
-            <Text variant="labelSmall" style={{ color: '#666' }}>{label}</Text>
-        </Card.Content>
-    </Card>
-);
+const StatCard = ({ label, value, icon, color }: any) => {
+    const theme = useTheme();
+    return (
+        <Card style={[styles.statCard, { backgroundColor: theme.colors.elevation.level1 }]}>
+            <Card.Content style={{ alignItems: 'center' }}>
+                <MaterialCommunityIcons name={icon} size={28} color={color} />
+                <Text variant="headlineSmall" style={{ fontWeight: 'bold', marginVertical: 4 }}>{value}</Text>
+                <Text variant="labelSmall" style={{ color: theme.colors.onSurfaceVariant }}>{label}</Text>
+            </Card.Content>
+        </Card>
+    );
+};
 
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: '#f8f9fa',
     },
     centered: {
         flex: 1,
@@ -125,6 +127,5 @@ const styles = StyleSheet.create({
     statCard: {
         width: '45%',
         margin: '2.5%',
-        backgroundColor: '#fff',
     }
 });

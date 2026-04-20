@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { View, ScrollView, StyleSheet, Keyboard } from 'react-native';
+import { View, ScrollView, StyleSheet, Keyboard, TouchableOpacity } from 'react-native';
 import { TextInput, Menu, Button, Text, Searchbar, useTheme } from 'react-native-paper';
 import { COUNTRY_CALLING_CODES, CountryCallingCode } from '../../constants/countries';
 
@@ -37,16 +37,19 @@ export const CountryCodeSelector: React.FC<CountryCodeSelectorProps> = ({ onSele
             visible={visible}
             onDismiss={closeMenu}
             anchor={
-                <Button
-                    mode="outlined"
-                    onPress={openMenu}
-                    style={styles.anchorButton}
-                    contentStyle={styles.anchorContent}
-                    labelStyle={{ fontSize: 14 }}
-                    disabled={disabled}
-                >
-                    {`${selectedCountry.iso} ${selectedCountry.code}`}
-                </Button>
+                <TouchableOpacity onPress={disabled ? undefined : openMenu} disabled={disabled} style={{ marginRight: 8 }}>
+                    <View pointerEvents="none">
+                        <TextInput
+                            mode="outlined"
+                            label={selectedCountry.iso}
+                            value={selectedCountry.code}
+                            editable={false}
+                            disabled={disabled}
+                            style={{ width: 90, backgroundColor: theme.dark ? '#151515' : theme.colors.surfaceVariant }}
+                            right={<TextInput.Icon icon="menu-down" />}
+                        />
+                    </View>
+                </TouchableOpacity>
             }
             contentStyle={[styles.menuContent, { backgroundColor: theme.colors.surface }]}
         >

@@ -1,4 +1,5 @@
 import * as FileSystem from 'expo-file-system/legacy';
+import { Platform } from 'react-native';
 import { ParsedResume } from '../../types/resume.types';
 
 // Use the browser build of mammoth to avoid Node.js dependency issues in React Native
@@ -11,8 +12,14 @@ const getMammoth = async () => {
 };
 
 // pdf-parse is removed as it breaks the React Native bundler.
+// pdf-parse is removed as it breaks the React Native bundler.
 // const pdf = require('pdf-parse');
 
+export interface FileItem {
+  uri: string;
+  name?: string;
+  mimeType?: string;
+}
 
 export class ResumeParserService {
   // In-memory cache: hash of content -> parsed result
@@ -34,21 +41,44 @@ export class ResumeParserService {
   /**
    * Parse resume files (Multiple Images, Text, PDF, DOCX)
    */
-  async parseResume(fileUris: string[]): Promise<ParsedResume> {
+  async parseResume(files: (string | FileItem)[]): Promise<ParsedResume> {
     try {
       const { httpsCallable } = await import('firebase/functions');
       const { getFirebaseFunctions } = await import('../firebase/config');
       const functions = await getFirebaseFunctions();
       const parseResumeFn = httpsCallable(functions, 'parseResume');
 
-      // OPTIMIZATION: Check if we can use Vision-First multimodal parsing (faster for images)
-      const imageUris = fileUris.filter(uri => uri.match(/\.(jpg|jpeg|png)$/i) || uri.startsWith('data:image'));
-      const otherUris = fileUris.filter(uri => !uri.match(/\.(jpg|jpeg|png)$/i) && !uri.startsWith('data:image'));
+      const normalizedFiles: FileItem[] = files.map(f => typeof f === 'string' ? { uri: f, name: f } : f);
 
-      if (imageUris.length > 0 && otherUris.length === 0) {
-        console.log(`[ResumeParser] Using Vision-First multimodal parsing for ${imageUris.length} images.`);
+      const isImage = (f: FileItem) => {
+        if (f.mimeType && f.mimeType.startsWith('image/')) return true;
+        const name = f.name || f.uri;
+        return !!name.match(/\.(jpg|jpeg|png)$/i) || f.uri.startsWith('data:image');
+      };
+
+      // OPTIMIZATION: Check if we can use Vision-First multimodal parsing (faster for images)
+      const imageFiles = normalizedFiles.filter(isImage);
+      const otherFiles = normalizedFiles.filter(f => !isImage(f));
+
+      if (imageFiles.length > 0 && otherFiles.length === 0) {
+        console.log(`[ResumeParser] Using Vision-First multimodal parsing for ${imageFiles.length} images.`);
         const base64Images = await Promise.all(
-          imageUris.map(uri => FileSystem.readAsStringAsync(uri, { encoding: 'base64' }))
+          imageFiles.map(async f => {
+            if (Platform.OS === 'web') {
+              const res = await fetch(f.uri);
+              const blob = await res.blob();
+              return new Promise<string>((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onloadend = () => {
+                  resolve((reader.result as string).split(',')[1]);
+                };
+                reader.onerror = reject;
+                reader.readAsDataURL(blob);
+              });
+            } else {
+              return FileSystem.readAsStringAsync(f.uri, { encoding: 'base64' });
+            }
+          })
         );
 
         // Cache check: hash the concatenated base64 images
@@ -66,7 +96,7 @@ export class ResumeParserService {
       }
 
       // Fallback/Mixed content: Extract text first using client-side extractors
-      const mixedContent = await this.extractContentFromFiles(fileUris);
+      const mixedContent = await this.extractContentFromFiles(normalizedFiles);
 
       // Cache check: hash the extracted text content
       const cacheKey = this._hashContent(mixedContent);
@@ -118,35 +148,47 @@ export class ResumeParserService {
    * Extract content from multiple files (Images, Text, PDF, DOCX)
    * OPTIMIZED: Batches multiple images into a single OCR call
    */
-  async extractContentFromFiles(fileUris: string[]): Promise<string> {
+  async extractContentFromFiles(files: (string | FileItem)[]): Promise<string> {
     try {
-      // Separate images from other file types for batch processing
-      const imageUris: string[] = [];
-      const otherUris: string[] = [];
+      const normalizedFiles: FileItem[] = files.map(f => typeof f === 'string' ? { uri: f, name: f } : f);
 
-      for (const uri of fileUris) {
-        if (!uri || typeof uri !== 'string') continue; // Skip invalid URIs
-        if (uri.match(/\.(jpg|jpeg|png)$/i) || uri.startsWith('data:image')) {
-          imageUris.push(uri);
-        } else {
-          otherUris.push(uri);
-        }
-      }
+      const isImage = (f: FileItem) => {
+        if (f.mimeType && f.mimeType.startsWith('image/')) return true;
+        const name = f.name || f.uri;
+        return !!name.match(/\.(jpg|jpeg|png)$/i) || f.uri.startsWith('data:image');
+      };
+
+      // Separate images from other file types for batch processing
+      const imageFiles = normalizedFiles.filter(isImage);
+      const otherFiles = normalizedFiles.filter(f => !isImage(f) && f.uri && f.uri.trim() !== '');
 
       // Process non-image files
-      const otherContents = await Promise.all(otherUris.map(async (uri) => {
-        // Case 2: Text/Markdown/JSON
-        if (uri.match(/\.(txt|md|json)$/i)) {
-          return await FileSystem.readAsStringAsync(uri);
+      const otherContents = await Promise.all(otherFiles.map(async (f) => {
+        const name = f.name || f.uri;
+        const mimeType = f.mimeType || '';
+
+        if (mimeType === 'text/plain' || mimeType === 'text/markdown' || mimeType === 'application/json' || name.match(/\.(txt|md|json)$/i)) {
+          if (Platform.OS === 'web') {
+            const res = await fetch(f.uri);
+            return await res.text();
+          } else {
+            return await FileSystem.readAsStringAsync(f.uri);
+          }
         }
 
-        // Case 3: DOCX
-        if (uri.match(/\.docx$/i) || uri.match(/\.doc$/i)) {
+        if (mimeType.includes('wordprocessingml') || mimeType === 'application/msword' || name.match(/\.docx?$/i)) {
           try {
-            const base64 = await FileSystem.readAsStringAsync(uri, { encoding: 'base64' });
-            const buffer = Buffer.from(base64, 'base64');
+            let data: ArrayBuffer | any;
+            if (Platform.OS === 'web') {
+              const res = await fetch(f.uri);
+              data = await res.arrayBuffer();
+            } else {
+              const base64 = await FileSystem.readAsStringAsync(f.uri, { encoding: 'base64' });
+              const bufModule = require('buffer');
+              data = bufModule.Buffer.from(base64, 'base64');
+            }
             const mammoth = await getMammoth();
-            const result = await mammoth.extractRawText({ arrayBuffer: buffer });
+            const result = await mammoth.extractRawText({ arrayBuffer: data });
             return result.value || "";
 
           } catch (docxError: any) {
@@ -156,16 +198,16 @@ export class ResumeParserService {
         }
 
         // Case 4: PDF (Not supported)
-        if (uri.match(/\.pdf$/i)) {
+        if (mimeType === 'application/pdf' || name.match(/\.pdf$/i)) {
           return `[WARNING: PDF files are not supported. Please use DOCX or Text.]`;
         }
 
-        return `[WARNING: Unsupported file type ${uri.split('/').pop()}]`;
+        return `[WARNING: Unsupported file type ${name.split('/').pop()}]`;
       }));
 
       // Process images - skip in mixed mode (handled by vision-first if images only)
       let imageContent = "";
-      if (imageUris.length > 0) {
+      if (imageFiles.length > 0) {
         console.warn("[ResumeParser] Mixed image and text content detected. Images are ignored in mixed mode. For best results with images, upload them without documents.");
       }
 

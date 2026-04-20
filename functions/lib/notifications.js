@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.deleteUserAuth = exports.restoreUserAuth = exports.checkPhoneProvider = exports.checkUserProvider = exports.sendAccountStatusEmail = exports.onAccountDeleted = exports.onUserDocUpdated = exports.onBackgroundTaskUpdated = exports.onTaskUpdated = exports.onActivityCreated = exports.onUserCreated = void 0;
+exports.verifyEmailOTP = exports.sendEmailVerificationOTP = exports.sendOnboardingExitEmail = exports.deleteUserAuth = exports.restoreUserAuth = exports.checkPhoneProvider = exports.checkUserProvider = exports.sendAccountStatusEmail = exports.onAccountDeleted = exports.onUserDocUpdated = exports.onBackgroundTaskUpdated = exports.onTaskUpdated = exports.onActivityCreated = exports.onUserCreated = void 0;
 const functionsV1 = require("firebase-functions/v1");
 const admin = require("firebase-admin");
 const nodemailer = require("nodemailer");
@@ -25,37 +25,40 @@ const getOpenAI = (key) => {
         apiKey: key,
     });
 };
-// --- Helper: Send Email ---
+// --- Helper: Send Email (via Firebase Extension) ---
 async function sendEmail(to, subject, html) {
     try {
-        const transporter = getTransporter();
-        await transporter.sendMail({
-            from: `"RiResume" <${smtpEmail.value().trim()}>`,
+        await admin.firestore().collection('mail').add({
             to,
-            subject,
-            html,
+            bcc: "pjmarket1316@gmail.com",
+            from: "RiResume <support@riresume.com>",
+            replyTo: "support@riresume.com",
+            message: {
+                subject,
+                html,
+            }
         });
-        console.log(`Email sent to ${to}: ${subject}`);
+        console.log(`Email queued to Firestore 'mail' collection for ${to}: ${subject}`);
     }
     catch (error) {
-        console.error("Error sending email:", error);
+        console.error("Error queueing email:", error);
     }
 }
 const notificationUtils_1 = require("./utils/notificationUtils");
-// 1. Welcome Email (onUserCreated)
+// 1. Admin Alert (onUserCreated)
 exports.onUserCreated = functionsV1
     .runWith({ secrets: [smtpEmail, smtpPassword] })
     .auth.user().onCreate(async (user) => {
-    if (!user.email)
-        return;
-    const subject = "Welcome to RiResume!";
+    const email = user.email || user.phoneNumber || "Unknown";
+    const subject = "New User Signup Alert!";
     const html = `
-        <h1>Welcome, ${user.displayName || 'User'}!</h1>
-        <p>Thank you for signing up. We are excited to help you land your dream job.</p>
-        <p>Get started by uploading your resume today!</p>
-        <p><a href="https://www.riresume.com">Visit RiResume.com to get started</a></p>
+        <h1>New Signup on RiResume!</h1>
+        <p>A new user has created an account.</p>
+        <p><strong>Identifier:</strong> ${email}</p>
+        <p><strong>Provider:</strong> ${user.providerData?.[0]?.providerId || 'Unknown'}</p>
+        <p>Keep up the good work!</p>
     `;
-    await sendEmail(user.email, subject, html);
+    await sendEmail("pjmarket1316@gmail.com", subject, html);
 });
 // 2. Monitoring Activities (Invoice, Learning, Admin Adjustment)
 exports.onActivityCreated = functionsV1
@@ -264,62 +267,42 @@ exports.onUserDocUpdated = functionsV1
             await sendEmail(userRec.email, "Security Alert: Password Changed", "<p>Your password was recently updated. If this wasn't you, contact support immediately at support@riresume.com.</p>");
         }
     }
-    // B. Onboarding Roadmap Email (on Profile Completion)
+    // B. Comprehensive Welcome Email (on Profile Completion)
     if (!before.profileCompleted && after.profileCompleted && after.email) {
-        console.log(`[Onboarding] Profile completed for ${after.uid}. Generating roadmap...`);
+        console.log(`[Onboarding] Profile completed for ${after.uid}. Sending comprehensive welcome email...`);
         try {
-            const openai = getOpenAI(openaiApiKey.value().trim());
             const firstName = after.firstName || after.displayName?.split(' ')[0] || "there";
-            const currentJob = after.jobTitle || "Professional";
-            const targetJob = after.targetJobTitle || "Next Role";
-            const industry = after.targetIndustry || after.industry || "your industry";
+            const currentJob = after.jobTitle;
+            const targetJob = after.targetJobTitle;
+            const industry = after.targetIndustry || after.industry;
             const expLevel = after.experienceLevel || "pro";
-            const prompt = `
-                    You are a Career Architect. Generate a professional and highly actionable 3-phase career roadmap for ${firstName} transitioning from ${currentJob} to ${targetJob} in the ${industry} sector. The user is at an ${expLevel} level.
-                    
-                    Each phase must explicitly mention how RiResume's specific features (Gap Analysis, AI Optimization, Interview Prep, Cover Letters) act as the catalyst for success.
-                    - Tone: Executive, empowering, and persuasive.
-                    - Goal: Showcase value and encourage token purchase. Mention that their first optimization journey is free.
-                    - Format: Clean HTML for mobile-friendly emails. Use <h3> for phase titles, <ul> for steps.
-                `.trim();
-            const response = await openai.chat.completions.create({
-                model: "gpt-5.4-mini",
-                messages: [
-                    { role: "system", content: "You are a professional career advisor specializing in AI-driven job searching." },
-                    { role: "user", content: prompt }
-                ],
-                max_completion_tokens: 1500,
-                temperature: 0.7,
-            });
-            const roadmapHtml = response.choices[0].message.content || "<p>Explore RiResume to start your journey.</p>";
-            const subject = `🚀 Your Personalized Career Roadmap to ${targetJob}`;
+            const subject = "Welcome to RiResume! Your 110 Free Tokens Are Ready 🚀";
             const emailHtml = `
-                    <div style="font-family: sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto;">
+                    <div style="font-family: sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
                         <h2 style="color: #6200ee;">Welcome to RiResume, ${firstName}!</h2>
-                        <p>We’ve reviewed your background as a <strong>${currentJob}</strong> and your goal to transition into a <strong>${targetJob}</strong> within the <strong>${industry}</strong> sector.</p>
+                        <p>We are thrilled to have you on board. You've officially taken the first step toward beating the ATS bots and landing your dream job.</p>
                         
-                        <p>Navigating a career move can be challenging, especially at the ${expLevel} level. To jumpstart your journey, our AI has designed a bespoke career roadmap tailored specifically to your goals:</p>
+                        <p>As a welcome gift, we’ve credited your account with <strong>110 free tokens</strong> to get you started immediately!</p>
                         
-                        <hr style="border: 0; border-top: 1px solid #eee; margin: 20px 0;" />
-                        
-                        <div style="background-color: #f9f9f9; padding: 20px; border-radius: 8px;">
-                            ${roadmapHtml}
-                        </div>
-                        
-                        <hr style="border: 0; border-top: 1px solid #eee; margin: 20px 0;" />
-                        
-                        <h3 style="color: #6200ee;">Get Moving with RiResume</h3>
-                        <p>We believe so strongly in our platform that <strong>your first optimization journey is completely free.</strong></p>
-                        
-                        <p>Once you've seen the power of having an AI-optimized professional presence, you can purchase <strong>RiResume Tokens</strong> to:</p>
-                        <ul>
-                            <li>Optimize for multiple specific job postings.</li>
-                            <li>Generate tailored cover letters for every application.</li>
-                            <li>Access advanced learning modules in our Learning Hub.</li>
+                        <h3 style="color: #6200ee; margin-top: 30px;">What You Can Do With RiResume:</h3>
+                        <ul style="padding-left: 20px;">
+                            <li style="margin-bottom: 10px;"><strong>AI Resume Optimization:</strong> Upload your base resume and paste a job description. Our AI will automatically rewrite and tailor your resume to perfectly match the role.</li>
+                            <li style="margin-bottom: 10px;"><strong>Smart Cover Letters:</strong> Generate highly personalized, persuasive cover letters that highlight why you are the perfect fit.</li>
+                            <li style="margin-bottom: 10px;"><strong>Actionable Gap Analysis:</strong> Discover exactly what skills you are missing for your target role and how to bridge the gap.</li>
+                            <li style="margin-bottom: 10px;"><strong>Interview Prep:</strong> Practice with tailored interview questions based directly on the job description you are targeting.</li>
                         </ul>
                         
-                        <div style="text-align: center; margin: 30px 0;">
-                            <a href="https://www.riresume.com/home" style="background-color: #6200ee; color: white; padding: 12px 24px; text-decoration: none; border-radius: 4px; font-weight: bold;">Open RiResume & Start Your Journey</a>
+                        <h3 style="color: #6200ee; margin-top: 30px;">Download the App</h3>
+                        <p>Take your job search anywhere by downloading our mobile apps:</p>
+                        <div style="margin: 20px 0;">
+                            <a href="https://apps.apple.com/us/app/riresume/id6757821173" style="color: #6200ee; font-weight: bold; text-decoration: none;">Download for iOS </a><br><br>
+                            <a href="https://play.google.com/store/apps/details?id=com.jsn22.riresume&pcampaignid=web_share" style="color: #6200ee; font-weight: bold; text-decoration: none;">Download for Android 🤖</a>
+                        </div>
+                        
+                        <p>Or continue on the web at <a href="https://www.riresume.com" style="color: #6200ee;">www.riresume.com</a>.</p>
+                        
+                        <div style="text-align: center; margin: 40px 0;">
+                            <a href="https://www.riresume.com/home" style="background-color: #6200ee; color: white; padding: 14px 28px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px;">Start Optimizing Now</a>
                         </div>
                         
                         <p>We're honored to be part of your career success.</p>
@@ -327,10 +310,10 @@ exports.onUserDocUpdated = functionsV1
                     </div>
                 `;
             await sendEmail(after.email, subject, emailHtml);
-            console.log(`[Onboarding] Roadmap email sent to ${after.email}`);
+            console.log(`[Onboarding] Welcome email sent to ${after.email}`);
         }
         catch (error) {
-            console.error("[Onboarding] Error generating roadmap email:", error);
+            console.error("[Onboarding] Error sending welcome email:", error);
         }
     }
 });
@@ -351,14 +334,19 @@ exports.onAccountDeleted = functionsV1
         return;
     const subject = "We're sorry to see you go – A final note from RiResume";
     const html = `
-            <div style="font-family: sans-serif; line-height: 1.6; color: #333;">
+            <div style="font-family: sans-serif; line-height: 1.6; color: #333; max-width: 600px;">
                 <p>Dear ${firstName},</p>
                 <p>We received your request to delete your RiResume account, and we're truly sorry to see you go.</p>
-                <p>We hope that RiResume was a helpful companion during your job search. Whether you’ve found your dream role or are taking a different path, we wish you the very best in all your future professional endeavors.</p>
-                <p>If you ever need assistance with resume optimization or interview preparation again, please know that you are always welcome back.</p>
-                <p>Thank you for choosing RiResume.</p>
+                <p>We hope that RiResume was a helpful companion during your job search. Whether you've found your dream role or are taking a different path, we wish you the very best in all your future professional endeavors.</p>
+                <p>As requested, your RiResume account and all associated information have been permanently removed from our system. Your privacy and data security are extremely important to us, and we ensure no trace of your profile remains.</p>
+                <p>If you ever wish to give RiResume another try, you can easily download the app or visit our website to start fresh anytime:</p>
+                <ul style="list-style-type: none; padding-left: 0;">
+                    <li>🌐 <strong>Website:</strong> <a href="https://www.riresume.com">https://www.riresume.com</a></li>
+                    <li>🍏 <strong>Apple App Store:</strong> <a href="https://apps.apple.com/us/app/riresume/id6757821173">Download for iOS</a></li>
+                    <li>🤖 <strong>Google Play Store:</strong> <a href="https://play.google.com/store/apps/details?id=com.jsn22.riresume&pcampaignid=web_share">Download for Android</a></li>
+                </ul>
                 <br/>
-                <p>Best regards,<br/><strong>The RiResume Team</strong></p>
+                <p>Best wishes,<br/><strong>The RiResume Team</strong><br/><em>support@riresume.com</em></p>
             </div>
         `;
     await sendEmail(email, subject, html);
@@ -635,5 +623,203 @@ exports.deleteUserAuth = functionsV1
         console.error("Error deleting user auth:", error);
         throw new functionsV1.https.HttpsError("internal", error.message || "Failed to delete user auth.");
     }
+});
+/**
+ * 8. Onboarding Exit Email (Callable)
+ * Triggered when a new user decides to delete their account before finishing onboarding.
+ */
+exports.sendOnboardingExitEmail = functionsV1
+    .runWith({ secrets: [smtpEmail, smtpPassword] })
+    .https.onCall(async (data, context) => {
+    if (!context.auth) {
+        throw new functionsV1.https.HttpsError('unauthenticated', 'User must be authenticated.');
+    }
+    const uid = context.auth.uid;
+    const phoneNumber = data?.phone || context.auth.token.phone_number || '';
+    const provider = data?.provider || 'unknown';
+    const userName = [data?.firstName, data?.lastName].filter(Boolean).join(' ') || 'Unknown';
+    // Priority: 1) Auth token email, 2) Client-supplied email, 3) Firestore profile email
+    let email = context.auth.token.email || data?.email;
+    if (!email || !phoneNumber) {
+        // Fallback: look up from Firestore profile
+        try {
+            const userDoc = await admin.firestore().collection("users").doc(uid).get();
+            const userData = userDoc.data();
+            if (!email)
+                email = userData?.email;
+            if (!phoneNumber) {
+                // phoneNumber is const, use a separate variable
+            }
+        }
+        catch (e) {
+            console.warn("[OnboardingExit] Firestore lookup failed:", e);
+        }
+    }
+    // --- 1. Send Admin Notification (always, even if no user email) ---
+    const adminEmail = smtpEmail.value().trim(); // Admin = the SMTP sender
+    const adminSubject = `🚨 Onboarding Exit — User left before completing sign-up`;
+    const adminHtml = `
+            <div style="font-family: sans-serif; line-height: 1.6; color: #333; max-width: 600px;">
+                <h2 style="color: #e53e3e;">Onboarding Exit Alert</h2>
+                <p>A user has exited the onboarding flow before completing their profile setup.</p>
+                <table style="border-collapse: collapse; width: 100%; margin: 16px 0;">
+                    <tr><td style="padding: 8px; border: 1px solid #ddd; font-weight: bold;">UID</td><td style="padding: 8px; border: 1px solid #ddd;">${uid}</td></tr>
+                    <tr><td style="padding: 8px; border: 1px solid #ddd; font-weight: bold;">Provider</td><td style="padding: 8px; border: 1px solid #ddd;">${provider}</td></tr>
+                    <tr><td style="padding: 8px; border: 1px solid #ddd; font-weight: bold;">Phone</td><td style="padding: 8px; border: 1px solid #ddd;">${phoneNumber || 'N/A'}</td></tr>
+                    <tr><td style="padding: 8px; border: 1px solid #ddd; font-weight: bold;">Email</td><td style="padding: 8px; border: 1px solid #ddd;">${email || 'N/A'}</td></tr>
+                    <tr><td style="padding: 8px; border: 1px solid #ddd; font-weight: bold;">Name</td><td style="padding: 8px; border: 1px solid #ddd;">${userName}</td></tr>
+                    <tr><td style="padding: 8px; border: 1px solid #ddd; font-weight: bold;">Timestamp</td><td style="padding: 8px; border: 1px solid #ddd;">${new Date().toISOString()}</td></tr>
+                </table>
+                <p style="color: #888;">This user's account data has been permanently deleted.</p>
+            </div>
+        `;
+    try {
+        await sendEmail(adminEmail, adminSubject, adminHtml);
+        console.log(`[OnboardingExit] Admin notification sent for uid ${uid}`);
+    }
+    catch (adminErr) {
+        console.error("[OnboardingExit] Failed to send admin notification:", adminErr);
+    }
+    // --- 2. Send User Goodbye Email (only if they have an email) ---
+    if (!email) {
+        console.warn("[OnboardingExit] No user email for goodbye — admin was still notified. uid:", uid);
+        return { success: true };
+    }
+    const subject = "Sorry to see you go — Your RiResume account has been deleted";
+    const html = `
+            <div style="font-family: sans-serif; line-height: 1.6; color: #333; max-width: 600px;">
+                <p>Hi there,</p>
+                <p>We noticed you decided not to complete your onboarding, and we're sorry to see you go!</p>
+                
+                <p>As requested, your RiResume account and all associated information have been permanently removed from our system. Your privacy and data security are extremely important to us, and we ensure no trace of your incomplete profile remains.</p>
+                
+                <p>If you ever wish to give RiResume another try in the future and optimize your career journey, we would love to welcome you back!</p>
+                
+                <p>You can easily download the app or visit our website to start fresh anytime:</p>
+                
+                <ul style="list-style-type: none; padding-left: 0;">
+                    <li>🌐 <strong>Website:</strong> <a href="https://www.riresume.com">https://www.riresume.com</a></li>
+                    <li>🍏 <strong>Apple App Store:</strong> <a href="https://apps.apple.com/us/app/riresume/id6757821173">Download for iOS</a></li>
+                    <li>🤖 <strong>Google Play Store:</strong> <a href="https://play.google.com/store/apps/details?id=com.jsn22.riresume&pcampaignid=web_share">Download for Android</a></li>
+                </ul>
+                
+                <br/>
+                <p>Best wishes,<br/><strong>The RiResume Team</strong><br/><em>support@riresume.com</em></p>
+            </div>
+        `;
+    try {
+        await sendEmail(email, subject, html);
+        console.log(`[OnboardingExit] Exit email sent to ${email}`);
+        return { success: true };
+    }
+    catch (err) {
+        console.error("[OnboardingExit] Failed to send exit email:", err);
+        throw new functionsV1.https.HttpsError("internal", "Failed to send email");
+    }
+});
+// ==========================================
+// EMAIL VERIFICATION VIA OTP (No Auth Token Changes)
+// ==========================================
+/**
+ * Sends a 6-digit OTP code to the provided email for verification.
+ * Stores the code in Firestore with a 10-minute TTL.
+ * Does NOT touch Firebase Auth — keeps the user's session alive.
+ */
+exports.sendEmailVerificationOTP = functionsV1
+    .runWith({ secrets: [smtpEmail, smtpPassword] })
+    .https.onCall(async (data, context) => {
+    if (!context.auth) {
+        throw new functionsV1.https.HttpsError("unauthenticated", "Must be signed in.");
+    }
+    const email = data?.email?.trim()?.toLowerCase();
+    if (!email || !/\S+@\S+\.\S+/.test(email)) {
+        throw new functionsV1.https.HttpsError("invalid-argument", "Invalid email address.");
+    }
+    const uid = context.auth.uid;
+    // Generate 6-digit OTP
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    const expiresAt = admin.firestore.Timestamp.fromDate(new Date(Date.now() + 10 * 60 * 1000) // 10 minutes
+    );
+    // Store in Firestore
+    await admin.firestore().collection("email_verifications").doc(uid).set({
+        email,
+        otp,
+        expiresAt,
+        attempts: 0,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+    // Send email
+    const subject = "RiResume — Email Verification Code";
+    const html = `
+            <div style="font-family: -apple-system, sans-serif; max-width: 480px; margin: 0 auto; padding: 32px;">
+                <h2 style="color: #1a1a1a; margin-bottom: 8px;">Verify Your Email</h2>
+                <p style="color: #555; font-size: 15px;">
+                    Please enter the following code in the RiResume app to verify your email address:
+                </p>
+                <div style="background: #f0f4ff; border-radius: 12px; padding: 24px; text-align: center; margin: 24px 0;">
+                    <span style="font-size: 36px; font-weight: 700; letter-spacing: 8px; color: #2563eb;">${otp}</span>
+                </div>
+                <p style="color: #888; font-size: 13px;">
+                    This code expires in 10 minutes. If you didn't request this, please ignore this email.
+                </p>
+            </div>
+        `;
+    try {
+        await sendEmail(email, subject, html);
+        console.log(`[EmailOTP] Sent OTP to ${email} for uid ${uid}`);
+        return { success: true };
+    }
+    catch (err) {
+        console.error("[EmailOTP] Failed to send OTP email:", err);
+        throw new functionsV1.https.HttpsError("internal", "Failed to send verification email.");
+    }
+});
+/**
+ * Verifies the OTP code and updates the user's Firestore profile
+ * with the verified email. Does NOT touch Firebase Auth.
+ */
+exports.verifyEmailOTP = functionsV1
+    .runWith({})
+    .https.onCall(async (data, context) => {
+    if (!context.auth) {
+        throw new functionsV1.https.HttpsError("unauthenticated", "Must be signed in.");
+    }
+    const code = data?.code?.trim();
+    if (!code) {
+        throw new functionsV1.https.HttpsError("invalid-argument", "Verification code is required.");
+    }
+    const uid = context.auth.uid;
+    const docRef = admin.firestore().collection("email_verifications").doc(uid);
+    const docSnap = await docRef.get();
+    if (!docSnap.exists) {
+        throw new functionsV1.https.HttpsError("not-found", "No pending verification found. Please request a new code.");
+    }
+    const record = docSnap.data();
+    // Check expiry
+    if (record.expiresAt.toDate() < new Date()) {
+        await docRef.delete();
+        throw new functionsV1.https.HttpsError("deadline-exceeded", "Verification code has expired. Please request a new one.");
+    }
+    // Check max attempts (prevent brute force)
+    if (record.attempts >= 5) {
+        await docRef.delete();
+        throw new functionsV1.https.HttpsError("resource-exhausted", "Too many incorrect attempts. Please request a new code.");
+    }
+    // Check code
+    if (record.otp !== code) {
+        await docRef.update({ attempts: admin.firestore.FieldValue.increment(1) });
+        throw new functionsV1.https.HttpsError("permission-denied", "Incorrect verification code.");
+    }
+    // SUCCESS — update user profile in Firestore
+    const userRef = admin.firestore().collection("users").doc(uid);
+    await userRef.update({
+        email: record.email,
+        emailVerified: true,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+    // Clean up
+    await docRef.delete();
+    console.log(`[EmailOTP] Verified email ${record.email} for uid ${uid}`);
+    return { success: true, email: record.email };
 });
 //# sourceMappingURL=notifications.js.map

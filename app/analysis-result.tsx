@@ -1,10 +1,19 @@
 import React from 'react';
-import { View, ScrollView, StyleSheet, TouchableOpacity, Platform, Alert } from 'react-native';
+import { View, ScrollView, StyleSheet, TouchableOpacity, Platform, Alert, Animated as RNAnimated } from 'react-native';
+import Svg, { Path } from 'react-native-svg';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Button, Text, Card, ProgressBar, useTheme, Portal, Dialog, Paragraph, IconButton, Chip, ActivityIndicator } from 'react-native-paper';
 import { moderateScale } from '../src/utils/responsive';
 
 const isAndroid = Platform.OS === 'android';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+
+const SVGArrow = () => (
+    <Svg width="50" height="80" viewBox="0 0 50 80" fill="none">
+        <Path d="M25 0 V65" stroke="#A78BFA" strokeWidth="3" strokeDasharray="5,5" />
+        <Path d="M10 55 L25 75 L40 55" stroke="#A78BFA" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+    </Svg>
+);
 import { useRouter, useLocalSearchParams, useNavigation } from 'expo-router';
 import { useResumeStore } from '../src/store/resumeStore';
 import { useTaskQueue } from '../src/context/TaskQueueContext';
@@ -15,10 +24,13 @@ import { SkillAdditionModal } from '../src/components/analysis/SkillAdditionModa
 import { SkillMatch } from '../src/types/analysis.types';
 import { notificationService } from '../src/services/firebase/notificationService';
 import { ParsedResumeViewer } from '../src/components/upload/ParsedResumeViewer';
+import { ResumeComparisonViewer } from '../src/components/optimization/ResumeComparisonViewer';
 import { TokenBalance } from '../src/components/layout/TokenBalance';
 import { verticalScale, horizontalScale } from '../src/utils/responsive';
 
 import { useTokenCheck } from '../src/hooks/useTokenCheck';
+import { useTutorialStore } from '../src/store/tutorialStore';
+import { SequenceOverlay } from '../src/components/common/SequenceOverlay';
 
 export default function AnalysisResultScreen() {
     const router = useRouter();
@@ -110,18 +122,18 @@ export default function AnalysisResultScreen() {
         }
     }, [id, setCurrentAnalysis]);
 
-    // 2. Initial load from params if store is empty or mismatched
+    // 2. Initial load: Always fetch full data from Firestore to avoid flashing stale/partial store data
+    const hasFetchedRef = React.useRef<string | null>(null);
     React.useEffect(() => {
         if (!isAuthReady || !id) return;
 
-        if (currentAnalysis && currentAnalysis.id === id) {
-            console.log("[AnalysisResult] Data already in store, clearing initial loading.");
-            setIsInitialLoading(false);
-        } else {
-            console.log("[AnalysisResult] Store mismatch or empty. Fetching analysis...");
-            fetchAnalysis();
-        }
-    }, [isAuthReady, id, currentAnalysis?.id, fetchAnalysis]);
+        // Only fetch once per ID to avoid re-fetch loops from subscription updates
+        if (hasFetchedRef.current === id) return;
+
+        console.log("[AnalysisResult] Fetching full analysis data from Firestore...");
+        hasFetchedRef.current = id;
+        fetchAnalysis();
+    }, [isAuthReady, id, fetchAnalysis]);
 
     // 3. Timeout fallback for the loading screen
     React.useEffect(() => {
@@ -152,9 +164,142 @@ export default function AnalysisResultScreen() {
     const [isAppraisalCollapsed, setIsAppraisalCollapsed] = React.useState(true);
     const [isOptimizedCollapsed, setIsOptimizedCollapsed] = React.useState(true);
     const [isViewerVisible, setIsViewerVisible] = React.useState(false);
+    const [comparisonVisible, setComparisonVisible] = React.useState(false);
     const completionHandledRef = React.useRef<string | null>(null);
     const analysisRef = React.useRef(currentAnalysis);
     const processingRef = React.useRef(false);
+
+    const [showAppsTutorial, setShowAppsTutorial] = React.useState(false);
+    const [isAppsCardGlowing, setIsAppsCardGlowing] = React.useState(false);
+    const [showSkillAdditionTutorial, setShowSkillAdditionTutorial] = React.useState(false);
+    const [justExpandedSkills, setJustExpandedSkills] = React.useState(false);
+    const [skillsCardY, setSkillsCardY] = React.useState(0);
+    const [partialMatchesY, setPartialMatchesY] = React.useState(0);
+    const [applicationsCardLayout, setApplicationsCardLayout] = React.useState({ x: 0, y: 0, width: 0, height: 0 });
+    const scrollViewRef = React.useRef<ScrollView>(null);
+
+    // Dynamic Layout Trackers for Joyride Tutorial Sequence
+    const [layoutMap, setLayoutMap] = React.useState<Record<string, {x:number, y:number, width:number, height:number}>>({});
+    
+    // Support nested layout measurements by combining parent offset
+    const handleActionLayout = React.useCallback((key: string, e: any) => {
+        const layout = e.nativeEvent.layout;
+        setLayoutMap(prev => {
+            const parentY = prev['actions_container']?.y || 0;
+            return {
+                ...prev,
+                [key]: {
+                    ...layout,
+                    y: parentY + layout.y  // Calculate absolute scrollview Y
+                }
+            };
+        });
+    }, []);
+
+    const setNodeLayout = React.useCallback((key: string, e: any) => {
+        const layout = e.nativeEvent.layout;
+        setLayoutMap(prev => ({ ...prev, [key]: layout }));
+    }, []);
+
+    // Tutorial Sequence Controller
+    const { isSkipped, hasSeenOptimizePending, hasSeenAnalysisDraftSequence, hasSeenAnalysisOptimizedSequence, markSeen, skipAllTutorials } = useTutorialStore();
+    
+    // 0 = inactive, 1 = first step
+    const [draftStep, setDraftStep] = React.useState(0);
+    const [optimizedStep, setOptimizedStep] = React.useState(0);
+    const [showingPendingTutorial, setShowingPendingTutorial] = React.useState(false);
+
+    // Sequence Definitions
+    const draftSequence = [
+        { key: 'review_edit', title: 'Review & Edit Changes', desc: 'Click here to review the optimized resume and update if needed' },
+        { key: 'preview_resume', title: 'Preview Resume', desc: 'Click here to preview your optimized resume, remember you can only save it after you have validated and saved the optimized resume' },
+        { key: 'compare_resumes', title: 'Compare Resumes', desc: 'Click here to compare the optimized resume against the original resume' },
+        { key: 'reject_changes', title: 'Reject Changes and Revert', desc: 'Click here to reject the optimized resume and go back to the previous version of the resume' },
+        { key: 'validate_save', title: 'Validate and Save to Dashboard', desc: 'Click here if you are satisfied with the changes and save the optimized resume in the dashboard' },
+        { key: 'what_we_optimized', title: 'What We Optimized', desc: 'Click to find out what was optimized' },
+        { key: 'optimization_preview', title: 'Optimization Preview', desc: 'Click to preview the optimized summary, experience and skills sections in the resume' },
+        { key: 'skills_breakdown', title: 'Skills Breakdown', desc: 'Expand to see detailed skills breakdown and add each skill button to add them surgically into your resume' }
+    ];
+
+    const optimizedSequence = [
+        { key: 'skills_breakdown', title: 'Skills Breakdown', desc: 'Click on the optimized resume to add partial or missing skills to further improve your resume and align better with the job description.' }
+    ];
+
+    // Evaluate Tutorial Modes
+    React.useEffect(() => {
+        if (isSkipped || isInitialLoading || !isAuthReady || !currentAnalysis) return;
+
+        const isPendingMode = !currentAnalysis?.optimizedResume && !currentAnalysis?.draftOptimizedResumeData && !(currentAnalysis?.applicationStatus && currentAnalysis.applicationStatus !== 'not_applied');
+        const isDraftMode = !!currentAnalysis?.draftOptimizedResumeData;
+        const isOptimizedMode = !!currentAnalysis?.optimizedResume && !currentAnalysis?.draftOptimizedResumeData;
+
+        if (isPendingMode && !hasSeenOptimizePending) setShowingPendingTutorial(true);
+        else setShowingPendingTutorial(false);
+
+        if (isDraftMode && !hasSeenAnalysisDraftSequence && draftStep === 0) setDraftStep(1);
+        if (isOptimizedMode && !hasSeenAnalysisOptimizedSequence && optimizedStep === 0) setOptimizedStep(1);
+
+    }, [isSkipped, isInitialLoading, isAuthReady, currentAnalysis, hasSeenOptimizePending, hasSeenAnalysisDraftSequence, hasSeenAnalysisOptimizedSequence]);
+
+    // Auto-scroller for sequence steps
+    React.useEffect(() => {
+        if (draftStep > 0) {
+            const currentItem = draftSequence[draftStep - 1];
+            if (layoutMap[currentItem.key]) {
+                scrollViewRef.current?.scrollTo({ y: Math.max(0, layoutMap[currentItem.key].y - 150), animated: true });
+            }
+        } else if (optimizedStep > 0) {
+            const currentItem = optimizedSequence[optimizedStep - 1];
+            if (layoutMap[currentItem.key]) {
+                scrollViewRef.current?.scrollTo({ y: Math.max(0, layoutMap[currentItem.key].y - 150), animated: true });
+            }
+        }
+    }, [draftStep, optimizedStep, layoutMap]);
+
+    // Scroll automatically when the skill addition tutorial activates or user expands breakdown
+    React.useEffect(() => {
+        if ((showSkillAdditionTutorial || justExpandedSkills) && skillsCardY > 0 && partialMatchesY > 0) {
+            setTimeout(() => {
+                scrollViewRef.current?.scrollTo({ y: Math.max(0, skillsCardY + partialMatchesY - 60), animated: true });
+                setJustExpandedSkills(false);
+            }, 500);
+        }
+    }, [showSkillAdditionTutorial, justExpandedSkills, skillsCardY, partialMatchesY]);
+
+    const pulseAnim = React.useRef(new RNAnimated.Value(0)).current;
+
+    React.useEffect(() => {
+        if (!optimizing && !currentAnalysis?.isLocked && (!currentAnalysis?.optimizedResume || showAppsTutorial || isAppsCardGlowing)) {
+            RNAnimated.loop(
+                RNAnimated.sequence([
+                    RNAnimated.timing(pulseAnim, { toValue: 1, duration: 1000, useNativeDriver: false }),
+                    RNAnimated.timing(pulseAnim, { toValue: 0, duration: 1000, useNativeDriver: false })
+                ])
+            ).start();
+        } else {
+            pulseAnim.setValue(0);
+        }
+    }, [optimizing, currentAnalysis?.isLocked, currentAnalysis?.optimizedResume, showAppsTutorial, isAppsCardGlowing]);
+
+    // Check if we should trigger the apps tutorial
+    React.useEffect(() => {
+        const checkTutorial = async () => {
+            const hasDraft = !!currentAnalysis?.draftOptimizedResumeData;
+            const hasFinal = !!currentAnalysis?.optimizedResume;
+            // The link shows when optimizedResume is available AND we are not in unsaved mode
+            const isOptimizedAndSaved = hasFinal && !hasDraft;
+            
+            if (isOptimizedAndSaved) {
+                const hasSeen = await AsyncStorage.getItem('hasSeenAppsTutorial');
+                if (!hasSeen) {
+                    setShowAppsTutorial(true);
+                }
+            }
+        };
+        if (isAuthReady) {
+            checkTutorial();
+        }
+    }, [isAuthReady, currentAnalysis?.optimizedResume, currentAnalysis?.draftOptimizedResumeData]);
 
     // Derived state: is there an active task for this analysis? (survives navigation)
     const isActivelyProcessing = React.useMemo(() => {
@@ -234,7 +379,25 @@ export default function AnalysisResultScreen() {
                     }
                 }
 
-                // Always sync the latest state from DB to Store
+                // Always sync the latest state from DB to Store — but ONLY if data actually changed
+                // This prevents re-render loops from Firestore snapshots that haven't changed
+                const prev = analysisRef.current;
+                const newUpdatedAt = (updated as any)?.updatedAt;
+                const prevUpdatedAt = (prev as any)?.updatedAt;
+                const newUpdatedMs = newUpdatedAt ? (typeof newUpdatedAt.toMillis === 'function' ? newUpdatedAt.toMillis() : new Date(newUpdatedAt).getTime()) : 0;
+                const prevUpdatedMs = prevUpdatedAt ? (typeof prevUpdatedAt.toMillis === 'function' ? prevUpdatedAt.toMillis() : new Date(prevUpdatedAt).getTime()) : 0;
+
+                const hasDraftChanged = !!updated.draftOptimizedResumeData !== !!prev?.draftOptimizedResumeData;
+                const hasOptimizedChanged = !!updated.optimizedResumeData !== !!prev?.optimizedResume;
+                const hasScoreChanged = updated.atsScore !== prev?.atsScore;
+                const hasTimestampChanged = newUpdatedMs !== prevUpdatedMs;
+
+                if (!hasDraftChanged && !hasOptimizedChanged && !hasScoreChanged && !hasTimestampChanged) {
+                    // Data hasn't meaningfully changed — skip the store update to avoid re-render loop
+                    return;
+                }
+
+                console.log("[AnalysisResult] Subscription: data changed, updating store.");
                 setCurrentAnalysis({
                     ...updated.analysisData,
                     id: updated.id,
@@ -643,6 +806,7 @@ export default function AnalysisResultScreen() {
     return (
         <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
             <ScrollView
+                ref={scrollViewRef}
                 style={styles.container}
                 contentContainerStyle={styles.scrollContent}
             >
@@ -750,20 +914,40 @@ export default function AnalysisResultScreen() {
                     </Card>
                 )}
 
-                {/* Show "New" skills if we have a draft match analysis that differs from original */}
-                <SkillsComparison
-                    matchAnalysis={matchAnalysis}
-                    originalMatchAnalysis={currentAnalysis.matchAnalysis}
-                    changes={changes}
-                    onSkillPress={(skill) => {
-                        if (currentAnalysis.isLocked) {
-                            const { Alert } = require('react-native');
-                            Alert.alert("Resume Locked", "You cannot add skills after submitting your application.");
-                            return;
-                        }
-                        handleSkillPress(skill);
-                    }}
-                />
+                <View collapsable={false} onLayout={(e) => {
+                    setSkillsCardY(e.nativeEvent.layout.y);
+                    setNodeLayout('skills_breakdown', e);
+                }}>
+                    <SkillsComparison
+                        matchAnalysis={matchAnalysis}
+                        originalMatchAnalysis={currentAnalysis.matchAnalysis}
+                        changes={changes}
+                        onExpand={async (expanded) => {
+                            if (expanded) {
+                                setJustExpandedSkills(true);
+                                if (currentAnalysis && !currentAnalysis.isLocked) {
+                                    const hasSeen = await AsyncStorage.getItem('hasSeenSkillAdditionTutorial');
+                                    if (!hasSeen) {
+                                        setShowSkillAdditionTutorial(true);
+                                    }
+                                }
+                            }
+                        }}
+                        onPartialLayout={(y, height) => setPartialMatchesY(y)}
+                        onSkillPress={(skill) => {
+                            if (currentAnalysis.isLocked) {
+                                const { Alert } = require('react-native');
+                                Alert.alert("Resume Locked", "You cannot add skills after submitting your application.");
+                                return;
+                            }
+                            if (showSkillAdditionTutorial) {
+                                AsyncStorage.setItem('hasSeenSkillAdditionTutorial', 'true');
+                                setShowSkillAdditionTutorial(false);
+                            }
+                            handleSkillPress(skill);
+                        }}
+                    />
+                </View>
 
                 {!optimizedResume && (
                     <Card style={styles.card}>
@@ -784,26 +968,30 @@ export default function AnalysisResultScreen() {
                                         Preview Original Resume
                                     </Button>
 
-                                    <View style={{ marginTop: 16, position: 'relative' }}>
-                                        <Button
-                                            mode="contained"
-                                            onPress={handleOptimize}
-                                            disabled={currentAnalysis.isLocked || optimizing}
-                                        >
-                                            {currentAnalysis.isLocked ? "Optimizer Locked" : "✨ Rewrite & Optimize Resume"}
-                                        </Button>
-                                        <IconButton
-                                            icon="information-outline"
-                                            size={moderateScale(20)}
-                                            iconColor="orange"
-                                            style={{
-                                                position: 'absolute',
-                                                top: moderateScale(-4),
-                                                right: moderateScale(0),
-                                                zIndex: 1
-                                            }}
-                                            onPress={() => Alert.alert("Cost Information", "Each Rewrite & Optimize Resume costs 15 tokens")}
-                                        />
+                                    <View style={{ marginTop: 16 }} onLayout={(e) => setNodeLayout('rewrite_btn', e)}>
+                                        <RNAnimated.View style={{
+                                            borderRadius: 100, // Matched with Button
+                                            borderWidth: 2,
+                                            borderColor: pulseAnim.interpolate({ inputRange: [0, 1], outputRange: ['transparent', theme.colors.primary] }),
+                                            padding: !currentAnalysis.isLocked ? 2 : 0, 
+                                            shadowColor: theme.colors.primary,
+                                            shadowOpacity: pulseAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 0.8] }),
+                                            shadowRadius: pulseAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 10] }),
+                                            shadowOffset: { width: 0, height: 0 },
+                                            backgroundColor: pulseAnim.interpolate({ inputRange: [0, 1], outputRange: ['transparent', 'rgba(156,39,176,0.1)'] })
+                                        }}>
+                                            <Button
+                                                mode="contained"
+                                                onPress={handleOptimize}
+                                                disabled={currentAnalysis.isLocked || optimizing}
+                                                style={{ marginVertical: 0, marginBottom: 0, marginTop: 0 }}
+                                            >
+                                                {currentAnalysis.isLocked ? "Optimizer Locked" : "✨ Rewrite & Optimize Resume"}
+                                            </Button>
+                                        </RNAnimated.View>
+                                        <Text variant="labelSmall" style={{ textAlign: 'center', color: theme.colors.outline, marginTop: 8 }}>
+                                            Each Resume Optimization costs 15 tokens
+                                        </Text>
                                     </View>
                                     {currentAnalysis.recommendation?.action === 'upskill' && (
                                         <Button
@@ -837,13 +1025,11 @@ export default function AnalysisResultScreen() {
                     </Card>
                 )}
 
-                {
-                    optimizedResume && changes && (
-                        <>
-                            {changes && changes.length > 0 && (
-                                <Card style={styles.card}>
-                                    <Card.Content>
-                                        <TouchableOpacity
+                {optimizedResume && changes && changes.length > 0 && (
+                    <View collapsable={false} onLayout={(e) => setNodeLayout('what_we_optimized', e)}>
+                        <Card style={styles.card}>
+                            <Card.Content>
+                                <TouchableOpacity
                                             onPress={() => setIsOptimizedCollapsed(!isOptimizedCollapsed)}
                                             style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: isOptimizedCollapsed ? 0 : 8 }}
                                             activeOpacity={0.7}
@@ -902,79 +1088,236 @@ export default function AnalysisResultScreen() {
                                         )}
                                     </Card.Content>
                                 </Card>
-                            )}
+                    </View>
+                )}
 
-                            {/* Comparison Baseline Logic:
-                        - Compare against the previously SAVED resume version.
-                        - If there's a saved optimizedResume, use that as baseline (shows only new changes).
-                        - Otherwise fall back to original resume (shows all changes since start).
-                        This ensures the preview shows ONLY what changed in the current operation.
-                    */}
-                            <BeforeAfterComparison
-                                original={currentAnalysis.optimizedResume || currentAnalysis.resume || resume}
-                                optimized={optimizedResume}
-                                changes={changes}
-                                isUnsaved={isUnsaved}
-                            />
-                        </>
-                    )
-                }
+                {optimizedResume && changes && (
+                    <View collapsable={false} onLayout={(e) => setNodeLayout('optimization_preview', e)}>
+                        <BeforeAfterComparison
+                            original={currentAnalysis.optimizedResume || currentAnalysis.resume || resume}
+                            optimized={optimizedResume}
+                            changes={changes}
+                            isUnsaved={isUnsaved}
+                        />
+                    </View>
+                )}
 
-                <View style={styles.actions}>
+                <View style={styles.actions} onLayout={(e) => setNodeLayout('actions_container', e)}>
                     {optimizedResume && (
                         <>
-                            <Button
-                                mode="outlined"
-                                onPress={() => router.push('/optimization-editor')}
-                                style={styles.button}
-                            >
-                                Review & Edit Changes
-                            </Button>
+                            <View onLayout={(e) => handleActionLayout('review_edit', e)}>
+                                <Button
+                                    mode="outlined"
+                                    onPress={() => router.push('/optimization-editor')}
+                                    style={styles.button}
+                                    compact
+                                    labelStyle={{ fontSize: 12 }}
+                                >
+                                    Review & Edit Changes
+                                </Button>
+                            </View>
 
-                            <Button
-                                mode="outlined"
-                                onPress={() => router.push('/resume-preview')}
-                                style={styles.button}
-                            >
-                                Preview Resume
-                            </Button>
+                            <View onLayout={(e) => handleActionLayout('preview_resume', e)}>
+                                <Button
+                                    mode="outlined"
+                                    onPress={() => router.push('/resume-preview')}
+                                    style={styles.button}
+                                    compact
+                                    labelStyle={{ fontSize: 12 }}
+                                >
+                                    Preview Resume
+                                </Button>
+                            </View>
 
+                            <View onLayout={(e) => handleActionLayout('compare_resumes', e)}>
+                                <Button
+                                    mode="outlined"
+                                    onPress={() => setComparisonVisible(true)}
+                                    style={styles.button}
+                                    compact
+                                    icon="file-compare"
+                                    labelStyle={{ fontSize: 12 }}
+                                >
+                                    📄 Compare Resumes
+                                </Button>
+                            </View>
 
-
-
-                            {/* ... rest of UI ... */}
                             {isUnsaved && (
                                 <>
-                                    <Button
-                                        mode="outlined"
-                                        onPress={() => setRevertDialogVisible(true)}
-                                        loading={saving}
-                                        disabled={saving || optimizing || isActivelyProcessing}
-                                        style={[styles.button, { marginTop: 12, borderColor: '#D32F2F', marginBottom: 8 }]}
-                                        textColor="#D32F2F"
-                                        icon="undo"
-                                    >
-                                        Reject Changes & Revert
-                                    </Button>
-                                    {/* ... Validate button ... */}
+                                    <View onLayout={(e) => handleActionLayout('reject_changes', e)}>
+                                        <Button
+                                            mode="outlined"
+                                            onPress={() => setRevertDialogVisible(true)}
+                                            loading={saving}
+                                            disabled={saving || optimizing || isActivelyProcessing}
+                                            style={[styles.button, { borderColor: '#D32F2F' }]}
+                                            textColor="#D32F2F"
+                                            icon="undo"
+                                            compact
+                                            labelStyle={{ fontSize: 12 }}
+                                        >
+                                            Reject Changes & Revert
+                                        </Button>
+                                    </View>
 
-                                    <Button
-                                        mode="contained"
-                                        onPress={handleSave}
-                                        loading={saving}
-                                        disabled={saving || optimizing || isActivelyProcessing}
-                                        style={[styles.button, { backgroundColor: '#4CAF50' }]}
-                                        icon="check"
-                                    >
-                                        Validate & Save to Dashboard
-                                    </Button>
+                                    <View onLayout={(e) => handleActionLayout('validate_save', e)}>
+                                        <Button
+                                            mode="contained"
+                                            onPress={handleSave}
+                                            loading={saving}
+                                            disabled={saving || optimizing || isActivelyProcessing}
+                                            style={[styles.button, { backgroundColor: '#4CAF50' }]}
+                                            icon="check"
+                                            compact
+                                            labelStyle={{ fontSize: 12 }}
+                                        >
+                                            Validate & Save to Dashboard
+                                        </Button>
+                                    </View>
                                 </>
                             )}
                         </>
                     )}
                 </View>
 
-            </ScrollView >
+                {optimizedResume && !isUnsaved && (
+                    <View onLayout={(e) => {
+                        const layout = e.nativeEvent.layout;
+                        setApplicationsCardLayout(layout);
+                        setNodeLayout('go_to_apps', e);
+                        if (showAppsTutorial) {
+                            setTimeout(() => {
+                                if (scrollViewRef.current) {
+                                    scrollViewRef.current.scrollToEnd({ animated: true });
+                                }
+                            }, 500);
+                        }
+                    }}>
+                        <RNAnimated.View style={{
+                             ...(showAppsTutorial || isAppsCardGlowing ? {
+                                 borderRadius: 14,
+                                 borderWidth: 2,
+                                 borderColor: pulseAnim.interpolate({ inputRange: [0, 1], outputRange: ['transparent', '#7C3AED'] }),
+                                 shadowColor: '#7C3AED',
+                                 shadowOffset: { width: 0, height: 0 },
+                                 shadowOpacity: pulseAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 0.8] }),
+                                 shadowRadius: pulseAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 10] }),
+                             } : {})
+                        }}>
+                            <TouchableOpacity
+                                onPress={async () => {
+                                    if (showAppsTutorial || isAppsCardGlowing) {
+                                        await AsyncStorage.setItem('hasSeenAppsTutorial', 'true');
+                                        setShowAppsTutorial(false);
+                                        setIsAppsCardGlowing(false);
+                                    }
+                                    router.push({ pathname: '/(tabs)/applications', params: { expandAppId: currentAnalysis.id } } as any);
+                                }}
+                                style={{
+                                    marginTop: showAppsTutorial || isAppsCardGlowing ? 0 : 12,
+                                    padding: 14,
+                                    backgroundColor: theme.colors.elevation.level2,
+                                    borderRadius: 12,
+                                    borderWidth: 1,
+                                    borderColor: theme.colors.primary,
+                                    flexDirection: 'row',
+                                    alignItems: 'flex-start',
+                                    gap: 10,
+                                }}
+                            >
+                                <Text style={{ fontSize: 20, marginTop: 2 }}>💡</Text>
+                                <View style={{ flex: 1 }}>
+                                    <Text variant="bodySmall" style={{ color: theme.colors.onSurface, lineHeight: 20 }}>
+                                        Go to the{' '}
+                                        <Text style={{ color: theme.colors.primary, fontWeight: 'bold', textDecorationLine: 'underline' }}>
+                                            Applications
+                                        </Text>
+                                        {' '}tab and expand your job card to download the optimized resume, generate a detailed interview prep guide, and create a customized cover letter.
+                                    </Text>
+                                </View>
+                            </TouchableOpacity>
+                        </RNAnimated.View>
+                    </View>
+                )}
+
+                {/* Dynamic Onboarding Sequence Loop */}
+                {showingPendingTutorial && layoutMap['rewrite_btn']?.y > 0 && (
+                    <SequenceOverlay
+                        targetLayout={layoutMap['rewrite_btn']}
+                        title="Rewrite & Optimize Resume"
+                        description="Click on rewrite and optimize resume button to optimize your resume for the job role."
+                        stepIndex={0}
+                        totalSteps={1}
+                        onNext={() => {
+                            setShowingPendingTutorial(false);
+                            markSeen('hasSeenOptimizePending');
+                        }}
+                        onSkip={() => {
+                            skipAllTutorials();
+                            setShowingPendingTutorial(false);
+                            setDraftStep(0);
+                            setOptimizedStep(0);
+                        }}
+                        arrowDirection="down"
+                        isCentered={true}
+                    />
+                )}
+
+                {draftStep > 0 && draftSequence[draftStep - 1] && layoutMap[draftSequence[draftStep - 1].key] && (
+                    <SequenceOverlay
+                        targetLayout={layoutMap[draftSequence[draftStep - 1].key]}
+                        title={draftSequence[draftStep - 1].title}
+                        description={draftSequence[draftStep - 1].desc}
+                        stepIndex={draftStep - 1}
+                        totalSteps={draftSequence.length}
+                        onNext={() => {
+                            if (draftStep === draftSequence.length) {
+                                setDraftStep(0);
+                                markSeen('hasSeenAnalysisDraftSequence');
+                            } else {
+                                setDraftStep(prev => prev + 1);
+                            }
+                        }}
+                        onBack={() => setDraftStep(prev => prev - 1)}
+                        onSkip={() => {
+                            skipAllTutorials();
+                            setShowingPendingTutorial(false);
+                            setDraftStep(0);
+                            setOptimizedStep(0);
+                        }}
+                        arrowDirection="down"
+                        isCentered={true}
+                    />
+                )}
+
+                {optimizedStep > 0 && optimizedSequence[optimizedStep - 1] && layoutMap[optimizedSequence[optimizedStep - 1].key] && (
+                    <SequenceOverlay
+                        targetLayout={layoutMap[optimizedSequence[optimizedStep - 1].key]}
+                        title={optimizedSequence[optimizedStep - 1].title}
+                        description={optimizedSequence[optimizedStep - 1].desc}
+                        stepIndex={optimizedStep - 1}
+                        totalSteps={optimizedSequence.length}
+                        onNext={() => {
+                            if (optimizedStep === optimizedSequence.length) {
+                                setOptimizedStep(0);
+                                markSeen('hasSeenAnalysisOptimizedSequence');
+                            } else {
+                                setOptimizedStep(prev => prev + 1);
+                            }
+                        }}
+                        onBack={() => setOptimizedStep(prev => prev - 1)}
+                        onSkip={() => {
+                            skipAllTutorials();
+                            setShowingPendingTutorial(false);
+                            setDraftStep(0);
+                            setOptimizedStep(0);
+                        }}
+                        arrowDirection="down"
+                        isCentered={true}
+                    />
+                )}
+
+            </ScrollView>
 
             <SkillAdditionModal
                 visible={skillModalVisible}
@@ -1032,6 +1375,17 @@ export default function AnalysisResultScreen() {
                 parsedData={currentAnalysis?.resume}
                 rawText={currentAnalysis?.resume?.text || ''}
             />
+
+            {/* Resume Comparison Modal */}
+            {optimizedResume && (
+                <ResumeComparisonViewer
+                    visible={comparisonVisible}
+                    onClose={() => setComparisonVisible(false)}
+                    original={currentAnalysis.resume}
+                    optimized={optimizedResume}
+                    changes={changes || []}
+                />
+            )}
         </View >
     );
 }
@@ -1054,10 +1408,11 @@ const styles = StyleSheet.create({
         marginTop: verticalScale(4),
     },
     actions: {
-        marginTop: verticalScale(16),
-        paddingBottom: verticalScale(8),
+        marginTop: verticalScale(8),
+        paddingBottom: verticalScale(4),
+        gap: 4,
     },
     button: {
-        marginBottom: verticalScale(10),
+        marginBottom: 0,
     },
 });

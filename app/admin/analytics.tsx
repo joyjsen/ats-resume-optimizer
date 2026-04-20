@@ -223,13 +223,13 @@ export default function PlatformAnalytics() {
                         <MaterialCommunityIcons
                             name={activityLogExpanded ? 'chevron-down' : 'chevron-right'}
                             size={24}
-                            color="#666"
+                            color={theme.colors.onSurfaceDisabled}
                         />
                         <Text variant="titleMedium" style={[styles.sectionTitle, { marginLeft: 8, marginBottom: 0 }]}>
                             Activity Log
                         </Text>
                     </View>
-                    <Chip style={styles.recordCountChip} textStyle={{ fontSize: 12 }}>
+                    <Chip style={styles.recordCountChip} textStyle={{ fontSize: 12, color: '#000' }}>
                         {filteredActivities.length} records
                     </Chip>
                 </View>
@@ -243,21 +243,21 @@ export default function PlatformAnalytics() {
     );
 
     return (
-        <View style={styles.container}>
+        <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
             {/* Fixed Filters Section */}
-            <View style={styles.filtersSection}>
+            <View style={[styles.filtersSection, { backgroundColor: theme.colors.elevation.level1 }]}>
                 <Text variant="titleMedium" style={styles.sectionTitle}>Filters</Text>
 
                 {/* User Filter */}
                 <View style={styles.pickerContainer}>
-                    <Text variant="labelMedium" style={styles.filterLabel}>Filter by User</Text>
+                    <Text variant="labelMedium" style={{ color: theme.colors.onSurfaceVariant, marginBottom: 4 }}>Filter by User</Text>
                     <TouchableOpacity
-                        style={styles.dropdownButton}
+                        style={[styles.dropdownButton, { backgroundColor: theme.colors.elevation.level2, borderColor: theme.colors.outlineVariant }]}
                         onPress={() => setUserMenuVisible(true)}
                         activeOpacity={0.7}
                     >
-                        <Text style={styles.dropdownText}>{getSelectedUserLabel()}</Text>
-                        <MaterialCommunityIcons name="chevron-down" size={20} color="#666" />
+                        <Text style={[styles.dropdownText, { color: theme.colors.onSurface }]}>{getSelectedUserLabel()}</Text>
+                        <MaterialCommunityIcons name="chevron-down" size={20} color={theme.colors.onSurfaceVariant} />
                     </TouchableOpacity>
                 </View>
 
@@ -295,7 +295,7 @@ export default function PlatformAnalytics() {
                     style={styles.modalOverlay}
                     onPress={() => setUserMenuVisible(false)}
                 >
-                    <Pressable style={styles.modalContent} onPress={e => e.stopPropagation()}>
+                    <Pressable style={[styles.modalContent, { backgroundColor: theme.colors.elevation.level3 }]} onPress={e => e.stopPropagation()}>
                         <View style={styles.modalHeader}>
                             <Text variant="titleMedium" style={{ fontWeight: 'bold' }}>Select User</Text>
                             <TouchableOpacity onPress={() => setUserMenuVisible(false)}>
@@ -361,7 +361,7 @@ export default function PlatformAnalytics() {
                 keyboardShouldPersistTaps="handled"
                 ListHeaderComponent={renderHeader}
                 renderItem={({ item }) => (
-                    <Card style={styles.activityCard}>
+                    <Card style={[styles.activityCard, { backgroundColor: theme.colors.elevation.level1 }]}>
                         <Card.Content>
                             <View style={styles.activityRow}>
                                 <View style={{ flex: 1 }}>
@@ -432,7 +432,6 @@ const StatCard = ({ icon, label, value, color }: { icon: string; label: string; 
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: '#f5f5f5',
     },
     centered: {
         flex: 1,
@@ -440,7 +439,6 @@ const styles = StyleSheet.create({
         alignItems: 'center',
     },
     filtersSection: {
-        backgroundColor: '#fff',
         padding: 16,
         marginBottom: 8,
     },
@@ -462,7 +460,6 @@ const styles = StyleSheet.create({
         borderWidth: 1,
         borderColor: '#ddd',
         borderRadius: 8,
-        backgroundColor: '#fafafa',
         paddingHorizontal: 16,
         paddingVertical: 14,
     },
@@ -478,7 +475,6 @@ const styles = StyleSheet.create({
         padding: 20,
     },
     modalContent: {
-        backgroundColor: '#fff',
         borderRadius: 12,
         width: '100%',
         maxWidth: 400,
@@ -516,7 +512,6 @@ const styles = StyleSheet.create({
         borderColor: '#ddd',
     },
     statsSection: {
-        backgroundColor: '#fff',
         padding: 16,
         marginBottom: 8,
     },
@@ -542,7 +537,6 @@ const styles = StyleSheet.create({
         color: '#666',
     },
     topTypesSection: {
-        backgroundColor: '#fff',
         padding: 16,
         marginBottom: 8,
     },
@@ -593,7 +587,6 @@ const styles = StyleSheet.create({
     activityListSection: {
         paddingHorizontal: 16,
         paddingVertical: 16,
-        backgroundColor: '#fff',
         marginTop: 8,
     },
     listHeader: {
@@ -615,7 +608,6 @@ const styles = StyleSheet.create({
     activityCard: {
         marginBottom: 8,
         marginHorizontal: 16,
-        backgroundColor: '#fff',
         elevation: 1,
     },
     activityRow: {

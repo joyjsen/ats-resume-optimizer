@@ -35,6 +35,9 @@ export default function ProfileScreen() {
     const [deletionReason, setDeletionReason] = useState('');
     const [otherReason, setOtherReason] = useState('');
     const [showReasonStep, setShowReasonStep] = useState(true);
+    const [isRoadmapLoading, setIsRoadmapLoading] = useState(false);
+
+    const hasProfessionalDetails = !!(userProfile?.jobTitle && userProfile?.targetJobTitle && (userProfile?.industry || userProfile?.targetIndustry));
 
     const deletionReasons = [
         "Found a job",
@@ -128,9 +131,14 @@ export default function ProfileScreen() {
                 errorMessage.includes('requires-recent-login') ||
                 errorMessage.includes('user-token-expired')) {
                 Alert.alert(
-                    "Security Check Required",
-                    "For your security, Firebase requires a recent login to delete your account.\n\nPlease log out, log back in, and try again immediately.",
-                    [{ text: "OK" }]
+                    "Request to delete account has been received",
+                    "Your account has been deactivated and scheduled for permanent deletion. Your public profile and data have been safely removed. You will now be logged out.",
+                    [{ text: "OK", onPress: async () => {
+                        setDeleteDialogVisible(false);
+                        setUserProfile(null);
+                        await authService.logout();
+                        router.replace('/' as any);
+                    }}]
                 );
             } else if (errorMessage.includes('permission') || errorCode === 'permission-denied') {
                 Alert.alert("Permission Error", "Firestore rules may need to be deployed. Please contact support.");
@@ -149,6 +157,48 @@ export default function ProfileScreen() {
         const body = `Dear RiResume Team,\n\nI would like to share my experience and feedback regarding the RiResume application.\n\n[Please enter your feedback here]\n\nSincerely,\n${userName}\n\n---\nUser Information:\n- Email: ${userProfile?.email}\n- User ID: ${userProfile?.uid}`;
 
         Linking.openURL(`mailto:${email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`);
+    };
+
+    const handleGenerateCareerGuidance = async () => {
+        if (!userProfile) return;
+        if ((userProfile.tokenBalance || 0) < 10) {
+            Alert.alert("Insufficient Tokens", "Generating career guidance requires 10 tokens. Please purchase more to continue.");
+            return;
+        }
+
+        Alert.alert(
+            "Send Career Guidance",
+            "This will consume 10 tokens and send an updated AI-powered career roadmap to your email using your currently saved professional details.",
+            [
+                { text: "Cancel", style: "cancel" },
+                { 
+                    text: "Generate (10 Tokens)", 
+                    style: "default",
+                    onPress: async () => {
+                        setIsRoadmapLoading(true);
+                        try {
+                            const { httpsCallable } = await import('firebase/functions');
+                            const { getFirebaseFunctions } = await import('../../src/services/firebase/config');
+                            const functions = await getFirebaseFunctions();
+                            const generateFunc = httpsCallable(functions, 'generateCareerGuidanceV1');
+                            
+                            await generateFunc({});
+                            
+                            Alert.alert("Success! 🚀", "Your personalized career roadmap has been generated and sent to your email.");
+                            
+                            // Immediately refresh the stats and activities to visually deduct the 10 tokens
+                            fetchActivities();
+                            fetchUserStats();
+                            refreshProfile();
+                        } catch (error: any) {
+                            Alert.alert("Generation Failed", error.message || "An error occurred while generating career guidance.");
+                        } finally {
+                            setIsRoadmapLoading(false);
+                        }
+                    }
+                }
+            ]
+        );
     };
 
 
@@ -183,6 +233,21 @@ export default function ProfileScreen() {
                 profile={userProfile}
                 onEdit={() => router.push('/profile/edit')}
             />
+
+            {hasProfessionalDetails && (
+                <View style={{ paddingHorizontal: 16, marginBottom: 16 }}>
+                    <Button 
+                        mode="contained-tonal"
+                        icon="compass-outline"
+                        loading={isRoadmapLoading}
+                        disabled={isRoadmapLoading}
+                        onPress={handleGenerateCareerGuidance}
+                        style={{ borderRadius: 8, paddingVertical: 4 }}
+                    >
+                        Send Career Guidance (10 tokens)
+                    </Button>
+                </View>
+            )}
 
             <TokenCard
                 balance={userProfile.tokenBalance}

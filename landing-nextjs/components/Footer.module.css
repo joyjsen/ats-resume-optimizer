@@ -1,0 +1,104 @@
+.footer {
+  background-color: var(--footer-bg);
+  padding: 64px 32px 32px;
+}
+
+.footerInner {
+  max-width: var(--max-width);
+  width: 100%;
+  margin: 0 auto;
+}
+
+.footerTop {
+  display: flex;
+  gap: 48px;
+  flex-wrap: wrap;
+  margin-bottom: 48px;
+}
+
+.footerBrand {
+  min-width: 240px;
+  max-width: 300px;
+}
+
+.brandName {
+  font-size: 22px;
+  font-weight: 500;
+  color: var(--white);
+  margin-bottom: 12px;
+}
+
+.brandDesc {
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.5);
+  line-height: 22px;
+}
+
+.footerCol {
+  min-width: 140px;
+}
+
+.colTitle {
+  font-size: 13px;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.4);
+  text-transform: uppercase;
+  letter-spacing: 1.2px;
+  margin-bottom: 16px;
+}
+
+.footerLink {
+  display: block;
+  padding: 5px 0;
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.7);
+  transition: color 0.2s;
+}
+
+.footerLink:hover {
+  color: var(--white);
+}
+
+.footerBottom {
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  padding-top: 24px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.copyright {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.35);
+}
+
+.socialRow {
+  display: flex;
+  gap: 16px;
+}
+
+.socialIcon {
+  opacity: 0.5;
+  transition: opacity 0.2s;
+  color: rgba(255, 255, 255, 0.5);
+  display: inline-flex;
+  padding: 8px;
+  position: relative;
+  z-index: 10;
+}
+
+.socialIcon:hover {
+  opacity: 1;
+}
+
+@media (max-width: 768px) {
+  .footer {
+    padding: 48px 16px 24px;
+  }
+
+  .footerTop {
+    gap: 32px;
+  }
+}

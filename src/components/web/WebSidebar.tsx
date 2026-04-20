@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, TouchableOpacity, useWindowDimensions, Image } from 'react-native';
+import { View, TouchableOpacity, useWindowDimensions, Image, Pressable, Platform } from 'react-native';
 import { Text, useTheme, Icon, Divider } from 'react-native-paper';
 import { useRouter, useSegments } from 'expo-router';
 import { useProfileStore } from '../../store/profileStore';
@@ -38,7 +38,11 @@ export const WebSidebar: React.FC = () => {
     const handleLogout = async () => {
         try {
             await authService.logout();
-            router.replace('/' as any);
+            if (Platform.OS === 'web') {
+                window.location.href = 'https://www.riresume.com';
+            } else {
+                router.replace('/' as any);
+            }
         } catch (error) {
             console.error('Logout error:', error);
         }
@@ -56,7 +60,14 @@ export const WebSidebar: React.FC = () => {
             ]}
         >
             {/* Logo / Brand */}
-            <View style={{ paddingHorizontal: 16, paddingBottom: 16, alignItems: isCollapsed ? 'center' : 'flex-start', flexDirection: isCollapsed ? 'column' : 'row', gap: 10 }}>
+            <Pressable
+                onPress={() => {
+                    if (Platform.OS === 'web') {
+                        window.location.href = 'https://www.riresume.com';
+                    }
+                }}
+                style={{ paddingHorizontal: 16, paddingBottom: 16, alignItems: isCollapsed ? 'center' : 'flex-start', flexDirection: isCollapsed ? 'column' : 'row', gap: 10 }}
+            >
                 <Image
                     source={require('../../../assets/logo-72.png')}
                     style={{ width: isCollapsed ? 36 : 40, height: isCollapsed ? 36 : 40, borderRadius: 8 }}
@@ -67,7 +78,7 @@ export const WebSidebar: React.FC = () => {
                         RiResume
                     </Text>
                 )}
-            </View>
+            </Pressable>
 
             <Divider style={{ marginBottom: 8, backgroundColor: theme.colors.outlineVariant }} />
 

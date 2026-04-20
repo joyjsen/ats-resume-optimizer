@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, StyleSheet, TouchableOpacity, Platform } from 'react-native';
+import { View, StyleSheet, TouchableOpacity, Platform, Animated as RNAnimated } from 'react-native';
 import { Card, Text, Chip, useTheme } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { MatchAnalysis, SkillMatch } from '../../types/analysis.types';
@@ -10,11 +10,33 @@ interface Props {
     originalMatchAnalysis?: MatchAnalysis; // To show "New Skills Acquired"
     changes?: any[]; // To identify specific user actions
     onSkillPress?: (skill: SkillMatch) => void;
+    onExpand?: (expanded: boolean) => void;
+    onPartialLayout?: (y: number, height: number) => void;
 }
 
-export const SkillsComparison = ({ matchAnalysis, originalMatchAnalysis, changes, onSkillPress }: Props) => {
+export const SkillsComparison = ({ matchAnalysis, originalMatchAnalysis, changes, onSkillPress, onExpand, onPartialLayout }: Props) => {
     const theme = useTheme();
     const [isCollapsed, setIsCollapsed] = React.useState(true);
+    const highlightAnim = React.useRef(new RNAnimated.Value(0)).current;
+
+    React.useEffect(() => {
+        if (!isCollapsed) {
+            RNAnimated.loop(
+                RNAnimated.sequence([
+                    RNAnimated.timing(highlightAnim, { toValue: 1, duration: 1000, useNativeDriver: false }),
+                    RNAnimated.timing(highlightAnim, { toValue: 0, duration: 1000, useNativeDriver: false })
+                ])
+            ).start();
+        } else {
+            highlightAnim.setValue(0);
+        }
+    }, [isCollapsed]);
+
+    const toggleCollapse = () => {
+        const newState = !isCollapsed;
+        setIsCollapsed(newState);
+        if (onExpand) onExpand(!newState); // pass the new expanded state (which is !newState) -- wait, expanded = !isCollapsed
+    };
 
     // STABLE MODE:
     // If we have originalMatchAnalysis AND changes, we construct the view by:
@@ -114,7 +136,7 @@ export const SkillsComparison = ({ matchAnalysis, originalMatchAnalysis, changes
         <Card style={styles.card}>
             <Card.Content>
                 <TouchableOpacity
-                    onPress={() => setIsCollapsed(!isCollapsed)}
+                    onPress={toggleCollapse}
                     style={styles.headerToggle}
                     activeOpacity={0.7}
                 >
@@ -125,6 +147,15 @@ export const SkillsComparison = ({ matchAnalysis, originalMatchAnalysis, changes
                         color={theme.colors.onSurfaceVariant}
                     />
                 </TouchableOpacity>
+
+                {isCollapsed && (
+                    <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 6, justifyContent: 'space-between' }}>
+                        <Text variant="bodySmall" style={{ color: theme.colors.outline, fontWeight: '500', flex: 1 }}>
+                            Expand "Skills Breakdown" above to see a detailed list with clickable buttons
+                        </Text>
+                        <Text style={{ fontSize: 18, marginLeft: 8 }}>👆</Text>
+                    </View>
+                )}
 
                 {!isCollapsed && (
                     <View style={{ marginTop: verticalScale(8) }}>
@@ -158,12 +189,25 @@ export const SkillsComparison = ({ matchAnalysis, originalMatchAnalysis, changes
                             </View>
                         </View>
 
-                        <View style={styles.section}>
+                        <View 
+                            style={styles.section} 
+                            onLayout={(e) => onPartialLayout && onPartialLayout(e.nativeEvent.layout.y, e.nativeEvent.layout.height)}
+                        >
                             <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
                                 <MaterialCommunityIcons name="swap-horizontal-bold" size={16} color="#FF9800" style={{ marginRight: 4 }} />
                                 <Text variant="bodyMedium" style={{ color: '#FF9800', fontWeight: 'bold' }}>Partial Matches (Transferable)</Text>
                             </View>
-                            <Text variant="labelSmall" style={{ color: '#666', marginBottom: 4 }}>Tap to see how this transfers</Text>
+                            <RNAnimated.Text style={{ 
+                                color: highlightAnim.interpolate({ inputRange: [0, 1], outputRange: [theme.dark ? '#999' : '#666', '#FF9800'] }), 
+                                textShadowColor: highlightAnim.interpolate({ inputRange: [0, 1], outputRange: ['transparent', '#FF9800'] }),
+                                textShadowOffset: { width: 0, height: 0 },
+                                textShadowRadius: highlightAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 8] }),
+                                marginBottom: 6, 
+                                fontWeight: 'bold',
+                                fontSize: 12
+                            }}>
+                                👇 Tap to see how this transfers
+                            </RNAnimated.Text>
                             <View style={styles.chipRow}>
                                 {displayedPartial.map((s, idx) => renderSkillChip(s, '#FF9800', true, false, idx))}
                                 {displayedPartial.length === 0 && <Text variant="bodySmall">None</Text>}
@@ -202,7 +246,17 @@ export const SkillsComparison = ({ matchAnalysis, originalMatchAnalysis, changes
                                 <MaterialCommunityIcons name="close-circle-outline" size={16} color={theme.colors.error} style={{ marginRight: 4 }} />
                                 <Text variant="bodyMedium" style={{ color: theme.colors.error, fontWeight: 'bold' }}>Critical Gaps & Missing Skills</Text>
                             </View>
-                            <Text variant="labelSmall" style={{ color: '#666', marginBottom: 4 }}>Tap to add to resume</Text>
+                            <RNAnimated.Text style={{ 
+                                color: highlightAnim.interpolate({ inputRange: [0, 1], outputRange: [theme.dark ? '#999' : '#666', theme.colors.error] }), 
+                                textShadowColor: highlightAnim.interpolate({ inputRange: [0, 1], outputRange: ['transparent', theme.colors.error] }),
+                                textShadowOffset: { width: 0, height: 0 },
+                                textShadowRadius: highlightAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 8] }),
+                                marginBottom: 6, 
+                                fontWeight: 'bold',
+                                fontSize: 12
+                            }}>
+                                👇 Tap to add to resume
+                            </RNAnimated.Text>
                             <View style={styles.chipRow}>
                                 {displayedMissing.map((s, idx) => renderSkillChip(s, theme.colors.error, true, false, idx))}
                                 {displayedMissing.length === 0 && (!matchAnalysis.noMatches || matchAnalysis.noMatches.length === 0) && <Text variant="bodySmall">None</Text>}

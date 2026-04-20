@@ -121,4 +121,5 @@ __exportStar(require("./aiAnalysis"), exports);
 __exportStar(require("./stripeWebhook"), exports);
 __exportStar(require("./appleAuthRelay"), exports);
 __exportStar(require("./appleIapValidation"), exports);
+__exportStar(require("./marketing"), exports);
 //# sourceMappingURL=index.js.map

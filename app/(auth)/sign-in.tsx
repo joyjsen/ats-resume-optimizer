@@ -3,6 +3,7 @@ import { View, StyleSheet, Alert, ScrollView, Image, Platform } from 'react-nati
 import { Text, TextInput, Button, useTheme, Card, Appbar, IconButton } from 'react-native-paper';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { authService, UserInactiveError } from '../../src/services/firebase/authService';
+import { useProfileStore } from '../../src/store/profileStore';
 import { getFirebaseAuth, getFirebaseApp } from '../../src/services/firebase/config';
 
 import RecaptchaVerifierModal from '../../src/components/auth/RecaptchaVerifierModal';
@@ -18,6 +19,7 @@ export default function SignIn() {
     const [password, setPassword] = useState('');
     const [loading, setLoading] = useState(false);
     const [socialLoading, setSocialLoading] = useState<string | null>(null);
+    const [showPassword, setShowPassword] = useState(false);
     const [showPhoneLogin, setShowPhoneLogin] = useState(false);
     const [phoneNumber, setPhoneNumber] = useState('');
     const [selectedCountry, setSelectedCountry] = useState<CountryCallingCode>(
@@ -55,20 +57,36 @@ export default function SignIn() {
     const handleSocialLogin = async (provider: 'google' | 'apple' | 'microsoft') => {
         setSocialLoading(provider);
         try {
-            if (provider === 'google') await authService.signInWithGoogle();
-            else if (provider === 'apple') await authService.signInWithApple();
-            else if (provider === 'microsoft') await authService.signInWithMicrosoft();
-            // Layout guard automatically handles navigation here
-
+            let profile;
+            if (provider === 'google') profile = await authService.signInWithGoogle();
+            else if (provider === 'apple') profile = await authService.signInWithApple();
+            else if (provider === 'microsoft') profile = await authService.signInWithMicrosoft();
+            // Update store with the profile that has Apple/Google name data
+            if (profile) {
+                const { setUserProfile } = useProfileStore.getState();
+                setUserProfile(profile);
+            }
         } catch (error: any) {
-            console.error(`${provider} Login Error:`, error);
             const isInactive = error instanceof UserInactiveError ||
                 error.name === 'UserInactiveError' ||
                 error.message?.includes('User Inactive');
 
+            // Detect user-initiated cancellations (don't show errors for these)
+            const isCancelled = 
+                error.code === -1 ||
+                error.code === 'auth/cancelled' ||
+                error.code === 'ERR_CANCELED' ||
+                error.message?.includes('cancelled') ||
+                error.message?.includes('canceled') ||
+                error.message?.includes('Apple login failed');
+
             if (isInactive) {
                 Alert.alert("Account Inactive", "User Inactive: Please contact admin.");
-            } else if (error.code !== -1 && error.code !== 'auth/cancelled') {
+            } else if (isCancelled) {
+                // Silently ignore — user just dismissed the login dialog
+                console.log(`[Auth] ${provider} login cancelled by user`);
+            } else {
+                console.error(`${provider} Login Error:`, error);
                 let message = error.message;
                 if (error.code === 'auth/invalid-credential' || error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password') {
                     message = "Invalid email or password. If you recently restored your account or used social login before, please try 'Forgot Password' or your social login method.";
@@ -192,7 +210,7 @@ export default function SignIn() {
                 <View style={styles.header}>
                     <Image
                         source={require('../../assets/logo.png')}
-                        style={{ width: 100, height: 100, marginBottom: 16 }}
+                        style={{ width: 100, height: 100, marginBottom: 16, borderRadius: 50 }}
                         resizeMode="contain"
                     />
                     <Text variant="headlineMedium" style={styles.title}>Welcome to RiResume</Text>
@@ -218,7 +236,8 @@ export default function SignIn() {
                                     value={password}
                                     onChangeText={setPassword}
                                     mode="outlined"
-                                    secureTextEntry
+                                    secureTextEntry={!showPassword}
+                                    right={<TextInput.Icon icon={showPassword ? "eye-off" : "eye"} onPress={() => setShowPassword(!showPassword)} />}
                                     style={styles.input}
                                 />
                                 <Button

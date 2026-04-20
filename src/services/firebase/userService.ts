@@ -77,11 +77,25 @@ export class UserService {
             if (user.photoURL && user.photoURL !== data.photoURL) updates.photoURL = user.photoURL;
             if (user.displayName && !data.displayName) updates.displayName = user.displayName;
 
+            // Merge additionalData for fields that are missing (e.g. Apple sign-in name, phone verified state)
+            if (additionalData) {
+                if (additionalData.firstName && !data.firstName) updates.firstName = additionalData.firstName;
+                if (additionalData.lastName && !data.lastName) updates.lastName = additionalData.lastName;
+                if (additionalData.displayName && (!data.displayName || data.displayName === 'User')) {
+                    updates.displayName = additionalData.displayName;
+                }
+                if (additionalData.email && !data.email) updates.email = additionalData.email;
+                if (additionalData.phoneNumber && !data.phoneNumber) updates.phoneNumber = additionalData.phoneNumber;
+                if (additionalData.phoneVerified && !data.phoneVerified) updates.phoneVerified = additionalData.phoneVerified;
+            }
+
             if (user.email === ENV.ADMIN_EMAIL) {
                 if (data.role !== 'admin') updates.role = 'admin';
             } else if (data.role === 'admin') {
                 updates.role = 'user';
             }
+
+            // AUTO-REACTIVATE REMOVED: Deleted accounts remain 'deleted' to block future logins.
 
             await updateDoc(userRef, updates);
 

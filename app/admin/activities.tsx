@@ -37,7 +37,7 @@ export default function ActivitiesConsole() {
     };
 
     return (
-        <View style={styles.container}>
+        <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
             {loading ? (
                 <View style={styles.centered}>
                     <ActivityIndicator size="large" />
@@ -48,7 +48,7 @@ export default function ActivitiesConsole() {
                     keyExtractor={(item) => item.activityId}
                     contentContainerStyle={styles.list}
                     renderItem={({ item }) => (
-                        <Card style={styles.card}>
+                        <Card style={[styles.card, { backgroundColor: theme.colors.elevation.level1 }]}>
                             <Card.Content>
                                 <View style={styles.row}>
                                     <View style={{ flex: 1 }}>
@@ -98,14 +98,12 @@ export default function ActivitiesConsole() {
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: '#f5f5f5',
     },
     list: {
         padding: 16,
     },
     card: {
         marginBottom: 8,
-        backgroundColor: 'white',
     },
     row: {
         flexDirection: 'row',

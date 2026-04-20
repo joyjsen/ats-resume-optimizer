@@ -187,8 +187,13 @@ export default function EditProfileScreen() {
             const fullNumber = cleanNumber.startsWith('+') ? cleanNumber : `${selectedCountry.code}${cleanNumber}`;
 
             const verifier = Platform.OS === 'web' ? undefined : recaptchaVerifier.current;
-            await authService.signInWithPhoneNumber(fullNumber, verifier || undefined);
+            const confirmationResult = await authService.requestPhoneVerification(fullNumber, verifier || undefined);
+            
+            // Store the confirmation result locally in the component so confirm can access it
+            (authService as any)._tempConfirmationResult = confirmationResult;
+            
             setConfirmingPhone(true);
+            setLoading(false); // Stop loading so they can input the OTP
             Alert.alert("Verification", "Verification code sent to your new phone number.");
         } catch (error: any) {
             Alert.alert("Error", error.message || "Failed to send code.");
@@ -200,9 +205,10 @@ export default function EditProfileScreen() {
         setLoading(true);
         try {
             const { PhoneAuthProvider } = await import('firebase/auth');
+            const confirmationResult = (authService as any)._tempConfirmationResult || (authService as any)['confirmationResult'];
+            
             const credential = PhoneAuthProvider.credential(
-                // @ts-ignore -confirmationResult is stored in authService
-                authService['confirmationResult'].verificationId,
+                confirmationResult.verificationId,
                 verificationCode
             );
             await authService.updateNewPhoneNumber(credential);
@@ -321,8 +327,8 @@ export default function EditProfileScreen() {
 
                 // Check for duplicate phone safely via Cloud Function if phone changed
                 try {
-                    const exists = await userService.checkPhoneExists(newFullPhone);
-                    if (exists) {
+                    const response = await userService.checkPhoneExists(newFullPhone);
+                    if (response?.exists) {
                         Alert.alert("Error", "This phone number is already registered with another user, please use a different phone number.");
                         setLoading(false);
                         return;
@@ -371,28 +377,6 @@ export default function EditProfileScreen() {
                         title="Verify you are human"
                         cancelLabel="Close"
                     />
-
-                    {/* Phone Verification Confirmation (Only shown when verifying new phone) */}
-                    {confirmingPhone && (
-                        <View style={styles.verificationOverlay}>
-                            <Text variant="titleMedium">Enter Verification Code</Text>
-                            <TextInput
-                                label="Code"
-                                value={verificationCode}
-                                onChangeText={setVerificationCode}
-                                mode="outlined"
-                                keyboardType="number-pad"
-                                style={styles.input}
-                            />
-                            <View style={{ flexDirection: 'row', gap: 10 }}>
-                                <Button mode="outlined" onPress={() => {
-                                    setConfirmingPhone(false);
-                                    setPhone(localPhone);
-                                }} style={{ flex: 1 }}>Cancel</Button>
-                                <Button mode="contained" onPress={handleConfirmPhone} style={{ flex: 1 }} loading={loading}>Verify</Button>
-                            </View>
-                        </View>
-                    )}
 
                     {/* Email Verification Pending */}
                     {confirmingEmail && (
@@ -483,6 +467,28 @@ export default function EditProfileScreen() {
                         <HelperText type="info" visible style={{ marginTop: -12, marginBottom: 12 }}>
                             Phone number cannot be changed as it is your login ID.
                         </HelperText>
+                    )}
+
+                    {/* Phone Verification Confirmation moved here so it is visible below the phone input */}
+                    {confirmingPhone && (
+                        <View style={styles.verificationOverlay}>
+                            <Text variant="titleMedium">Enter Verification Code</Text>
+                            <TextInput
+                                label="Code"
+                                value={verificationCode}
+                                onChangeText={setVerificationCode}
+                                mode="outlined"
+                                keyboardType="number-pad"
+                                style={styles.input}
+                            />
+                            <View style={{ flexDirection: 'row', gap: 10 }}>
+                                <Button mode="outlined" onPress={() => {
+                                    setConfirmingPhone(false);
+                                    setPhone(localPhone);
+                                }} style={{ flex: 1 }}>Cancel</Button>
+                                <Button mode="contained" onPress={handleConfirmPhone} style={{ flex: 1 }} loading={loading}>Verify</Button>
+                            </View>
+                        </View>
                     )}
 
                     {userProfile?.provider === 'email' ? (
