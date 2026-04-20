@@ -59,3 +59,5 @@ android/keystore.properties
 scratch*
 update_glow.sh
 patch_*.sh
+
+functions/.secret.local
